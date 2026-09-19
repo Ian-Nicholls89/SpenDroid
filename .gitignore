@@ -1,0 +1,28 @@
+# Build outputs
+/build
+/app/build
+/*.apk
+/*.aab
+
+# Gradle
+/.gradle
+/gradle/wrapper/gradle-wrapper.jar
+
+# IDE
+/.idea
+/*.iml
+*.iws
+*.ipr
+.DS_Store
+
+# Local properties (contains SDK paths)
+/local.properties
+
+# Keystore
+*.keystore
+*.jks
+
+# OS
+Thumbs.db
+ehthumbs.db
+Desktop.ini
