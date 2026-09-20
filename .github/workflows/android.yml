@@ -69,12 +69,17 @@ jobs:
       - name: Get version info
         id: version
         run: |
-          VERSION_NAME=$(grep 'versionName' app/build.gradle.kts | head -1 | sed 's/.*versionName\s*=\s*"\([^"]*\)".*/\1/')
-          VERSION_CODE=$(grep 'versionCode' app/build.gradle.kts | head -1 | sed 's/.*versionCode\s*=\s*\([0-9]*\).*/\1/')
+          # Read the file and extract version info
+          cat app/build.gradle.kts
+          VERSION_NAME=$(grep -E 'versionName\s*=' app/build.gradle.kts | head -1 | sed -E 's/.*versionName\s*=\s*"([^"]+)".*/\1/')
+          VERSION_CODE=$(grep -E 'versionCode\s*=' app/build.gradle.kts | head -1 | sed -E 's/.*versionCode\s*=\s*([0-9]+).*/\1/')
           echo "version_name=$VERSION_NAME" >> $GITHUB_OUTPUT
           echo "version_code=$VERSION_CODE" >> $GITHUB_OUTPUT
           echo "Extracted version_name: '$VERSION_NAME'"
           echo "Extracted version_code: '$VERSION_CODE'"
+          echo "Raw grep output:"
+          grep -E 'versionName\s*=' app/build.gradle.kts
+          grep -E 'versionCode\s*=' app/build.gradle.kts
           
       - name: Upload Debug APK
         uses: actions/upload-artifact@v4
