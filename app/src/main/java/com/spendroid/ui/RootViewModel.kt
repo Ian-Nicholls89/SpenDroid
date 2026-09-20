@@ -8,6 +8,9 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkManager
+import androidx.work.ExistingWorkPolicy
 import com.spendroid.BudgetApplication
 import com.spendroid.data.Connection
 import com.spendroid.data.GoCardlessRepository
@@ -19,6 +22,7 @@ import com.spendroid.domain.BudgetEngine
 import com.spendroid.domain.BudgetSnapshot
 import com.spendroid.domain.RecurringAnalyzer
 import com.spendroid.domain.RecurringRule
+import com.spendroid.work.UpdateCheckerWorker
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -106,6 +110,20 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
             runCatching { this@RootViewModel.repo.saveGithubConfig(owner.trim(), repo.trim()) }
                 .onSuccess { _githubOwner.value = owner.trim(); _githubRepo.value = repo.trim() }
                 .onFailure { e -> _state.update { it.copy(error = e.message) } }
+        }
+    }
+
+    fun checkForUpdate() {
+        viewModelScope.launch {
+            _state.update { it.copy(error = null) }
+            val versionCode = try {
+                getApplication<android.app.Application>().packageManager.getPackageInfo(getApplication<android.app.Application>().packageName, 0).longVersionCode.toInt()
+            } catch (e: Exception) {
+                0
+            }
+            val inputData = androidx.work.Data.Builder().putInt(UpdateCheckerWorker.VERSION_CODE_KEY, versionCode).build()
+            androidx.work.WorkManager.getInstance(getApplication<android.app.Application>())
+                .enqueueUniqueWork(UpdateCheckerWorker::class.java.simpleName, androidx.work.ExistingWorkPolicy.REPLACE, androidx.work.OneTimeWorkRequestBuilder<UpdateCheckerWorker>().setInputData(inputData).build())
         }
     }
 

@@ -2,10 +2,9 @@ name: Android CI/CD
 
 on:
   push:
-    branches: [main]
-    tags: ['v*']
+    branches: [master]
   pull_request:
-    branches: [main]
+    branches: [master]
 
 jobs:
   build:
@@ -46,6 +45,14 @@ jobs:
       - name: Build Release APK
         run: ./gradlew assembleRelease
         
+      - name: Get version info
+        id: version
+        run: |
+          VERSION_NAME=$(grep -oP 'versionName\s*=\s*"\K[^"]+' app/build.gradle.kts)
+          VERSION_CODE=$(grep -oP 'versionCode\s*=\s*\K\d+' app/build.gradle.kts)
+          echo "version_name=$VERSION_NAME" >> $GITHUB_OUTPUT
+          echo "version_code=$VERSION_CODE" >> $GITHUB_OUTPUT
+          
       - name: Upload Debug APK
         uses: actions/upload-artifact@v4
         with:
@@ -60,7 +67,6 @@ jobs:
 
   release:
     needs: build
-    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -80,6 +86,8 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: v${{ needs.build.outputs.version_name }}-${{ needs.build.outputs.version_code }}
+          name: SpenDroid v${{ needs.build.outputs.version_name }} (build ${{ needs.build.outputs.version_code }})
           files: |
             artifacts/app-debug.apk
             artifacts/app-release.apk

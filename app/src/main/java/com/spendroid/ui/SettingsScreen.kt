@@ -163,7 +163,7 @@ fun SettingsScreen(
                     onClick = {
                         checkingUpdate = true
                         updateResult = null
-                        // Trigger manual check
+                        onCheckUpdate()
                     },
                     enabled = !checkingUpdate,
                     modifier = Modifier.weight(1f),
