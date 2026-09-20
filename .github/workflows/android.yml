@@ -19,14 +19,27 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
           
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-        with:
-          api-level: 35
-          ndk-version: r27c
-          build-tools-version: 34.0.0
-          accept-android-sdk-licenses: true
-          cache: true
+      - name: Install Android SDK
+        run: |
+          # Create Android SDK directory
+          mkdir -p $ANDROID_HOME
+          
+          # Download and extract cmdline-tools
+          cd /tmp
+          wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+          unzip -q commandlinetools-linux-11076708_latest.zip -d $ANDROID_HOME/cmdline-tools
+          mv $ANDROID_HOME/cmdline-tools/cmdline-tools $ANDROID_HOME/cmdline-tools/latest
+          
+          # Accept licenses and install only what we need
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses > /dev/null
+          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager \
+            "platforms;android-35" \
+            "build-tools;34.0.0" \
+            "ndk;27.0.12077973" \
+            "platform-tools" > /dev/null
+          
+          echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
+          echo "$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/ndk/27.0.12077973" >> $GITHUB_PATH
           
       - name: Cache Gradle
         uses: actions/cache@v4
