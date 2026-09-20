@@ -21,23 +21,17 @@ jobs:
           
       - name: Install Android SDK
         run: |
-          # Create Android SDK directory
           mkdir -p $ANDROID_HOME
-          
-          # Download and extract cmdline-tools
           cd /tmp
           wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
           unzip -q commandlinetools-linux-11076708_latest.zip -d $ANDROID_HOME/cmdline-tools
           mv $ANDROID_HOME/cmdline-tools/cmdline-tools $ANDROID_HOME/cmdline-tools/latest
-          
-          # Accept licenses and install only what we need
           yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses > /dev/null
           $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager \
             "platforms;android-35" \
             "build-tools;34.0.0" \
             "ndk;27.0.12077973" \
             "platform-tools" > /dev/null
-          
           echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
           echo "$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/ndk/27.0.12077973" >> $GITHUB_PATH
           
@@ -46,7 +40,6 @@ jobs:
           if [ ! -f debug.keystore ]; then
             keytool -genkeypair -alias debug -keystore debug.keystore -storepass android -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
           fi
-          echo "Keystore generated at: $(pwd)/debug.keystore"
           ls -la debug.keystore
         working-directory: ${{ github.workspace }}/app
           
@@ -73,16 +66,12 @@ jobs:
 import re
 with open('app/build.gradle.kts', 'r') as f:
     content = f.read()
-
-version_name_match = re.search(r'versionName\s*=\s*\"([^\"]+)\"', open('app/build.gradle.kts').read())
+version_name_match = re.search(r'versionName\s*=\s*\"([^\"]+)\"', content)
 version_name = version_name_match.group(1) if version_name_match else ''
-
-version_code_match = re.search(r'versionCode\s*=\s*(\d+)', open('app/build.gradle.kts').read())
+version_code_match = re.search(r'versionCode\s*=\s*(\d+)', content)
 version_code = version_code_match.group(1) if version_code_match else ''
-
 print(f'version_name={version_name}')
 print(f'version_code={version_code}')
-
 import os
 with open(os.environ.get('GITHUB_OUTPUT', '/dev/null'), 'a') as f:
     f.write(f'version_name={version_name}\n')
