@@ -66,7 +66,7 @@ jobs:
         run: |
           # Extract versionName and versionCode using awk
           VERSION_NAME=$(awk -F'"' '/versionName/ {print $2}' app/build.gradle.kts)
-          VERSION_CODE=$(awk '/versionCode/ {gsub(/[^0-9]/,"",$2); print $2}' app/build.gradle.kts)
+          VERSION_CODE=$(awk '/versionCode/ {gsub(/[^0-9]/,"",$0); print $0}' app/build.gradle.kts)
           echo "version_name=$VERSION_NAME" >> $GITHUB_OUTPUT
           echo "version_code=$VERSION_CODE" >> $GITHUB_OUTPUT
           echo "Extracted version_name: $VERSION_NAME"
