@@ -20,5 +20,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "BudgetApp"
+rootProject.name = "SpenDroid"
 include(":app")

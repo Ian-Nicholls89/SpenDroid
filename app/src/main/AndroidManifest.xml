@@ -6,9 +6,9 @@
 
     <application
         android:name=".BudgetApplication"
-        android:label="BudgetApp"
+        android:label="SpenDroid"
         android:supportsRtl="true"
-        android:theme="@style/Theme.BudgetApp">
+        android:theme="@style/Theme.SpenDroid">
 
         <activity
             android:name=".MainActivity"

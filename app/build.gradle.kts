@@ -6,7 +6,7 @@ plugins {
 }
 
 android {
-    namespace = "com.budgetapp"
+    namespace = "com.spendroid"
     compileSdk = 35
 
     signingConfigs {
@@ -19,11 +19,11 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.budgetapp"
+        applicationId = "com.spendroid"
         minSdk = 26
         targetSdk = 35
-        versionCode = 17
-        versionName = "1.16"
+        versionCode = 19
+        versionName = "1.18"
     }
 
     buildTypes {
