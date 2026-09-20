@@ -64,12 +64,6 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
     private val _secretKey = MutableStateFlow("")
     val secretKeyValue: StateFlow<String> = _secretKey.asStateFlow()
 
-    private val _githubOwner = MutableStateFlow("")
-    val githubOwnerValue: StateFlow<String> = _githubOwner.asStateFlow()
-
-    private val _githubRepo = MutableStateFlow("")
-    val githubRepoValue: StateFlow<String> = _githubRepo.asStateFlow()
-
     init {
         viewModelScope.launch {
             refreshConfig()
@@ -79,12 +73,6 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
         }
         viewModelScope.launch {
             repo.secretKey.filterNotNull().collect { _secretKey.value = it }
-        }
-        viewModelScope.launch {
-            repo.getGithubConfig().collect { config ->
-                _githubOwner.value = config.first
-                _githubRepo.value = config.second
-            }
         }
     }
 
@@ -102,14 +90,6 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
             runCatching { repo.saveSecret(id.trim(), key.trim()) }
                 .onFailure { e -> _state.update { it.copy(error = e.message) } }
             refreshConfig()
-        }
-    }
-
-    fun saveGithubConfig(owner: String, repo: String) {
-        viewModelScope.launch {
-            runCatching { this@RootViewModel.repo.saveGithubConfig(owner.trim(), repo.trim()) }
-                .onSuccess { _githubOwner.value = owner.trim(); _githubRepo.value = repo.trim() }
-                .onFailure { e -> _state.update { it.copy(error = e.message) } }
         }
     }
 

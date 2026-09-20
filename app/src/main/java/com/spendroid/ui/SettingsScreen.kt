@@ -25,15 +25,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import com.spendroid.work.UpdateCheckerWorker
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -44,17 +38,11 @@ fun SettingsScreen(
     onSave: (String, String) -> Unit,
     onClearData: () -> Unit,
     onCheckUpdate: () -> Unit,
-    currentGithubOwner: String,
-    currentGithubRepo: String,
-    onSaveGithubConfig: (String, String) -> Unit,
 ) {
     var secretId by remember { mutableStateOf(currentSecretId) }
     var secretKey by remember { mutableStateOf(currentSecretKey) }
-    var githubOwner by remember { mutableStateOf(currentGithubOwner) }
-    var githubRepo by remember { mutableStateOf(currentGithubRepo) }
     var showClearDialog by remember { mutableStateOf(false) }
     var saved by remember { mutableStateOf(false) }
-    var githubSaved by remember { mutableStateOf(false) }
     var checkingUpdate by remember { mutableStateOf(false) }
     var updateResult by remember { mutableStateOf<String?>(null) }
 
@@ -121,44 +109,18 @@ fun SettingsScreen(
             androidx.compose.material3.Divider(color = MaterialTheme.colorScheme.outlineVariant)
             Spacer(Modifier.height(16.dp))
 
-            Text("GitHub updates", style = MaterialTheme.typography.titleMedium)
+            Text("App updates", style = MaterialTheme.typography.titleMedium)
             Spacer(Modifier.height(4.dp))
             Text(
-                "Configure your GitHub repository to check for app updates automatically.",
+                "SpenDroid checks for updates automatically. Tap below to check manually.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Spacer(Modifier.height(12.dp))
-            androidx.compose.material3.OutlinedTextField(
-                value = githubOwner,
-                onValueChange = { githubOwner = it },
-                label = { Text("GitHub username/organization") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Spacer(Modifier.height(8.dp))
-            androidx.compose.material3.OutlinedTextField(
-                value = githubRepo,
-                onValueChange = { githubRepo = it },
-                label = { Text("Repository name (e.g. SpenDroid)") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
             )
             Spacer(Modifier.height(12.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp),
             ) {
-                Button(
-                    onClick = {
-                        onSaveGithubConfig(githubOwner.trim(), githubRepo.trim())
-                        githubSaved = true
-                    },
-                    enabled = githubOwner.isNotBlank() && githubRepo.isNotBlank(),
-                    modifier = Modifier.weight(1f),
-                ) {
-                    Text(if (githubSaved) "Saved" else "Save GitHub config")
-                }
                 Button(
                     onClick = {
                         checkingUpdate = true
@@ -200,5 +162,33 @@ fun SettingsScreen(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+    }
+
+    if (showClearDialog) {
+        AlertDialog(
+            onDismissRequest = { showClearDialog = false },
+            title = { Text("Clear all data?") },
+            text = {
+                Text("This will remove all linked accounts, transactions, and settings. This cannot be undone.")
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showClearDialog = false
+                        onClearData()
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.error,
+                    ),
+                ) {
+                    Text("Clear everything")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showClearDialog = false }) {
+                    Text("Cancel")
+                }
+            },
+        )
     }
 }

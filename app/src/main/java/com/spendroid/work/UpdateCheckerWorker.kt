@@ -132,8 +132,7 @@ class UpdateCheckerWorker(
     }
 
     companion object {
-        // TODO: Replace with your GitHub username/repo
-        private const val GITHUB_OWNER = "YOUR_GITHUB_USERNAME"
+        private const val GITHUB_OWNER = "Ian-Nicholls89"
         private const val GITHUB_REPO = "SpenDroid"
         private const val CHANNEL_ID = "update_checker"
         private const val NOTIFICATION_ID = 3001

@@ -58,9 +58,6 @@ class MainActivity : ComponentActivity() {
                                 screen = "home"
                             },
                             onCheckUpdate = { /* handled in SettingsScreen */ },
-                            currentGithubOwner = viewModel.githubOwnerValue.collectAsStateWithLifecycle().value,
-                            currentGithubRepo = viewModel.githubRepoValue.collectAsStateWithLifecycle().value,
-                            onSaveGithubConfig = viewModel::saveGithubConfig,
                         )
 
                         "accounts" -> AccountManagementScreen(

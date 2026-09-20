@@ -31,8 +31,6 @@ class SecretsStore(private val context: Context) {
         val CONNECTIONS = stringPreferencesKey("connections")
         val IGNORED_RULES = stringPreferencesKey("ignored_rules")
         val REFRESH_TOKEN = stringPreferencesKey("refresh_token")
-        val GITHUB_OWNER = stringPreferencesKey("github_owner")
-        val GITHUB_REPO = stringPreferencesKey("github_repo")
     }
 
     val secretId: Flow<String?> = stringFlow(Keys.SECRET_ID)
@@ -47,14 +45,6 @@ class SecretsStore(private val context: Context) {
         .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
         .map { prefs -> parseConnections(prefs[Keys.CONNECTIONS]) }
 
-    val githubConfig: Flow<Pair<String, String>> = context.dataStore.data
-        .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
-        .map { prefs ->
-            val owner = prefs[Keys.GITHUB_OWNER] ?: ""
-            val repo = prefs[Keys.GITHUB_REPO] ?: ""
-            Pair(owner, repo)
-        }
-
     private fun stringFlow(key: androidx.datastore.preferences.core.Preferences.Key<String>): Flow<String?> =
         context.dataStore.data
             .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
@@ -65,13 +55,6 @@ class SecretsStore(private val context: Context) {
             prefs[Keys.SECRET_ID] = id
             prefs[Keys.SECRET_KEY] = key
             prefs.remove(Keys.REFRESH_TOKEN) // clear old token on new credentials
-        }
-    }
-
-    suspend fun saveGithubConfig(owner: String, repo: String) {
-        context.dataStore.edit { prefs ->
-            prefs[Keys.GITHUB_OWNER] = owner
-            prefs[Keys.GITHUB_REPO] = repo
         }
     }
 

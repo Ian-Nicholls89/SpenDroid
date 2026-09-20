@@ -67,12 +67,6 @@ class GoCardlessRepository private constructor(
         secrets.saveSecret(id, key)
     }
 
-    suspend fun saveGithubConfig(owner: String, repo: String) {
-        secrets.saveGithubConfig(owner, repo)
-    }
-
-    fun getGithubConfig(): kotlinx.coroutines.flow.Flow<Pair<String, String>> = secrets.githubConfig
-
     suspend fun saveConnections(connections: List<Connection>) {
         secrets.saveConnections(connections)
     }
