@@ -68,16 +68,15 @@ jobs:
       - name: Build Release APK
         run: ./gradlew assembleRelease
         
-      - name: Get version info
+- name: Get version info
         id: version
         run: |
-          # Use awk to extract version info
-          VERSION_NAME=$(awk -F'"' '/versionName/ {print $2}' app/build.gradle.kts)
-          VERSION_CODE=$(awk '/versionCode/ {gsub(/[^0-9]/,"",$2); print $2}' app/build.gradle.kts)
+          VERSION_NAME=$(grep 'versionName' app/build.gradle.kts | head -1 | sed 's/.*versionName\s*=\s*"\([^"]*\)".*/\1/')
+          VERSION_CODE=$(grep 'versionCode' app/build.gradle.kts | head -1 | sed 's/.*versionCode\s*=\s*\([0-9]*\).*/\1/')
           echo "version_name=$VERSION_NAME" >> $GITHUB_OUTPUT
           echo "version_code=$VERSION_CODE" >> $GITHUB_OUTPUT
-          echo "Extracted version_name: $VERSION_NAME"
-          echo "Extracted version_code: $VERSION_CODE"
+          echo "Extracted version_name: '$VERSION_NAME'"
+          echo "Extracted version_code: '$VERSION_CODE'"
           
       - name: Upload Debug APK
         uses: actions/upload-artifact@v4
