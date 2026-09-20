@@ -19,6 +19,15 @@ android {
                 keyPassword = "android"
             }
         }
+        create("release") {
+            val keystoreFile = file("debug.keystore")
+            if (keystoreFile.exists()) {
+                storeFile = keystoreFile
+                storePassword = "android"
+                keyAlias = "debug"
+                keyPassword = "android"
+            }
+        }
     }
 
     defaultConfig {
@@ -36,6 +45,7 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
+            signingConfig = signingConfigs.getByName("release")
         }
         debug {
             signingConfig = signingConfigs.getByName("debug")
