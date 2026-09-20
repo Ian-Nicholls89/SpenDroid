@@ -66,20 +66,30 @@ jobs:
       - name: Build Release APK
         run: ./gradlew assembleRelease
         
-      - name: Get version info
+- name: Get version info
         id: version
         run: |
-          # Read the file and extract version info
-          cat app/build.gradle.kts
-          VERSION_NAME=$(grep -E 'versionName\s*=' app/build.gradle.kts | head -1 | sed -E 's/.*versionName\s*=\s*"([^"]+)".*/\1/')
-          VERSION_CODE=$(grep -E 'versionCode\s*=' app/build.gradle.kts | head -1 | sed -E 's/.*versionCode\s*=\s*([0-9]+).*/\1/')
-          echo "version_name=$VERSION_NAME" >> $GITHUB_OUTPUT
-          echo "version_code=$VERSION_CODE" >> $GITHUB_OUTPUT
-          echo "Extracted version_name: '$VERSION_NAME'"
-          echo "Extracted version_code: '$VERSION_CODE'"
-          echo "Raw grep output:"
-          grep -E 'versionName\s*=' app/build.gradle.kts
-          grep -E 'versionCode\s*=' app/build.gradle.kts
+          python3 << 'EOF'
+import re
+
+with open('app/build.gradle.kts', 'r') as f:
+    content = f.read()
+
+# Extract versionName
+version_name_match = re.search(r'versionName\s*=\s*"([^"]+)"', content)
+version_name = version_name_match.group(1) if version_name_match else ""
+
+# Extract versionCode
+version_code_match = re.search(r'versionCode\s*=\s*(\d+)', content)
+version_code = version_code_match.group(1) if version_code_match else ""
+
+print(f"version_name={version_name}")
+print(f"version_code={version_code}")
+
+with open(os.environ.get('GITHUB_OUTPUT', '/dev/null'), 'a') as f:
+    f.write(f"version_name={version_name}\n")
+    f.write(f"version_code={version_code}\n")
+EOF
           
       - name: Upload Debug APK
         uses: actions/upload-artifact@v4
