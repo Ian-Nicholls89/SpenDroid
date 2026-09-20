@@ -60,15 +60,13 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-gradle-
             
-      
-        
       - name: Build Debug APK
         run: ./gradlew assembleDebug
         
       - name: Build Release APK
         run: ./gradlew assembleRelease
         
-- name: Get version info
+      - name: Get version info
         id: version
         run: |
           VERSION_NAME=$(grep 'versionName' app/build.gradle.kts | head -1 | sed 's/.*versionName\s*=\s*"\([^"]*\)".*/\1/')
