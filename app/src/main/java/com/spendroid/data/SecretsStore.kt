@@ -31,6 +31,7 @@ class SecretsStore(private val context: Context) {
         val CONNECTIONS = stringPreferencesKey("connections")
         val IGNORED_RULES = stringPreferencesKey("ignored_rules")
         val REFRESH_TOKEN = stringPreferencesKey("refresh_token")
+        val NOTIFICATION_TIME = stringPreferencesKey("notification_time")
     }
 
     val secretId: Flow<String?> = stringFlow(Keys.SECRET_ID)
@@ -44,6 +45,10 @@ class SecretsStore(private val context: Context) {
     val connections: Flow<List<Connection>> = context.dataStore.data
         .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
         .map { prefs -> parseConnections(prefs[Keys.CONNECTIONS]) }
+
+    val notificationTime: Flow<String> = context.dataStore.data
+        .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
+        .map { prefs -> prefs[Keys.NOTIFICATION_TIME] ?: "21:00" }
 
     private fun stringFlow(key: androidx.datastore.preferences.core.Preferences.Key<String>): Flow<String?> =
         context.dataStore.data
@@ -84,6 +89,12 @@ class SecretsStore(private val context: Context) {
         if (ignored) current.add(key) else current.remove(key)
         context.dataStore.edit { prefs ->
             prefs[Keys.IGNORED_RULES] = JSONArray(current.toList()).toString()
+        }
+    }
+
+    suspend fun saveNotificationTime(time: String) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.NOTIFICATION_TIME] = time
         }
     }
 

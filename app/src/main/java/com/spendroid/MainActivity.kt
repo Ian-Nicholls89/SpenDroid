@@ -58,6 +58,8 @@ class MainActivity : ComponentActivity() {
                                 screen = "home"
                             },
                             onCheckUpdate = { /* handled in SettingsScreen */ },
+                            notificationTime = viewModel.notificationTime.collectAsStateWithLifecycle().value,
+                            onSaveNotificationTime = viewModel::saveNotificationTime,
                         )
 
                         "accounts" -> AccountManagementScreen(

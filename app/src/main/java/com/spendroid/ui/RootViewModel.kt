@@ -64,6 +64,10 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
     private val _secretKey = MutableStateFlow("")
     val secretKeyValue: StateFlow<String> = _secretKey.asStateFlow()
 
+    val notificationTime: StateFlow<String> = repo.notificationTime
+        .map { it ?: "21:00" }
+        .stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.WhileSubscribed(), "21:00")
+
     init {
         viewModelScope.launch {
             refreshConfig()
@@ -90,6 +94,12 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
             runCatching { repo.saveSecret(id.trim(), key.trim()) }
                 .onFailure { e -> _state.update { it.copy(error = e.message) } }
             refreshConfig()
+        }
+    }
+
+    fun saveNotificationTime(time: String) {
+        viewModelScope.launch {
+            repo.saveNotificationTime(time)
         }
     }
 

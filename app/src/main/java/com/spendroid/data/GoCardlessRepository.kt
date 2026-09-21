@@ -50,6 +50,7 @@ class GoCardlessRepository private constructor(
             kotlinx.coroutines.delay(1_000)
         }
     }
+    val notificationTime: Flow<String> = secrets.notificationTime
 
     suspend fun setRuleIgnored(key: String, ignored: Boolean) {
         secrets.setRuleIgnored(key, ignored)
@@ -65,6 +66,10 @@ class GoCardlessRepository private constructor(
 
     suspend fun saveSecret(id: String, key: String) {
         secrets.saveSecret(id, key)
+    }
+
+    suspend fun saveNotificationTime(time: String) {
+        secrets.saveNotificationTime(time)
     }
 
     suspend fun saveConnections(connections: List<Connection>) {

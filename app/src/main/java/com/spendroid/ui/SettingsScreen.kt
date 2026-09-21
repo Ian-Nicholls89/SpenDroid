@@ -19,15 +19,20 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TimePicker
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import java.time.LocalTime
+import java.time.format.DateTimeFormatter
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -38,6 +43,8 @@ fun SettingsScreen(
     onSave: (String, String) -> Unit,
     onClearData: () -> Unit,
     onCheckUpdate: () -> Unit,
+    notificationTime: String,
+    onSaveNotificationTime: (String) -> Unit,
 ) {
     var secretId by remember { mutableStateOf(currentSecretId) }
     var secretKey by remember { mutableStateOf(currentSecretKey) }
@@ -45,6 +52,8 @@ fun SettingsScreen(
     var saved by remember { mutableStateOf(false) }
     var checkingUpdate by remember { mutableStateOf(false) }
     var updateResult by remember { mutableStateOf<String?>(null) }
+    var showTimePicker by remember { mutableStateOf(false) }
+    var selectedTime by remember { mutableStateOf(LocalTime.parse(notificationTime)) }
 
     Scaffold(
         topBar = {
@@ -145,6 +154,38 @@ fun SettingsScreen(
             Spacer(Modifier.height(24.dp))
             androidx.compose.material3.Divider(color = MaterialTheme.colorScheme.outlineVariant)
             Spacer(Modifier.height(16.dp))
+
+            Text("Daily notifications", style = MaterialTheme.typography.titleMedium)
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "Set the time for daily budget summary notifications.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(12.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp),
+            ) {
+                OutlinedTextField(
+                    value = selectedTime.format(DateTimeFormatter.ofPattern("HH:mm")),
+                    onValueChange = { /* handled by time picker */ },
+                    label = { Text("Notification time") },
+                    singleLine = true,
+                    modifier = Modifier.weight(1f),
+                    readOnly = true,
+                )
+                Button(
+                    onClick = { showTimePicker = true },
+                    modifier = Modifier.width(48.dp),
+                ) {
+                    Text("Change")
+                }
+            }
+
+            Spacer(Modifier.height(24.dp))
+            androidx.compose.material3.Divider(color = MaterialTheme.colorScheme.outlineVariant)
+            Spacer(Modifier.height(16.dp))
             Text("Data management", style = MaterialTheme.typography.titleMedium)
             Spacer(Modifier.height(8.dp))
             Button(
@@ -186,6 +227,35 @@ fun SettingsScreen(
             },
             dismissButton = {
                 TextButton(onClick = { showClearDialog = false }) {
+                    Text("Cancel")
+                }
+            },
+        )
+    }
+
+    if (showTimePicker) {
+        AlertDialog(
+            onDismissRequest = { showTimePicker = false },
+            title = { Text("Select notification time") },
+            text = {
+                TimePicker(
+                    hour = selectedTime.hour,
+                    minute = selectedTime.minute,
+                    onHourChange = { hour -> selectedTime = selectedTime.withHour(hour) },
+                    onMinuteChange = { minute -> selectedTime = selectedTime.withMinute(minute) },
+                )
+            },
+            confirmButton = {
+                Button(onClick = {
+                    val newTime = selectedTime.format(DateTimeFormatter.ofPattern("HH:mm"))
+                    onSaveNotificationTime(newTime)
+                    showTimePicker = false
+                }) {
+                    Text("OK")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showTimePicker = false }) {
                     Text("Cancel")
                 }
             },
