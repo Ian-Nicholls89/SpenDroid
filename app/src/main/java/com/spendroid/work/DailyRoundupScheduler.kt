@@ -12,6 +12,8 @@ import java.time.LocalDateTime
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.flow.first
 
 object DailyRoundupScheduler {
 
@@ -24,7 +26,7 @@ object DailyRoundupScheduler {
         val repo: GoCardlessRepository = app.repository
         
         // Get notification time from repository (with default fallback)
-        val notificationTime = repo.notificationTime.first() ?: "21:00"
+        val notificationTime = runBlocking { repo.notificationTime.first() } ?: "21:00"
         val formatter = DateTimeFormatter.ofPattern("HH:mm")
         val notificationTimeLocal = LocalTime.parse(notificationTime, formatter)
 

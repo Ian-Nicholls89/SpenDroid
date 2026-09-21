@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
@@ -19,14 +20,12 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TimePicker
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -167,7 +166,7 @@ fun SettingsScreen(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp),
             ) {
-                OutlinedTextField(
+                androidx.compose.material3.OutlinedTextField(
                     value = selectedTime.format(DateTimeFormatter.ofPattern("HH:mm")),
                     onValueChange = { /* handled by time picker */ },
                     label = { Text("Notification time") },
@@ -205,45 +204,42 @@ fun SettingsScreen(
         }
     }
 
-    if (showClearDialog) {
-        AlertDialog(
-            onDismissRequest = { showClearDialog = false },
-            title = { Text("Clear all data?") },
-            text = {
-                Text("This will remove all linked accounts, transactions, and settings. This cannot be undone.")
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        showClearDialog = false
-                        onClearData()
-                    },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.error,
-                    ),
-                ) {
-                    Text("Clear everything")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showClearDialog = false }) {
-                    Text("Cancel")
-                }
-            },
-        )
-    }
-
     if (showTimePicker) {
         AlertDialog(
             onDismissRequest = { showTimePicker = false },
             title = { Text("Select notification time") },
             text = {
-                TimePicker(
-                    hour = selectedTime.hour,
-                    minute = selectedTime.minute,
-                    onHourChange = { hour -> selectedTime = selectedTime.withHour(hour) },
-                    onMinuteChange = { minute -> selectedTime = selectedTime.withMinute(minute) },
-                )
+                Column {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        androidx.compose.material3.OutlinedTextField(
+                            value = selectedTime.hour.toString().padStart(2, '0'),
+                            onValueChange = { hourStr ->
+                                val hour = hourStr.toIntOrNull()?.coerceIn(0, 23) ?: selectedTime.hour
+                                selectedTime = selectedTime.withHour(hour)
+                            },
+                            label = { Text("Hour") },
+                            singleLine = true,
+                            modifier = Modifier
+                                .weight(1f)
+                                .width(80.dp),
+                        )
+                        androidx.compose.material3.OutlinedTextField(
+                            value = selectedTime.minute.toString().padStart(2, '0'),
+                            onValueChange = { minuteStr ->
+                                val minute = minuteStr.toIntOrNull()?.coerceIn(0, 59) ?: selectedTime.minute
+                                selectedTime = selectedTime.withMinute(minute)
+                            },
+                            label = { Text("Minute") },
+                            singleLine = true,
+                            modifier = Modifier
+                                .weight(1f)
+                                .width(80.dp),
+                        )
+                    }
+                }
             },
             confirmButton = {
                 Button(onClick = {
