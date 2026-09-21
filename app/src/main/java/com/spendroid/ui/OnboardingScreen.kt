@@ -44,7 +44,7 @@ fun OnboardingScreen(
     var secretId by rememberSaveable { mutableStateOf("") }
     var secretKey by rememberSaveable { mutableStateOf("") }
     var query by rememberSaveable { mutableStateOf("") }
-    val helpUrl = "https://bankaccountdata.gocardless.com"
+    val helpUrl = "https://ob.nordigen.com"
 
     Scaffold(
         topBar = { TopAppBar(title = { Text("Connect your banks") }) },

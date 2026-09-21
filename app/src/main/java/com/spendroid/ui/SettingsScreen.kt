@@ -74,7 +74,7 @@ fun SettingsScreen(
             Text("GoCardless API credentials", style = MaterialTheme.typography.titleMedium)
             Spacer(Modifier.height(4.dp))
             Text(
-                "Get these from https://bankaccountdata.gocardless.com → Developer → User secrets",
+                "Get these from https://ob.nordigen.com/ → Developer → User secrets",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
