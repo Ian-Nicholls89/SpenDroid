@@ -9,6 +9,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
@@ -26,6 +29,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -36,21 +40,20 @@ import java.time.format.DateTimeFormatter
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
-    currentSecretId: String,
-    currentSecretKey: String,
+    state: RootUiState,
     onBack: () -> Unit,
     onSave: (String, String) -> Unit,
     onClearData: () -> Unit,
     onCheckUpdate: () -> Unit,
+    secretId: String,
+    secretKey: String,
     notificationTime: String,
     onSaveNotificationTime: (String) -> Unit,
 ) {
-    var secretId by remember { mutableStateOf(currentSecretId) }
-    var secretKey by remember { mutableStateOf(currentSecretKey) }
+    var secretId by remember { mutableStateOf(secretId) }
+    var secretKey by remember { mutableStateOf(secretKey) }
     var showClearDialog by remember { mutableStateOf(false) }
     var saved by remember { mutableStateOf(false) }
-    var checkingUpdate by remember { mutableStateOf(false) }
-    var updateResult by remember { mutableStateOf<String?>(null) }
     var showTimePicker by remember { mutableStateOf(false) }
     var selectedTime by remember { mutableStateOf(LocalTime.parse(notificationTime)) }
 
@@ -129,25 +132,59 @@ fun SettingsScreen(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp),
             ) {
+                val isChecking = state.updateCheckStatus is UpdateCheckStatus.Checking
                 Button(
-                    onClick = {
-                        checkingUpdate = true
-                        updateResult = null
-                        onCheckUpdate()
-                    },
-                    enabled = !checkingUpdate,
+                    onClick = { onCheckUpdate() },
+                    enabled = !isChecking,
                     modifier = Modifier.weight(1f),
                 ) {
-                    Text(if (checkingUpdate) "Checking…" else "Check now")
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        if (state.updateCheckStatus is UpdateCheckStatus.Checking) {
+                            androidx.compose.material3.CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                color = MaterialTheme.colorScheme.onPrimary,
+                            )
+                            Spacer(Modifier.width(8.dp))
+                        }
+                        Text(when {
+                            state.updateCheckStatus is UpdateCheckStatus.Checking -> "Checking…"
+                            else -> "Check now"
+                        })
+                    }
                 }
             }
-            updateResult?.let { result ->
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    result,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = if (result.startsWith("Error")) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
-                )
+            when (state.updateCheckStatus) {
+                is UpdateCheckStatus.Checking -> {
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "Checking for updates…",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
+                is UpdateCheckStatus.Success -> {
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        state.updateCheckStatus.message,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
+                is UpdateCheckStatus.Error -> {
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        state.updateCheckStatus.message,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+                is UpdateCheckStatus.Idle -> {}
             }
 
             Spacer(Modifier.height(24.dp))

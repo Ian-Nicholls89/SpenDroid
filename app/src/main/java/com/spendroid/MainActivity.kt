@@ -49,15 +49,16 @@ class MainActivity : ComponentActivity() {
                         )
 
                         "settings" -> SettingsScreen(
-                            currentSecretId = viewModel.secretIdValue.collectAsStateWithLifecycle().value,
-                            currentSecretKey = viewModel.secretKeyValue.collectAsStateWithLifecycle().value,
+                            state = state,
                             onBack = { screen = "home" },
                             onSave = viewModel::saveSecret,
                             onClearData = {
                                 viewModel.clearData()
                                 screen = "home"
                             },
-                            onCheckUpdate = { /* handled in SettingsScreen */ },
+                            onCheckUpdate = viewModel::checkForUpdate,
+                            secretId = viewModel.secretIdValue.collectAsStateWithLifecycle().value,
+                            secretKey = viewModel.secretKeyValue.collectAsStateWithLifecycle().value,
                             notificationTime = viewModel.notificationTime.collectAsStateWithLifecycle().value,
                             onSaveNotificationTime = viewModel::saveNotificationTime,
                         )

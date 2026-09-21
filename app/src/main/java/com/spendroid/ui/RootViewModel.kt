@@ -34,6 +34,14 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.SharingStarted
+import java.util.regex.Pattern
+
+sealed interface UpdateCheckStatus {
+    data class Checking(val message: String) : UpdateCheckStatus
+    data class Success(val message: String) : UpdateCheckStatus
+    data class Error(val message: String) : UpdateCheckStatus
+    object Idle : UpdateCheckStatus
+}
 
 data class RootUiState(
     val hasCredentials: Boolean = false,
@@ -51,6 +59,7 @@ data class RootUiState(
     val connections: List<Connection> = emptyList(),
     val showRecurringOnly: Boolean = true,
     val showInternalTransfers: Boolean = false,
+    val updateCheckStatus: UpdateCheckStatus = UpdateCheckStatus.Idle,
 )
 
 class RootViewModel(app: Application) : AndroidViewModel(app) {
@@ -107,7 +116,7 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
 
     fun checkForUpdate() {
         viewModelScope.launch {
-            _state.update { it.copy(error = null) }
+            _state.update { it.copy(updateCheckStatus = UpdateCheckStatus.Checking("Checking for updates…")) }
             val versionCode = try {
                 getApplication<android.app.Application>().packageManager.getPackageInfo(getApplication<android.app.Application>().packageName, 0).longVersionCode.toInt()
             } catch (e: Exception) {
@@ -116,7 +125,94 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
             val inputData = androidx.work.Data.Builder().putInt(UpdateCheckerWorker.VERSION_CODE_KEY, versionCode).build()
             androidx.work.WorkManager.getInstance(getApplication<android.app.Application>())
                 .enqueueUniqueWork(UpdateCheckerWorker::class.java.simpleName, androidx.work.ExistingWorkPolicy.REPLACE, androidx.work.OneTimeWorkRequestBuilder<UpdateCheckerWorker>().setInputData(inputData).build())
+            
+            // Poll for result (the worker posts notification, but we also check version here)
+            try {
+                val latest = checkForUpdateResult()
+                latest?.let { (versionCode, versionName) ->
+                    if (versionCode > 0) {
+                        _state.update { it.copy(updateCheckStatus = UpdateCheckStatus.Success("Update found: v$versionName (build $versionCode)")) }
+                    } else {
+                        _state.update { it.copy(updateCheckStatus = UpdateCheckStatus.Success("You're up to date")) }
+                    }
+                } ?: _state.update { it.copy(updateCheckStatus = UpdateCheckStatus.Error("Unable to check for updates")) }
+            } catch (e: Exception) {
+                _state.update { it.copy(updateCheckStatus = UpdateCheckStatus.Error("Error: ${e.message}")) }
+            }
         }
+    }
+
+    private suspend fun checkForUpdateResult(): Pair<Int, String>? {
+        val client = okhttp3.OkHttpClient.Builder()
+            .connectTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
+            .build()
+
+        val request = okhttp3.Request.Builder()
+            .url("https://api.github.com/repos/Ian-Nicholls89/SpenDroid/releases/latest")
+            .addHeader("Accept", "application/vnd.github.v3+json")
+            .build()
+
+        val response = client.newCall(request).execute()
+        if (!response.isSuccessful) return null
+
+        val body = response.body?.string() ?: return null
+        val json = org.json.JSONObject(body)
+
+        // Try release body
+        val releaseBody = json.optString("body", "")
+        val versionFromBody = extractVersionCode(releaseBody)
+        val nameFromBody = extractVersionName(releaseBody)
+        if (versionFromBody != null) return Pair(versionFromBody, nameFromBody ?: "")
+
+        // Try assets
+        val assets = json.optJSONArray("assets")
+        if (assets != null) {
+            for (i in 0 until assets.length()) {
+                val asset = assets.getJSONObject(i)
+                val name = asset.optString("name", "")
+                val versionFromAsset = extractVersionCode(name)
+                if (versionFromAsset != null) return Pair(versionFromAsset, extractVersionName(name) ?: "")
+            }
+        }
+
+        // Fallback: tag
+        val tagName = json.optString("tag_name", "")
+        val versionFromTag = extractVersionCode(tagName)
+        val nameFromTag = extractVersionName(tagName)
+        if (versionFromTag != null) return Pair(versionFromTag, nameFromTag ?: "")
+
+        return null
+    }
+
+    private fun extractVersionCode(text: String): Int? {
+        val patterns = listOf(
+            Pattern.compile("versionCode[\\s:=]+(\\d+)"),
+            Pattern.compile("version[\\s:=]+(\\d+)"),
+            Pattern.compile("v(\\d+)(?:\\.\\d+)?[-\\.]"),
+            Pattern.compile("app[-\\s](\\d+)\\."),
+        )
+        for (pattern in patterns) {
+            val matcher = pattern.matcher(text)
+            if (matcher.find()) {
+                return matcher.group(1).toIntOrNull()
+            }
+        }
+        return null
+    }
+
+    private fun extractVersionName(text: String): String? {
+        val patterns = listOf(
+            Pattern.compile("versionName[\\s:=]+([^\\s\\n]+)"),
+            Pattern.compile("version[\\s:=]+([\\d.]+)"),
+        )
+        for (pattern in patterns) {
+            val matcher = pattern.matcher(text)
+            if (matcher.find()) {
+                return matcher.group(1)
+            }
+        }
+        return null
     }
 
     fun loadInstitutions(query: String) {
