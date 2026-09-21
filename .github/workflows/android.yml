@@ -107,6 +107,10 @@ jobs:
         with:
           tag_name: v${{ needs.build.outputs.version_name }}-${{ needs.build.outputs.version_code }}
           name: SpenDroid v${{ needs.build.outputs.version_name }} (build ${{ needs.build.outputs.version_code }})
+          body: |
+            versionCode: ${{ needs.build.outputs.version_code }}
+            versionName: ${{ needs.build.outputs.version_name }}
+            Auto-generated release from commit ${{ github.sha }}
           files: |
             artifacts/app-debug.apk
             artifacts/app-release.apk
