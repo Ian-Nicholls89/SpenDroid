@@ -28,10 +28,11 @@ class UpdateCheckerWorker(
 
         return withContext(Dispatchers.IO) {
             try {
-                val latestVersionCode = checkForUpdate()
-                latestVersionCode?.let { versionCode ->
-                    if (versionCode > currentVersionCode) {
-                        showUpdateNotification(versionCode)
+                val latestVersion = checkForUpdate()
+                latestVersion?.let { (versionCode, versionName) ->
+                    val shouldUpdate = versionCode > currentVersionCode
+                    if (shouldUpdate) {
+                        showUpdateNotification(versionCode, versionName)
                     }
                 }
                 Result.success()
@@ -41,13 +42,12 @@ class UpdateCheckerWorker(
         }
     }
 
-    private suspend fun checkForUpdate(): Int? {
+    private suspend fun checkForUpdate(): Pair<Int, String>? {
         val client = OkHttpClient.Builder()
             .connectTimeout(10, TimeUnit.SECONDS)
             .readTimeout(10, TimeUnit.SECONDS)
             .build()
 
-        // GitHub API: GET /repos/{owner}/{repo}/releases/latest
         val request = Request.Builder()
             .url("https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest")
             .addHeader("Accept", "application/vnd.github.v3+json")
@@ -58,16 +58,17 @@ class UpdateCheckerWorker(
 
         val body = response.body?.string() ?: return null
         val json = JSONObject(body)
-        
-        // Try multiple sources for versionCode:
-        // 1. From release body (format: "versionCode: 16")
+
+        // Try multiple sources for versionCode and versionName:
+        // 1. From release body (format: "versionCode: 16\nversionName: 1.15")
         // 2. From asset names (format: "app-16.apk" or "app-v16.apk")
         // 3. From tag_name (fallback: "v1.15" -> parse)
-        
+
         // Try release body first
         val releaseBody = json.optString("body", "")
         val versionFromBody = extractVersionCode(releaseBody)
-        if (versionFromBody != null) return versionFromBody
+        val nameFromBody = extractVersionName(releaseBody)
+        if (versionFromBody != null) return Pair(versionFromBody, nameFromBody ?: "")
 
         // Try assets
         val assets = json.optJSONArray("assets")
@@ -76,17 +77,20 @@ class UpdateCheckerWorker(
                 val asset = assets.getJSONObject(i)
                 val name = asset.optString("name", "")
                 val versionFromAsset = extractVersionCode(name)
-                if (versionFromAsset != null) return versionFromAsset
+                if (versionFromAsset != null) return Pair(versionFromAsset, extractVersionName(name) ?: "")
             }
         }
 
-        // Fallback: parse tag_name (e.g., "v1.15" -> need versionCode mapping)
-        // This is imprecise, so we return null and rely on body/assets
+        // Fallback: parse tag_name (e.g., "v1.15" -> parse)
+        val tagName = json.optString("tag_name", "")
+        val versionFromTag = extractVersionCode(tagName)
+        val nameFromTag = extractVersionName(tagName)
+        if (versionFromTag != null) return Pair(versionFromTag, nameFromTag ?: "")
+
         return null
     }
 
     private fun extractVersionCode(text: String): Int? {
-        // Pattern: "versionCode: 16" or "versionCode=16" or "v16" or "app-16.apk"
         val patterns = listOf(
             Pattern.compile("versionCode[\\s:=]+(\\d+)"),
             Pattern.compile("version[\\s:=]+(\\d+)"),
@@ -102,7 +106,21 @@ class UpdateCheckerWorker(
         return null
     }
 
-    private fun showUpdateNotification(versionCode: Int) {
+    private fun extractVersionName(text: String): String? {
+        val patterns = listOf(
+            Pattern.compile("versionName[\\s:=]+([^\\s\\n]+)"),
+            Pattern.compile("version[\\s:=]+([\\d.]+)"),
+        )
+        for (pattern in patterns) {
+            val matcher = pattern.matcher(text)
+            if (matcher.find()) {
+                return matcher.group(1)
+            }
+        }
+        return null
+    }
+
+    private fun showUpdateNotification(versionCode: Int, versionName: String) {
         val manager = applicationContext.getSystemService(NotificationManager::class.java)
         val channel = NotificationChannel(
             CHANNEL_ID,
@@ -122,8 +140,8 @@ class UpdateCheckerWorker(
         val notification = NotificationCompat.Builder(applicationContext, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setContentTitle("SpenDroid update available")
-            .setContentText("Version $versionCode is ready. Tap to view releases.")
-            .setStyle(NotificationCompat.BigTextStyle().bigText("A new version of SpenDroid ($versionCode) is available on GitHub. Tap to open the releases page and download the latest APK."))
+            .setContentText("Version $versionName ($versionCode) is ready. Tap to view releases.")
+            .setStyle(NotificationCompat.BigTextStyle().bigText("A new version of SpenDroid v$versionName ($versionCode) is available on GitHub. Tap to open the releases page and download the latest APK."))
             .setContentIntent(pendingIntent)
             .setAutoCancel(true)
             .build()
