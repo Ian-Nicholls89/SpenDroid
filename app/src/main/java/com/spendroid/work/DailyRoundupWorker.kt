@@ -33,7 +33,8 @@ class DailyRoundupWorker(
 
         val rules = RecurringAnalyzer.analyze(transactions)
         val ignored = app.repository.ignoredRules.first()
-        val snapshot = BudgetEngine.snapshot(transactions, rules.filter { it.key !in ignored })
+        val notificationTime = java.time.LocalDateTime.now()
+        val snapshot = BudgetEngine.snapshot(transactions, rules.filter { it.key !in ignored }, referenceTime = notificationTime)
 
         val dateFormat = DateTimeFormatter.ofPattern("d MMM")
         val body = buildString {

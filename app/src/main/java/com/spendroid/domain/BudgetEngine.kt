@@ -12,6 +12,7 @@ object BudgetEngine {
         transactions: List<TransactionEntity>,
         rules: List<RecurringRule>,
         accounts: List<AccountEntity> = emptyList(),
+        referenceTime: java.time.LocalDateTime = java.time.LocalDateTime.now(),
     ): BudgetSnapshot {
         // Map accountId -> AccountType for filtering
         val accountTypeMap = accounts.associateBy({ it.id }, { it.accountType })
@@ -47,12 +48,15 @@ object BudgetEngine {
         val fixedMonthlyOutgoings = fixedRules.sumOf { monthlyEquivalent(it) }
         val variableBudget = (averageMonthlyIncome - fixedMonthlyOutgoings).coerceAtLeast(0L)
 
-        val today = LocalDate.now()
+        val today = referenceTime.toLocalDate()
+        val referenceDate = referenceTime.toLocalDate()
+        val startOfWindow = referenceTime.minusHours(24).toLocalDate()
+
         val nextIncomeDate = primaryIncome?.let { RecurringAnalyzer.nextOccurrence(it, today) }
         val lastIncome = primaryIncome?.lastOccurrence?.takeIf { !it.isAfter(today) }
         val cycleStart = lastIncome?.takeIf { it.isAfter(today.minusDays(45)) } ?: today.minusDays(30)
         val cycleEnd = nextIncomeDate?.minusDays(1)
-        
+
         val daysUntilNextIncome = nextIncomeDate?.let { ChronoUnit.DAYS.between(today, it).toInt() }
 
         val fixedKeys = fixedRules.map { it.key }.toSet()
@@ -66,7 +70,10 @@ object BudgetEngine {
 
         val spentThisCycle = variableDebits.sumOf { -it.amountMinor }
         val spentToday = variableDebits
-            .filter { it.bookingDate == today.toString() }
+            .filter { tx ->
+                val date = RecurringAnalyzer.parseBookingDate(tx.bookingDate) ?: return@filter false
+                date >= startOfWindow && date <= referenceDate
+            }
             .sumOf { -it.amountMinor }
 
         val upcomingFixed = if (nextIncomeDate != null) {
