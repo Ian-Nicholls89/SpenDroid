@@ -62,13 +62,22 @@ data class RootUiState(
     val showRecurringOnly: Boolean = true,
     val showInternalTransfers: Boolean = false,
     val updateCheckStatus: UpdateCheckStatus = UpdateCheckStatus.Idle,
+    val versionName: String = "",
+    val versionCode: Int = 0,
 )
 
 class RootViewModel(app: Application) : AndroidViewModel(app) {
 
     private val repo: GoCardlessRepository = (app as BudgetApplication).repository
 
-    private val _state = MutableStateFlow(RootUiState(connections = emptyList(), manualRules = emptyList(), showRecurringOnly = true, showInternalTransfers = false))
+    private val _state = MutableStateFlow(RootUiState(
+        connections = emptyList(),
+        manualRules = emptyList(),
+        showRecurringOnly = true,
+        showInternalTransfers = false,
+        versionName = "",
+        versionCode = 0,
+    ))
     val state: StateFlow<RootUiState> = _state.asStateFlow()
 
     private val _secretId = MutableStateFlow("")
@@ -132,10 +141,15 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
             try {
                 val latest = checkForUpdateResult()
                 latest?.let { (versionCode, versionName) ->
-                    if (versionCode > 0) {
+                    val currentVersionCode = try {
+                        getApplication<android.app.Application>().packageManager.getPackageInfo(getApplication<android.app.Application>().packageName, 0).longVersionCode.toInt()
+                    } catch (e: Exception) {
+                        0
+                    }
+                    if (versionCode > currentVersionCode) {
                         _state.update { it.copy(updateCheckStatus = UpdateCheckStatus.Success("Update found: v$versionName (build $versionCode)")) }
                     } else {
-                        _state.update { it.copy(updateCheckStatus = UpdateCheckStatus.Success("You're up to date")) }
+                        _state.update { it.copy(updateCheckStatus = UpdateCheckStatus.Success("You're up to date (v$versionName, build $currentVersionCode)")) }
                     }
                 } ?: _state.update { it.copy(updateCheckStatus = UpdateCheckStatus.Error("Unable to check for updates")) }
             } catch (e: Exception) {
@@ -271,7 +285,7 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             repo.saveConnections(emptyList())
             repo.saveSecret("", "")
-            _state.update { RootUiState(connections = emptyList(), manualRules = emptyList(), showRecurringOnly = true, showInternalTransfers = false) }
+            _state.update { RootUiState(connections = emptyList(), manualRules = emptyList(), showRecurringOnly = true, showInternalTransfers = false, versionName = "", versionCode = 0) }
             _secretId.value = ""
             _secretKey.value = ""
         }
@@ -393,6 +407,16 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
         val ignored = repo.ignoredRules.first()
         val manualRules = repo.manualRules.first()
         val accounts = repo.accounts()
+        val versionName = try {
+            getApplication<android.app.Application>().packageManager.getPackageInfo(getApplication<android.app.Application>().packageName, 0).versionName ?: "1.0.0"
+        } catch (e: Exception) {
+            "1.0.0"
+        }
+        val versionCode = try {
+            getApplication<android.app.Application>().packageManager.getPackageInfo(getApplication<android.app.Application>().packageName, 0).longVersionCode.toInt()
+        } catch (e: Exception) {
+            0
+        }
         _state.update {
             it.copy(
                 accounts = accounts,
@@ -402,6 +426,8 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
                 ignoredRules = ignored,
                 budget = BudgetEngine.snapshot(all, rules.filter { rule -> rule.key !in ignored }, accounts),
                 connections = repo.connections.first(),
+                versionName = versionName,
+                versionCode = versionCode,
             )
         }
     }
