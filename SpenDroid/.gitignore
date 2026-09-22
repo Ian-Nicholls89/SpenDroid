@@ -6,7 +6,8 @@
 
 # Gradle
 /.gradle
-/gradle/wrapper/gradle-wrapper.jar
+# NB: gradle-wrapper.jar is deliberately tracked - CI has no separate Gradle
+# install, so ./gradlew needs it present in the checkout.
 
 # IDE
 /.idea
@@ -21,6 +22,11 @@
 # Keystore
 *.keystore
 *.jks
+# NB: the debug keystore is deliberately tracked. Release builds are signed
+# with it, so if CI regenerates it the signing key changes and users get
+# "App not installed" (signature mismatch) when updating over an existing install.
+!/debug.keystore
+!/app/debug.keystore
 
 # OS
 Thumbs.db

@@ -9,6 +9,9 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: SpenDroid
     outputs:
       version_name: ${{ steps.version.outputs.version_name }}
       version_code: ${{ steps.version.outputs.version_code }}
@@ -37,13 +40,15 @@ jobs:
           echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
           echo "$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/ndk/27.0.12077973" >> $GITHUB_PATH
           
-      - name: Generate debug keystore
+      - name: Verify signing keystore
         run: |
           if [ ! -f debug.keystore ]; then
+            echo "::warning::app/debug.keystore missing from the checkout - generating a new one."
+            echo "::warning::This changes the release signing key, so existing installs CANNOT update over it."
             keytool -genkeypair -alias debug -keystore debug.keystore -storepass android -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
           fi
-          ls -la debug.keystore
-        working-directory: ${{ github.workspace }}/app
+          keytool -list -keystore debug.keystore -storepass android | grep -i "SHA256:" || true
+        working-directory: ${{ github.workspace }}/SpenDroid/app
           
       - name: Cache Gradle
         uses: actions/cache@v4
@@ -76,13 +81,13 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: app-debug
-          path: app/build/outputs/apk/debug/app-debug.apk
+          path: SpenDroid/app/build/outputs/apk/debug/app-debug.apk
           
       - name: Upload Release APK
         uses: actions/upload-artifact@v4
         with:
           name: app-release
-          path: app/build/outputs/apk/release/app-release.apk
+          path: SpenDroid/app/build/outputs/apk/release/app-release.apk
 
   release:
     needs: build
