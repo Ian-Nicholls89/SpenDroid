@@ -8,34 +8,34 @@ import retrofit2.http.Query
 import retrofit2.http.Url
 
 interface GcAuthApi {
-    @POST("token/new/")
+    @POST("api/v2/token/new/")
     suspend fun newToken(@Body body: Map<String, String>): TokenResponseDto
 
-    @POST("token/refresh/")
+    @POST("api/v2/token/refresh/")
     suspend fun refreshToken(@Body body: Map<String, String>): TokenResponseDto
 }
 
 interface GcDataApi {
 
-    @GET("institutions/")
+    @GET("api/v2/institutions/")
     suspend fun institutions(@Query("country") country: String): List<InstitutionDto>
 
-    @POST("requisitions/")
+    @POST("api/v2/requisitions/")
     suspend fun createRequisition(@Body body: RequisitionRequestDto): RequisitionDto
 
-    @GET("requisitions/{id}/")
+    @GET("api/v2/requisitions/{id}/")
     suspend fun requisition(@Path("id") id: String): RequisitionDto
 
-    @GET("accounts/{id}/")
+    @GET("api/v2/accounts/{id}/")
     suspend fun accountMetadata(@Path("id") id: String): AccountDetailsDto
 
-    @GET("accounts/{id}/details/")
+    @GET("api/v2/accounts/{id}/details/")
     suspend fun accountDetails(@Path("id") id: String): AccountInfoWrapperDto
 
-    @GET("accounts/{id}/balances/")
+    @GET("api/v2/accounts/{id}/balances/")
     suspend fun accountBalances(@Path("id") id: String): BalancesDto
 
-    @GET("accounts/{id}/transactions/")
+    @GET("api/v2/accounts/{id}/transactions/")
     suspend fun accountTransactions(
         @Path("id") id: String,
         @Query("date_from") dateFrom: String?,
