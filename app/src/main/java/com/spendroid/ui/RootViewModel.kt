@@ -35,6 +35,8 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.SharingStarted
 import java.util.regex.Pattern
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 sealed interface UpdateCheckStatus {
     data class Checking(val message: String) : UpdateCheckStatus
@@ -143,48 +145,50 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private suspend fun checkForUpdateResult(): Pair<Int, String>? {
-        val client = okhttp3.OkHttpClient.Builder()
-            .connectTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
-            .readTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
-            .build()
+        return withContext(Dispatchers.IO) {
+            val client = okhttp3.OkHttpClient.Builder()
+                .connectTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
+                .readTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
+                .build()
 
-        val request = okhttp3.Request.Builder()
-            .url("https://api.github.com/repos/Ian-Nicholls89/SpenDroid/releases/latest")
-            .addHeader("Accept", "application/vnd.github.v3+json")
-            .build()
+            val request = okhttp3.Request.Builder()
+                .url("https://api.github.com/repos/Ian-Nicholls89/SpenDroid/releases/latest")
+                .addHeader("Accept", "application/vnd.github.v3+json")
+                .build()
 
-        val response = client.newCall(request).execute()
-        if (!response.isSuccessful) return null
+            val response = client.newCall(request).execute()
+            if (!response.isSuccessful) return@withContext null
 
-        val body = response.body?.string() ?: return null
-        val json = org.json.JSONObject(body)
+            val body = response.body?.string() ?: return@withContext null
+            val json = org.json.JSONObject(body)
 
-        // Try release body
-        val releaseBody = json.optString("body", "")
-        val versionFromBody = extractVersionCode(releaseBody)
-        val nameFromBody = extractVersionName(releaseBody)
-        if (versionFromBody != null) return Pair(versionFromBody, nameFromBody ?: "")
+            // Try release body
+            val releaseBody = json.optString("body", "")
+            val versionFromBody = extractVersionCode(releaseBody)
+            val nameFromBody = extractVersionName(releaseBody)
+            if (versionFromBody != null) return@withContext Pair(versionFromBody, nameFromBody ?: "")
 
-        // Try assets
-        val assets = json.optJSONArray("assets")
-        if (assets != null) {
-            for (i in 0 until assets.length()) {
-                val asset = assets.getJSONObject(i)
-                val name = asset.optString("name", "")
-                val versionFromAsset = extractVersionCode(name)
-                if (versionFromAsset != null) return Pair(versionFromAsset, extractVersionName(name) ?: "")
+            // Try assets
+            val assets = json.optJSONArray("assets")
+            if (assets != null) {
+                for (i in 0 until assets.length()) {
+                    val asset = assets.getJSONObject(i)
+                    val name = asset.optString("name", "")
+                    val versionFromAsset = extractVersionCode(name)
+                    if (versionFromAsset != null) return@withContext Pair(versionFromAsset, extractVersionName(name) ?: "")
+                }
             }
+
+            // Fallback: tag
+            val tagName = json.optString("tag_name", "")
+            val versionFromTag = extractVersionCode(tagName)
+            val nameFromTag = extractVersionName(tagName)
+            if (versionFromTag != null) return@withContext Pair(versionFromTag, nameFromTag ?: "")
+
+            null
         }
-
-        // Fallback: tag
-        val tagName = json.optString("tag_name", "")
-        val versionFromTag = extractVersionCode(tagName)
-        val nameFromTag = extractVersionName(tagName)
-        if (versionFromTag != null) return Pair(versionFromTag, nameFromTag ?: "")
-
-        return null
     }
-
+    
     private fun extractVersionCode(text: String): Int? {
         val patterns = listOf(
             Pattern.compile("versionCode[\\s:=]+(\\d+)"),
