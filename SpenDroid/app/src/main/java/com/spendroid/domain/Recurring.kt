@@ -9,6 +9,9 @@ enum class Direction { IN, OUT }
 /** Key prefix for user-entered rules, which have no matching transaction groupKey. */
 const val MANUAL_KEY_PREFIX = "manual-"
 
+/** Key prefix for forecast credit card bills, which are computed rather than detected. */
+const val CARD_BILL_KEY_PREFIX = "card-"
+
 enum class Cadence {
     WEEKLY,
     FORTNIGHTLY,
@@ -61,6 +64,8 @@ data class BudgetSnapshot(
     val fixedRules: List<RecurringRule>,
     val primaryIncomeRule: RecurringRule?, // the main income that drives the cycle
     val daysUntilNextIncome: Int?,
+    /** Outstanding credit card balances, for showing the forecast bill as an estimate. */
+    val cardBills: List<CreditCardEngine.CardBill> = emptyList(),
 )
 
 fun ManualRecurringRuleEntity.toRecurringRule(): RecurringRule? {

@@ -41,6 +41,7 @@ import com.spendroid.data.Connection
 import com.spendroid.data.db.AccountEntity
 import com.spendroid.data.db.TransactionEntity
 import com.spendroid.domain.BudgetSnapshot
+import com.spendroid.domain.CARD_BILL_KEY_PREFIX
 import com.spendroid.domain.CategoryEngine
 import com.spendroid.domain.CategoryTotal
 import com.spendroid.domain.TrendSummary
@@ -326,8 +327,15 @@ private fun HeroBudgetCard(budget: BudgetSnapshot) {
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(payment.rule.payee, style = MaterialTheme.typography.bodyMedium, color = Color.White)
+                                // A card bill is forecast from the outstanding balance, so it
+                                // should not read as a confirmed amount and date.
+                                val isForecast = payment.rule.key.startsWith(CARD_BILL_KEY_PREFIX)
                                 Text(
-                                    "due ${payment.dueDate.format(dateFormat)}",
+                                    if (isForecast) {
+                                        "estimated · due ~${payment.dueDate.format(dateFormat)}"
+                                    } else {
+                                        "due ${payment.dueDate.format(dateFormat)}"
+                                    },
                                     style = MaterialTheme.typography.labelSmall,
                                     color = Color.White.copy(alpha = 0.7f),
                                 )

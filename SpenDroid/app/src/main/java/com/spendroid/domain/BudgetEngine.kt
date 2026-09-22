@@ -15,24 +15,21 @@ object BudgetEngine {
         accounts: List<AccountEntity> = emptyList(),
         referenceTime: java.time.LocalDateTime = java.time.LocalDateTime.now(),
     ): BudgetSnapshot {
-        // Map accountId -> AccountType for filtering
-        val accountTypeMap = accounts.associateBy({ it.id }, { it.accountType })
         val creditCardAccountIds = accounts
             .filter { it.accountType == AccountType.CREDIT_CARD }
             .map { it.id }
             .toSet()
-        
-        // Personal accounts that pay credit cards
-        val personalAccountIds = accounts
-            .filter { it.accountType == AccountType.PERSONAL }
-            .map { it.id }
-            .toSet()
 
-        // Filter out credit card transactions (they're paid from personal account)
-        // Also filter out internal transfers
+        val cardAnalysis = CreditCardEngine.analyze(transactions, accounts, referenceTime.toLocalDate())
+
+        // Card transactions are excluded because the bill, not the itemised spend, is what
+        // leaves the current account - the bill is added to upcomingFixed below. The card
+        // payment itself is an internal transfer by shape, but it is the real cash outflow
+        // under this model, so it is kept in.
         val relevantTransactions = transactions.filter { tx ->
+            val isCardPayment = "${tx.accountId}|${tx.transactionId}" in cardAnalysis.cardPaymentKeys
             !tx.isPending &&
-            !tx.isInternalTransfer &&
+            (!tx.isInternalTransfer || isCardPayment) &&
             tx.bookingDate.isNotBlank() &&
             tx.amountMinor != 0L &&
             !creditCardAccountIds.contains(tx.accountId)
@@ -86,16 +83,23 @@ object BudgetEngine {
             .sumOf { -it.amountMinor }
 
         val upcomingFixed = if (nextIncomeDate != null) {
-            fixedRules
-                .mapNotNull { rule ->
-                    val due = RecurringAnalyzer.nextOccurrence(rule, today)
-                    if (due.isAfter(today) && !due.isAfter(nextIncomeDate)) {
-                        UpcomingPayment(rule, due, abs(rule.amountMinor))
-                    } else {
-                        null
-                    }
+            val fromRules = fixedRules.mapNotNull { rule ->
+                val due = RecurringAnalyzer.nextOccurrence(rule, today)
+                if (due.isAfter(today) && !due.isAfter(nextIncomeDate)) {
+                    UpcomingPayment(rule, due, abs(rule.amountMinor))
+                } else {
+                    null
                 }
-                .sortedBy { it.dueDate }
+            }
+            // Card bills are variable, so RecurringAnalyzer cannot detect them; they are
+            // computed from the outstanding balance instead.
+            val fromCards = cardAnalysis.bills.mapNotNull { bill ->
+                val due = bill.dueDate ?: return@mapNotNull null
+                if (bill.outstandingMinor <= 0L) return@mapNotNull null
+                if (!due.isAfter(today) || due.isAfter(nextIncomeDate)) return@mapNotNull null
+                UpcomingPayment(cardBillRule(bill, due), due, bill.outstandingMinor)
+            }
+            (fromRules + fromCards).sortedBy { it.dueDate }
         } else {
             emptyList()
         }
@@ -118,8 +122,28 @@ object BudgetEngine {
             fixedRules = fixedRules,
             primaryIncomeRule = primaryIncome,
             daysUntilNextIncome = daysUntilNextIncome,
+            cardBills = cardAnalysis.bills,
         )
     }
+
+    /**
+     * A card bill presented as a rule so it sits alongside detected deductions in the UI.
+     * Deliberately not added to [BudgetSnapshot.fixedRules]: the amount varies month to
+     * month, so it must not become part of the fixed baseline that sets the variable budget.
+     */
+    private fun cardBillRule(bill: CreditCardEngine.CardBill, due: LocalDate): RecurringRule =
+        RecurringRule(
+            key = "$CARD_BILL_KEY_PREFIX${bill.cardAccountId}",
+            payee = bill.cardLabel,
+            direction = Direction.OUT,
+            amountMinor = -bill.outstandingMinor,
+            currency = bill.currency,
+            cadence = Cadence.MONTHLY,
+            anchorDay = bill.nominalPaymentDay ?: due.dayOfMonth,
+            lastOccurrence = due,
+            occurrences = 1,
+            score = 1f,
+        )
 
     private fun monthlyEquivalent(rule: RecurringRule): Long = when (rule.cadence) {
         Cadence.WEEKLY -> rule.amountMinor * 52L / 12L
