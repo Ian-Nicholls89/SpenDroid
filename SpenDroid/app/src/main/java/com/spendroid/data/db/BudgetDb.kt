@@ -11,8 +11,14 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import kotlinx.coroutines.flow.Flow
 
 @Database(
-    entities = [AccountEntity::class, TransactionEntity::class, ManualRecurringRuleEntity::class],
-    version = 4,
+    entities = [
+        AccountEntity::class,
+        TransactionEntity::class,
+        ManualRecurringRuleEntity::class,
+        BudgetGoalEntity::class,
+        CategoryRuleEntity::class,
+    ],
+    version = 5,
     exportSchema = false,
 )
 abstract class BudgetDb : RoomDatabase() {
@@ -46,6 +52,28 @@ abstract class BudgetDb : RoomDatabase() {
             override fun migrate(database: SupportSQLiteDatabase) {
                 database.execSQL("ALTER TABLE accounts ADD COLUMN accountType TEXT NOT NULL DEFAULT 'PERSONAL'")
                 database.execSQL("ALTER TABLE accounts ADD COLUMN linkedCreditCardAccountId TEXT")
+            }
+        }
+        val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL(
+                    """
+                    CREATE TABLE budget_goals (
+                        category TEXT PRIMARY KEY NOT NULL,
+                        limitMinor INTEGER NOT NULL,
+                        currency TEXT NOT NULL DEFAULT 'GBP'
+                    )
+                    """.trimIndent(),
+                )
+                database.execSQL(
+                    """
+                    CREATE TABLE category_rules (
+                        pattern TEXT PRIMARY KEY NOT NULL,
+                        category TEXT NOT NULL,
+                        createdAt INTEGER NOT NULL
+                    )
+                    """.trimIndent(),
+                )
             }
         }
     }
@@ -106,6 +134,42 @@ interface BudgetDao {
 
     @Query("DELETE FROM manual_recurring_rules")
     suspend fun deleteAllManualRules()
+
+    @Query("SELECT * FROM budget_goals")
+    suspend fun budgetGoals(): List<BudgetGoalEntity>
+
+    @Query("SELECT * FROM budget_goals")
+    fun budgetGoalsFlow(): Flow<List<BudgetGoalEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertBudgetGoal(goal: BudgetGoalEntity)
+
+    @Query("DELETE FROM budget_goals WHERE category = :category")
+    suspend fun deleteBudgetGoal(category: String)
+
+    @Query("DELETE FROM budget_goals")
+    suspend fun deleteAllBudgetGoals()
+
+    @Query("SELECT * FROM category_rules ORDER BY length(pattern) DESC")
+    suspend fun categoryRules(): List<CategoryRuleEntity>
+
+    @Query("SELECT * FROM category_rules ORDER BY length(pattern) DESC")
+    fun categoryRulesFlow(): Flow<List<CategoryRuleEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertCategoryRule(rule: CategoryRuleEntity)
+
+    @Query("DELETE FROM category_rules WHERE pattern = :pattern")
+    suspend fun deleteCategoryRule(pattern: String)
+
+    @Query("DELETE FROM category_rules")
+    suspend fun deleteAllCategoryRules()
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertAccounts(accounts: List<AccountEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertManualRules(rules: List<ManualRecurringRuleEntity>)
 
     @Query("UPDATE accounts SET accountType = :accountType, linkedCreditCardAccountId = :linkedCreditCardAccountId WHERE id = :id")
     suspend fun updateAccountType(id: String, accountType: String, linkedCreditCardAccountId: String?)

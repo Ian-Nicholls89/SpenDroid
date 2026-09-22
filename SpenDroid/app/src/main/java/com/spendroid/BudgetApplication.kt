@@ -14,7 +14,12 @@ class BudgetApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         val db = Room.databaseBuilder(this, BudgetDb::class.java, "budget.db")
-            .addMigrations(BudgetDb.MIGRATION_1_2, BudgetDb.MIGRATION_2_3, BudgetDb.MIGRATION_3_4)
+            .addMigrations(
+                BudgetDb.MIGRATION_1_2,
+                BudgetDb.MIGRATION_2_3,
+                BudgetDb.MIGRATION_3_4,
+                BudgetDb.MIGRATION_4_5,
+            )
             .build()
         repository = GoCardlessRepository.create(this, db.budgetDao())
         DailyRoundupScheduler.schedule(this)

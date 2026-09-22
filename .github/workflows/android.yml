@@ -114,6 +114,10 @@ jobs:
 
   release:
     needs: build
+    # Only a push to master publishes. Without this the job also ran on pull_request,
+    # so opening a PR cut a public GitHub Release from unreviewed code - and made a PR
+    # unusable as a way to check a build before releasing it.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
     permissions:
       contents: write

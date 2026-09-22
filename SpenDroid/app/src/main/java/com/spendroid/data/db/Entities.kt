@@ -56,3 +56,23 @@ data class ManualRecurringRuleEntity(
     val startDate: String, // ISO date string
     val isActive: Boolean = true,
 )
+/** A user-set monthly cap for a spending category. */
+@Entity(tableName = "budget_goals")
+data class BudgetGoalEntity(
+    @PrimaryKey val category: String,
+    val limitMinor: Long,
+    val currency: String = "GBP",
+)
+
+/**
+ * A user's own categorisation rule, matched against a normalised payee.
+ *
+ * These take precedence over the built-in keyword list, so a correction made once keeps
+ * applying instead of being re-guessed on every sync.
+ */
+@Entity(tableName = "category_rules")
+data class CategoryRuleEntity(
+    @PrimaryKey val pattern: String,
+    val category: String,
+    val createdAt: Long = System.currentTimeMillis(),
+)
