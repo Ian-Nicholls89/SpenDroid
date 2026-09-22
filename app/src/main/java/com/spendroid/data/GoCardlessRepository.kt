@@ -310,7 +310,7 @@ class GoCardlessRepository private constructor(
     }
 
     companion object {
-        private const val BASE_URL = "https://ob.nordigen.com/"
+        private const val BASE_URL = "https://ob.nordigen.com/api/v2/"
         private const val REDIRECT_URI = "http://localhost:8080/budgetapp"
         private val GSON: Gson = Gson()
 
