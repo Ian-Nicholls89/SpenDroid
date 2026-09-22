@@ -8,11 +8,10 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
-import androidx.work.OneTimeWorkRequestBuilder
-import androidx.work.WorkManager
-import androidx.work.ExistingWorkPolicy
 import com.spendroid.BudgetApplication
+import com.spendroid.BuildConfig
 import com.spendroid.data.Connection
+import com.spendroid.data.UpdateChecker
 import com.spendroid.data.GoCardlessRepository
 import com.spendroid.data.db.AccountEntity
 import com.spendroid.data.db.ManualRecurringRuleEntity
@@ -24,7 +23,6 @@ import com.spendroid.domain.RecurringAnalyzer
 import com.spendroid.domain.RecurringRule
 import com.spendroid.domain.toRecurringRule
 import com.spendroid.work.DailyRoundupScheduler
-import com.spendroid.work.UpdateCheckerWorker
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -36,9 +34,6 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.SharingStarted
-import java.util.regex.Pattern
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 
 sealed interface UpdateCheckStatus {
     data class Checking(val message: String) : UpdateCheckStatus
@@ -127,121 +122,30 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
     fun saveNotificationTime(time: String) {
         viewModelScope.launch {
             repo.saveNotificationTime(time)
-            val versionCode = currentVersionCode()
-            DailyRoundupScheduler.schedule(getApplication(), versionCode)
+            DailyRoundupScheduler.schedule(getApplication())
         }
-    }
-
-    private fun currentVersionCode(): Int = try {
-        getApplication<android.app.Application>().packageManager
-            .getPackageInfo(getApplication<android.app.Application>().packageName, 0).longVersionCode.toInt()
-    } catch (e: Exception) {
-        0
     }
 
     fun checkForUpdate() {
         viewModelScope.launch {
             _state.update { it.copy(updateCheckStatus = UpdateCheckStatus.Checking("Checking for updates…")) }
-            val versionCode = currentVersionCode()
-            val inputData = androidx.work.Data.Builder().putInt(UpdateCheckerWorker.VERSION_CODE_KEY, versionCode).build()
-            androidx.work.WorkManager.getInstance(getApplication<android.app.Application>())
-                .enqueueUniqueWork(UpdateCheckerWorker::class.java.simpleName, androidx.work.ExistingWorkPolicy.REPLACE, androidx.work.OneTimeWorkRequestBuilder<UpdateCheckerWorker>().setInputData(inputData).build())
-            
-            // Poll for result (the worker posts notification, but we also check version here)
-            try {
-                val latest = checkForUpdateResult()
-                latest?.let { (versionCode, versionName) ->
-                    val currentVersionCode = currentVersionCode()
-                    if (versionCode > currentVersionCode) {
-                        _state.update { it.copy(updateCheckStatus = UpdateCheckStatus.Success("Update found: v$versionName (build $versionCode)")) }
-                    } else {
-                        _state.update { it.copy(updateCheckStatus = UpdateCheckStatus.Success("You're up to date (v$versionName, build $currentVersionCode)")) }
-                    }
-                } ?: _state.update { it.copy(updateCheckStatus = UpdateCheckStatus.Error("Unable to check for updates")) }
-            } catch (e: Exception) {
-                _state.update { it.copy(updateCheckStatus = UpdateCheckStatus.Error("Error: ${e.message ?: e.javaClass.simpleName}")) }
-            }
-        }
-    }
-
-    private suspend fun checkForUpdateResult(): Pair<Int, String>? {
-        return withContext(Dispatchers.IO) {
-            val client = okhttp3.OkHttpClient.Builder()
-                .connectTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
-                .readTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
-                .build()
-
-            val request = okhttp3.Request.Builder()
-                .url("https://api.github.com/repos/Ian-Nicholls89/SpenDroid/releases/latest")
-                .addHeader("Accept", "application/vnd.github.v3+json")
-                .build()
-
-            val response = client.newCall(request).execute()
-            if (!response.isSuccessful) return@withContext null
-
-            val body = response.body?.string() ?: return@withContext null
-            val json = org.json.JSONObject(body)
-
-            // Try release body
-            val releaseBody = json.optString("body", "")
-            val versionFromBody = extractVersionCode(releaseBody)
-            val nameFromBody = extractVersionName(releaseBody)
-            if (versionFromBody != null) return@withContext Pair(versionFromBody, nameFromBody ?: "")
-
-            // Try assets
-            val assets = json.optJSONArray("assets")
-            if (assets != null) {
-                for (i in 0 until assets.length()) {
-                    val asset = assets.getJSONObject(i)
-                    val name = asset.optString("name", "")
-                    val versionFromAsset = extractVersionCode(name)
-                    if (versionFromAsset != null) return@withContext Pair(versionFromAsset, extractVersionName(name) ?: "")
+            // Checks directly rather than enqueueing the worker as well - doing both fired two
+            // requests per tap and the two results could disagree.
+            val status = try {
+                val latest = UpdateChecker.latestRelease()
+                when {
+                    latest == null ->
+                        UpdateCheckStatus.Error("Unable to check for updates")
+                    UpdateChecker.isNewer(latest) ->
+                        UpdateCheckStatus.Success("Update found: v${latest.versionName} (build ${latest.versionCode})")
+                    else ->
+                        UpdateCheckStatus.Success("You're up to date (v${latest.versionName}, build ${BuildConfig.VERSION_CODE})")
                 }
+            } catch (e: Exception) {
+                UpdateCheckStatus.Error("Error: ${e.message ?: e.javaClass.simpleName}")
             }
-
-            // Fallback: tag
-            val tagName = json.optString("tag_name", "")
-            val versionFromTag = extractVersionCode(tagName)
-            val nameFromTag = extractVersionName(tagName)
-            if (versionFromTag != null) return@withContext Pair(versionFromTag, nameFromTag ?: "")
-
-            null
+            _state.update { it.copy(updateCheckStatus = status) }
         }
-    }
-    
-    // NB: kept in sync with UpdateCheckerWorker.extractVersionCode.
-    // Each pattern carries the group holding the version code - the tag pattern captures the
-    // major version first, so its code is in group 2.
-    private fun extractVersionCode(text: String): Int? {
-        val patterns = listOf(
-            Pattern.compile("versionCode[\\s:=]+(\\d+)") to 1,
-            Pattern.compile("version[\\s:]+code[\\s:=]+(\\d+)") to 1,
-            Pattern.compile("\\bbuild[\\s:=]+(\\d+)") to 1,
-            Pattern.compile("app[-\\s]v?(\\d+)\\.apk") to 1,
-            Pattern.compile("(?:^|\\s)v?(\\d{2,})(?:\\s|$)") to 1,
-            Pattern.compile("v(\\d+)(?:\\.\\d+)+[-_.](\\d+)") to 2,
-        )
-        for ((pattern, group) in patterns) {
-            val matcher = pattern.matcher(text)
-            if (matcher.find()) {
-                return matcher.group(group)?.toIntOrNull()
-            }
-        }
-        return null
-    }
-
-    private fun extractVersionName(text: String): String? {
-        val patterns = listOf(
-            Pattern.compile("versionName[\\s:=]+([^\\s\\n]+)"),
-            Pattern.compile("version[\\s:=]+([\\d.]+)"),
-        )
-        for (pattern in patterns) {
-            val matcher = pattern.matcher(text)
-            if (matcher.find()) {
-                return matcher.group(1)
-            }
-        }
-        return null
     }
 
     private var cachedInstitutions: List<InstitutionDto>? = null
@@ -424,12 +328,10 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
         val ignored = repo.ignoredRules.first()
         val manualRules = repo.manualRules.first()
         val accounts = repo.accounts()
-        val versionName = try {
-            getApplication<android.app.Application>().packageManager.getPackageInfo(getApplication<android.app.Application>().packageName, 0).versionName ?: "1.0.0"
-        } catch (e: Exception) {
-            "1.0.0"
-        }
-        val versionCode = currentVersionCode()
+        // Compile-time constants: no PackageManager lookup to fail and fall back to a fake
+        // "1.0.0" / 0 that would then be compared against the latest release.
+        val versionName = BuildConfig.VERSION_NAME
+        val versionCode = BuildConfig.VERSION_CODE
         val manualRecurring = manualRules.mapNotNull { it.toRecurringRule() }
         val allRules = detectedRules + manualRecurring
         _state.update {

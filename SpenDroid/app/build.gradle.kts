@@ -30,6 +30,10 @@ android {
         targetSdk = 35
         versionCode = 27
         versionName = "1.26"
+
+        // Where the update checker looks for releases.
+        buildConfigField("String", "GITHUB_OWNER", "\"Ian-Nicholls89\"")
+        buildConfigField("String", "GITHUB_REPO", "\"SpenDroid\"")
     }
 
     buildTypes {
@@ -57,6 +61,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 

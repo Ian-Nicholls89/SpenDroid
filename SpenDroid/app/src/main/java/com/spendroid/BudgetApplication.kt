@@ -17,11 +17,6 @@ class BudgetApplication : Application() {
             .addMigrations(BudgetDb.MIGRATION_1_2, BudgetDb.MIGRATION_2_3, BudgetDb.MIGRATION_3_4)
             .build()
         repository = GoCardlessRepository.create(this, db.budgetDao())
-        val versionCode = try {
-            packageManager.getPackageInfo(packageName, 0).longVersionCode.toInt()
-        } catch (e: Exception) {
-            0
-        }
-        DailyRoundupScheduler.schedule(this, versionCode)
+        DailyRoundupScheduler.schedule(this)
     }
 }

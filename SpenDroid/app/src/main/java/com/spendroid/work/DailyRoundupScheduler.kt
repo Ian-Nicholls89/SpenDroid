@@ -1,8 +1,10 @@
 package com.spendroid.work
 
 import android.content.Context
-import androidx.work.Data
+import androidx.work.BackoffPolicy
+import androidx.work.Constraints
 import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.NetworkType
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import com.spendroid.BudgetApplication
@@ -26,7 +28,7 @@ object DailyRoundupScheduler {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    fun schedule(context: Context, versionCode: Int) {
+    fun schedule(context: Context) {
         val app = context.applicationContext as BudgetApplication
         val repo: GoCardlessRepository = app.repository
 
@@ -36,8 +38,6 @@ object DailyRoundupScheduler {
             val formatter = DateTimeFormatter.ofPattern("HH:mm")
             val notificationTimeLocal = runCatching { LocalTime.parse(notificationTime, formatter) }
                 .getOrDefault(LocalTime.of(21, 0))
-
-            val inputData = Data.Builder().putInt(UpdateCheckerWorker.VERSION_CODE_KEY, versionCode).build()
 
             val roundupRequest = PeriodicWorkRequestBuilder<DailyRoundupWorker>(1, TimeUnit.DAYS)
                 .setInitialDelay(initialDelayMillis(notificationTimeLocal), TimeUnit.MILLISECONDS)
@@ -51,10 +51,17 @@ object DailyRoundupScheduler {
             WorkManager.getInstance(context.applicationContext)
                 .enqueueUniquePeriodicWork(REAUTH_UNIQUE_NAME, ExistingPeriodicWorkPolicy.UPDATE, reauthRequest)
 
-            // Check for updates weekly
+            // Check for updates weekly. Without the network constraint this fires while
+            // offline and burns a retry; the running version is read from BuildConfig inside
+            // the worker, so nothing version-specific is baked in at schedule time.
             val updateRequest = PeriodicWorkRequestBuilder<UpdateCheckerWorker>(7, TimeUnit.DAYS)
                 .setInitialDelay(initialDelayMillis(notificationTimeLocal), TimeUnit.MILLISECONDS)
-                .setInputData(inputData)
+                .setConstraints(
+                    Constraints.Builder()
+                        .setRequiredNetworkType(NetworkType.CONNECTED)
+                        .build(),
+                )
+                .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.MINUTES)
                 .build()
             WorkManager.getInstance(context.applicationContext)
                 .enqueueUniquePeriodicWork(UPDATE_CHECK_UNIQUE_NAME, ExistingPeriodicWorkPolicy.UPDATE, updateRequest)

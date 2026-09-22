@@ -77,6 +77,29 @@ jobs:
           echo "Extracted version_name: $VERSION_NAME"
           echo "Extracted version_code: $VERSION_CODE"
           
+      - name: Build update manifest
+        run: |
+          APK=app/build/outputs/apk/release/app-release.apk
+          SHA=$(sha256sum "$APK" | cut -d' ' -f1)
+          TAG="v${{ steps.version.outputs.version_name }}-${{ steps.version.outputs.version_code }}"
+          cat > update.json <<EOF
+          {
+            "versionCode": ${{ steps.version.outputs.version_code }},
+            "versionName": "${{ steps.version.outputs.version_name }}",
+            "apkUrl": "https://github.com/${{ github.repository }}/releases/download/$TAG/app-release.apk",
+            "apkSha256": "$SHA",
+            "minSdk": 26,
+            "publishedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          }
+          EOF
+          cat update.json
+
+      - name: Upload update manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: update-manifest
+          path: SpenDroid/update.json
+
       - name: Upload Debug APK
         uses: actions/upload-artifact@v4
         with:
@@ -106,6 +129,12 @@ jobs:
         with:
           name: app-release
           path: artifacts
+
+      - name: Download update manifest
+        uses: actions/download-artifact@v4
+        with:
+          name: update-manifest
+          path: artifacts
           
       - name: Create Release
         uses: softprops/action-gh-release@v2
@@ -119,6 +148,7 @@ jobs:
           files: |
             artifacts/app-debug.apk
             artifacts/app-release.apk
+            artifacts/update.json
           generate_release_notes: true
           draft: false
           prerelease: false

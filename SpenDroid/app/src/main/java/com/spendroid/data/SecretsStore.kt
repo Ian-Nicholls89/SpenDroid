@@ -3,6 +3,7 @@ package com.spendroid.data
 import android.content.Context
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import java.io.IOException
@@ -32,6 +33,7 @@ class SecretsStore(private val context: Context) {
         val IGNORED_RULES = stringPreferencesKey("ignored_rules")
         val REFRESH_TOKEN = stringPreferencesKey("refresh_token")
         val NOTIFICATION_TIME = stringPreferencesKey("notification_time")
+        val LAST_NOTIFIED_VERSION = intPreferencesKey("last_notified_version_code")
     }
 
     val secretId: Flow<String?> = stringFlow(Keys.SECRET_ID)
@@ -110,6 +112,17 @@ class SecretsStore(private val context: Context) {
     suspend fun saveNotificationTime(time: String) {
         context.dataStore.edit { prefs ->
             prefs[Keys.NOTIFICATION_TIME] = time
+        }
+    }
+
+    /** Highest version code already announced, so a repeating check only notifies once. */
+    val lastNotifiedVersionCode: Flow<Int> = context.dataStore.data
+        .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
+        .map { prefs -> prefs[Keys.LAST_NOTIFIED_VERSION] ?: 0 }
+
+    suspend fun saveLastNotifiedVersionCode(versionCode: Int) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.LAST_NOTIFIED_VERSION] = versionCode
         }
     }
 

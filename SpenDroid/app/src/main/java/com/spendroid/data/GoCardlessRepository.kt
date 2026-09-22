@@ -46,6 +46,10 @@ class GoCardlessRepository private constructor(
     val ignoredRules: Flow<Set<String>> = secrets.ignoredRules
     val manualRules: Flow<List<ManualRecurringRuleEntity>> = dao.activeManualRulesFlow()
     val notificationTime: Flow<String> = secrets.notificationTime
+    val lastNotifiedVersionCode: Flow<Int> = secrets.lastNotifiedVersionCode
+
+    suspend fun saveLastNotifiedVersionCode(versionCode: Int) =
+        secrets.saveLastNotifiedVersionCode(versionCode)
 
     suspend fun setRuleIgnored(key: String, ignored: Boolean) {
         secrets.setRuleIgnored(key, ignored)
