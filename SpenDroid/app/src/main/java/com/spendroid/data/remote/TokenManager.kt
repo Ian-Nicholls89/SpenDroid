@@ -18,6 +18,16 @@ class TokenManager(
         return accessToken ?: error("GoCardless credentials not configured")
     }
 
+    /**
+     * Drops the cached token. [get] only refreshes on expiry, so it cannot notice that the
+     * underlying credentials changed - without this, a token minted for the old account stays
+     * in use until its TTL elapses.
+     */
+    fun clear() {
+        accessToken = null
+        expiresAtMs = 0L
+    }
+
     private suspend fun refresh() {
         val storedRefresh = secrets.refreshToken.first()
         if (storedRefresh != null) {

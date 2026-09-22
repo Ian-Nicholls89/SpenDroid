@@ -8,25 +8,19 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.AlertDialog
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Divider
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -36,7 +30,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -50,55 +43,39 @@ import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
 import kotlin.math.abs
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AccountManagementScreen(
     state: RootUiState,
-    onBack: () -> Unit,
     onLink: (InstitutionDto) -> Unit,
     onRelink: (Connection) -> Unit,
     onUpdateAccount: (AccountEntity) -> Unit,
 ) {
     var showLinkDialog by remember { mutableStateOf(false) }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Linked accounts") },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Text("←")
-                    }
-                },
-            )
-        },
-    ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .padding(16.dp),
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+    ) {
+        Text("Your linked accounts", style = MaterialTheme.typography.titleMedium)
+        Spacer(Modifier.height(8.dp))
+        LazyColumn(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Text("Your linked accounts", style = MaterialTheme.typography.titleMedium)
-            Spacer(Modifier.height(8.dp))
-            LazyColumn(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                items(state.accounts) { account ->
-                    AccountManagementCard(
-                        account = account,
-                        connection = state.connections.find { it.accountIds.contains(account.id) },
-                        onRelink = { onRelink(it) },
-                        onUpdateAccount = onUpdateAccount,
-                        allAccounts = state.accounts,
-                    )
-                }
+            items(state.accounts) { account ->
+                AccountManagementCard(
+                    account = account,
+                    connection = state.connections.find { it.accountIds.contains(account.id) },
+                    onRelink = { onRelink(it) },
+                    onUpdateAccount = onUpdateAccount,
+                    allAccounts = state.accounts,
+                )
             }
-            Spacer(Modifier.height(12.dp))
-            Button(onClick = { showLinkDialog = true }, modifier = Modifier.fillMaxWidth()) {
-                Text("Add another bank")
-            }
+        }
+        Spacer(Modifier.height(12.dp))
+        Button(onClick = { showLinkDialog = true }, modifier = Modifier.fillMaxWidth()) {
+            Text("Add another bank")
         }
     }
 
@@ -322,58 +299,4 @@ private fun formatBalance(balanceMinor: Long?): String {
     val pence = abs % 100
     val sign = if ((balanceMinor ?: 0L) < 0) "-" else ""
     return "$sign$pounds.${"%02d".format(pence)}"
-}
-
-@Composable
-private fun LinkBankDialog(
-    state: RootUiState,
-    onDismiss: () -> Unit,
-    onLink: (InstitutionDto) -> Unit,
-) {
-    var query by remember { mutableStateOf("") }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Link a bank") },
-        text = {
-            Column {
-                Text(
-                    "Search for your bank. If you see multiple entries, pick the personal account one.",
-                    style = MaterialTheme.typography.bodySmall,
-                )
-                Spacer(Modifier.height(8.dp))
-                androidx.compose.material3.OutlinedTextField(
-                    value = query,
-                    onValueChange = { query = it },
-                    label = { Text("Search banks") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Spacer(Modifier.height(8.dp))
-                val filtered = state.institutions.filter { inst ->
-                    query.isBlank() || inst.name.lowercase().contains(query.lowercase())
-                }
-                LazyColumn(
-                    modifier = Modifier.heightIn(max = 300.dp),
-                ) {
-                    items(filtered, key = { it.id }) { institution ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(institution.name, style = MaterialTheme.typography.bodyMedium)
-                            }
-                            TextButton(onClick = { onLink(institution) }) {
-                                Text("Link")
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        confirmButton = {},
-    )
 }

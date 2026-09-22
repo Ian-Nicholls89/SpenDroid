@@ -12,8 +12,11 @@ import java.time.LocalDateTime
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import java.util.concurrent.TimeUnit
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 
 object DailyRoundupScheduler {
 
@@ -21,36 +24,41 @@ object DailyRoundupScheduler {
     private const val REAUTH_UNIQUE_NAME = "reauth_reminders"
     private const val UPDATE_CHECK_UNIQUE_NAME = "update_checker"
 
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
     fun schedule(context: Context, versionCode: Int) {
         val app = context.applicationContext as BudgetApplication
         val repo: GoCardlessRepository = app.repository
-        
-        // Get notification time from repository (with default fallback)
-        val notificationTime = runBlocking { repo.notificationTime.first() } ?: "21:00"
-        val formatter = DateTimeFormatter.ofPattern("HH:mm")
-        val notificationTimeLocal = LocalTime.parse(notificationTime, formatter)
 
-        val inputData = Data.Builder().putInt(UpdateCheckerWorker.VERSION_CODE_KEY, versionCode).build()
+        scope.launch {
+            // Get notification time from repository (with default fallback)
+            val notificationTime = repo.notificationTime.first() ?: "21:00"
+            val formatter = DateTimeFormatter.ofPattern("HH:mm")
+            val notificationTimeLocal = runCatching { LocalTime.parse(notificationTime, formatter) }
+                .getOrDefault(LocalTime.of(21, 0))
 
-        val roundupRequest = PeriodicWorkRequestBuilder<DailyRoundupWorker>(1, TimeUnit.DAYS)
-            .setInitialDelay(initialDelayMillis(notificationTimeLocal), TimeUnit.MILLISECONDS)
-            .build()
-        WorkManager.getInstance(context.applicationContext)
-            .enqueueUniquePeriodicWork(UNIQUE_NAME, ExistingPeriodicWorkPolicy.UPDATE, roundupRequest)
+            val inputData = Data.Builder().putInt(UpdateCheckerWorker.VERSION_CODE_KEY, versionCode).build()
 
-        val reauthRequest = PeriodicWorkRequestBuilder<ReauthNotificationWorker>(1, TimeUnit.DAYS)
-            .setInitialDelay(initialDelayMillis(notificationTimeLocal), TimeUnit.MILLISECONDS)
-            .build()
-        WorkManager.getInstance(context.applicationContext)
-            .enqueueUniquePeriodicWork(REAUTH_UNIQUE_NAME, ExistingPeriodicWorkPolicy.UPDATE, reauthRequest)
+            val roundupRequest = PeriodicWorkRequestBuilder<DailyRoundupWorker>(1, TimeUnit.DAYS)
+                .setInitialDelay(initialDelayMillis(notificationTimeLocal), TimeUnit.MILLISECONDS)
+                .build()
+            WorkManager.getInstance(context.applicationContext)
+                .enqueueUniquePeriodicWork(UNIQUE_NAME, ExistingPeriodicWorkPolicy.UPDATE, roundupRequest)
 
-        // Check for updates weekly
-        val updateRequest = PeriodicWorkRequestBuilder<UpdateCheckerWorker>(7, TimeUnit.DAYS)
-            .setInitialDelay(initialDelayMillis(notificationTimeLocal), TimeUnit.MILLISECONDS)
-            .setInputData(inputData)
-            .build()
-        WorkManager.getInstance(context.applicationContext)
-            .enqueueUniquePeriodicWork(UPDATE_CHECK_UNIQUE_NAME, ExistingPeriodicWorkPolicy.UPDATE, updateRequest)
+            val reauthRequest = PeriodicWorkRequestBuilder<ReauthNotificationWorker>(1, TimeUnit.DAYS)
+                .setInitialDelay(initialDelayMillis(notificationTimeLocal), TimeUnit.MILLISECONDS)
+                .build()
+            WorkManager.getInstance(context.applicationContext)
+                .enqueueUniquePeriodicWork(REAUTH_UNIQUE_NAME, ExistingPeriodicWorkPolicy.UPDATE, reauthRequest)
+
+            // Check for updates weekly
+            val updateRequest = PeriodicWorkRequestBuilder<UpdateCheckerWorker>(7, TimeUnit.DAYS)
+                .setInitialDelay(initialDelayMillis(notificationTimeLocal), TimeUnit.MILLISECONDS)
+                .setInputData(inputData)
+                .build()
+            WorkManager.getInstance(context.applicationContext)
+                .enqueueUniquePeriodicWork(UPDATE_CHECK_UNIQUE_NAME, ExistingPeriodicWorkPolicy.UPDATE, updateRequest)
+        }
     }
 
     private fun initialDelayMillis(notificationTime: LocalTime): Long {

@@ -20,6 +20,7 @@ data class CategoryTotal(
     val category: Category,
     val amountMinor: Long,
     val count: Int,
+    val currency: String,
 )
 
 object CategoryEngine {
@@ -108,10 +109,12 @@ object CategoryEngine {
         val debits = transactions.filter { it.amountMinor < 0 && !it.isPending }
         val grouped = debits.groupBy { classify(it) }
         return grouped.map { (cat, txs) ->
+            val dominant = txs.maxByOrNull { -it.amountMinor }?.currency ?: "GBP"
             CategoryTotal(
                 category = cat,
                 amountMinor = txs.sumOf { -it.amountMinor },
                 count = txs.size,
+                currency = dominant,
             )
         }.sortedByDescending { it.amountMinor }
     }

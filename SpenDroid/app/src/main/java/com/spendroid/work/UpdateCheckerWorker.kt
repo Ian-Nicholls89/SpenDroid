@@ -90,17 +90,22 @@ class UpdateCheckerWorker(
         return null
     }
 
+    // NB: kept in sync with RootViewModel.extractVersionCode.
+    // Each pattern carries the group holding the version code - the tag pattern captures the
+    // major version first, so its code is in group 2.
     private fun extractVersionCode(text: String): Int? {
         val patterns = listOf(
-            Pattern.compile("versionCode[\\s:=]+(\\d+)"),
-            Pattern.compile("version[\\s:=]+(\\d+)"),
-            Pattern.compile("v(\\d+)(?:\\.\\d+)?[-\\.]"),
-            Pattern.compile("app[-\\s](\\d+)\\."),
+            Pattern.compile("versionCode[\\s:=]+(\\d+)") to 1,
+            Pattern.compile("version[\\s:]+code[\\s:=]+(\\d+)") to 1,
+            Pattern.compile("\\bbuild[\\s:=]+(\\d+)") to 1,
+            Pattern.compile("app[-\\s]v?(\\d+)\\.apk") to 1,
+            Pattern.compile("(?:^|\\s)v?(\\d{2,})(?:\\s|$)") to 1,
+            Pattern.compile("v(\\d+)(?:\\.\\d+)+[-_.](\\d+)") to 2,
         )
-        for (pattern in patterns) {
+        for ((pattern, group) in patterns) {
             val matcher = pattern.matcher(text)
             if (matcher.find()) {
-                return matcher.group(1).toIntOrNull()
+                return matcher.group(group)?.toIntOrNull()
             }
         }
         return null
@@ -121,6 +126,7 @@ class UpdateCheckerWorker(
     }
 
     private fun showUpdateNotification(versionCode: Int, versionName: String) {
+        if (!NotificationManagerCompat.from(applicationContext).areNotificationsEnabled()) return
         val manager = applicationContext.getSystemService(NotificationManager::class.java)
         val channel = NotificationChannel(
             CHANNEL_ID,

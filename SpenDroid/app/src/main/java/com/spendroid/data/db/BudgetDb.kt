@@ -8,6 +8,7 @@ import androidx.room.Query
 import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
+import kotlinx.coroutines.flow.Flow
 
 @Database(
     entities = [AccountEntity::class, TransactionEntity::class, ManualRecurringRuleEntity::class],
@@ -83,8 +84,20 @@ interface BudgetDao {
     @Query("SELECT * FROM manual_recurring_rules WHERE isActive = 1")
     suspend fun getActiveManualRules(): List<ManualRecurringRuleEntity>
 
+    @Query("SELECT * FROM manual_recurring_rules WHERE isActive = 1 ORDER BY payee")
+    fun activeManualRulesFlow(): Flow<List<ManualRecurringRuleEntity>>
+
     @Query("DELETE FROM manual_recurring_rules WHERE id = :id")
     suspend fun deleteManualRule(id: String)
+
+    @Query("DELETE FROM transactions")
+    suspend fun deleteAllTransactions()
+
+    @Query("DELETE FROM accounts")
+    suspend fun deleteAllAccounts()
+
+    @Query("DELETE FROM manual_recurring_rules")
+    suspend fun deleteAllManualRules()
 
     @Query("UPDATE accounts SET accountType = :accountType, linkedCreditCardAccountId = :linkedCreditCardAccountId WHERE id = :id")
     suspend fun updateAccountType(id: String, accountType: String, linkedCreditCardAccountId: String?)

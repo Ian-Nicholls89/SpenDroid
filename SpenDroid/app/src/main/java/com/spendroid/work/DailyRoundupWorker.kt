@@ -59,7 +59,9 @@ class DailyRoundupWorker(
             .setAutoCancel(true)
             .build()
 
-        NotificationManagerCompat.from(applicationContext).notify(NOTIFICATION_ID, notification)
+        if (NotificationManagerCompat.from(applicationContext).areNotificationsEnabled()) {
+            NotificationManagerCompat.from(applicationContext).notify(NOTIFICATION_ID, notification)
+        }
         return Result.success()
     }
 

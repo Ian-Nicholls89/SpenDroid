@@ -45,6 +45,7 @@ class ReauthNotificationWorker(
     }
 
     private fun sendNotifications(connections: List<Connection>, now: Long) {
+        if (!NotificationManagerCompat.from(applicationContext).areNotificationsEnabled()) return
         val manager = applicationContext.getSystemService(NotificationManager::class.java)
         val channel = NotificationChannel(
             CHANNEL_ID,

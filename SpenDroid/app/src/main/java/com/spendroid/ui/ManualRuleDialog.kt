@@ -41,6 +41,7 @@ import com.spendroid.domain.RecurringAnalyzer
 import com.spendroid.ui.formatMoney
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
+import kotlin.math.roundToLong
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -86,7 +87,10 @@ fun ManualRuleDialog(
                                 .heightIn(max = 300.dp),
                         ) {
                             LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                items(candidates, key = { it.sampleTransactions.first().transactionId }) { candidate ->
+                                items(candidates, key = { c ->
+                                    c.sampleTransactions.firstOrNull()?.transactionId
+                                        ?: "${c.payee}-${c.amountMinor}-${System.identityHashCode(c)}"
+                                }) { candidate ->
                                     CandidateRow(
                                         candidate = candidate,
                                         onClick = { onAddFromCandidate(candidate); onDismiss() },
@@ -146,7 +150,7 @@ fun ManualRuleDialog(
         confirmButton = {
             if (showManual) {
                 Button(onClick = {
-                    val amountMinor = (amount.toDoubleOrNull() ?: 0.0 * 100).toLong()
+                    val amountMinor = ((amount.toDoubleOrNull() ?: 0.0) * 100).roundToLong()
                     onAdd(payee.trim(), direction, amountMinor, currency, cadence, anchorDay, startDate)
                 }, enabled = payee.isNotBlank() && amount.isNotBlank()) {
                     Text("Add")

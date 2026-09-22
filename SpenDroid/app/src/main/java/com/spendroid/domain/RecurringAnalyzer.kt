@@ -10,8 +10,34 @@ object RecurringAnalyzer {
 
     fun groupKey(tx: TransactionEntity): String {
         val sign = if (tx.amountMinor >= 0) "IN" else "OUT"
-        val bucket = (Math.abs(tx.amountMinor) + 50L) / 100L
-        return "$sign|${tx.currency}|$bucket|${normalize(tx.payee)}"
+        return "$sign|${tx.currency}|${amountBucket(tx.amountMinor)}|${normalize(tx.payee)}"
+    }
+
+    fun amountBucket(amountMinor: Long): Long = (Math.abs(amountMinor) + 50L) / 100L
+
+    /**
+     * True when [tx] is an occurrence of [rule].
+     *
+     * Detected rules are keyed by [groupKey], so key equality is exact. Manual rules have a
+     * synthetic key that no transaction can ever produce, and a hand-typed payee, so they
+     * match on direction, amount and a fuzzy payee comparison instead - "Netflix" has to
+     * match a bank's "NETFLIX.COM 1234".
+     */
+    fun matches(rule: RecurringRule, tx: TransactionEntity): Boolean =
+        if (rule.isManual) {
+            tx.currency == rule.currency &&
+                (tx.amountMinor < 0) == (rule.amountMinor < 0) &&
+                amountBucket(tx.amountMinor) == amountBucket(rule.amountMinor) &&
+                payeeMatches(tx.payee, rule.payee)
+        } else {
+            groupKey(tx) == rule.key
+        }
+
+    private fun payeeMatches(txPayee: String, rulePayee: String): Boolean {
+        val a = normalize(txPayee)
+        val b = normalize(rulePayee)
+        if (a.isBlank() || b.isBlank()) return false
+        return a == b || a.contains(b) || b.contains(a)
     }
 
     fun analyze(transactions: List<TransactionEntity>): List<RecurringRule> =

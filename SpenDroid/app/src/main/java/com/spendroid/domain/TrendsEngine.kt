@@ -11,6 +11,7 @@ data class MonthSummary(
     val spending: Long,
     val savings: Long,
     val savingsRate: Float,
+    val currency: String,
 )
 
 data class TrendSummary(
@@ -37,7 +38,10 @@ object TrendsEngine {
             val spending = txs.filter { it.amountMinor < 0 }.sumOf { -it.amountMinor }
             val savings = income - spending
             val rate = if (income > 0) savings.toFloat() / income.toFloat() else 0f
-            MonthSummary(month, income, spending, savings, rate)
+            val dominant = txs.maxByOrNull { kotlin.math.abs(it.amountMinor * 2L) }.let { largest ->
+                largest?.currency ?: txs.firstOrNull()?.currency ?: "GBP"
+            }
+            MonthSummary(month, income, spending, savings, rate, dominant)
         }
 
         val count = summaries.size.coerceAtLeast(1)

@@ -92,6 +92,21 @@ class SecretsStore(private val context: Context) {
         }
     }
 
+    /**
+     * Wipes everything the "Clear all data" action promises to remove: credentials, tokens,
+     * bank connections and ignored-rule keys. Notification time is a preference rather than
+     * data, so it survives.
+     */
+    suspend fun clearAll() {
+        context.dataStore.edit { prefs ->
+            prefs.remove(Keys.SECRET_ID)
+            prefs.remove(Keys.SECRET_KEY)
+            prefs.remove(Keys.REFRESH_TOKEN)
+            prefs.remove(Keys.CONNECTIONS)
+            prefs.remove(Keys.IGNORED_RULES)
+        }
+    }
+
     suspend fun saveNotificationTime(time: String) {
         context.dataStore.edit { prefs ->
             prefs[Keys.NOTIFICATION_TIME] = time

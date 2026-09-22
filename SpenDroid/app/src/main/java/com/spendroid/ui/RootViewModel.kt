@@ -22,6 +22,8 @@ import com.spendroid.domain.BudgetEngine
 import com.spendroid.domain.BudgetSnapshot
 import com.spendroid.domain.RecurringAnalyzer
 import com.spendroid.domain.RecurringRule
+import com.spendroid.domain.toRecurringRule
+import com.spendroid.work.DailyRoundupScheduler
 import com.spendroid.work.UpdateCheckerWorker
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -103,7 +105,10 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private suspend fun refreshConfig() {
-        val hasCredentials = repo.secretId.first() != null && repo.secretKey.first() != null
+        // Blank rather than just absent: installs cleared by an older build stored empty
+        // strings, which are non-null and would otherwise read as valid credentials.
+        val hasCredentials = !repo.secretId.first().isNullOrBlank() &&
+            !repo.secretKey.first().isNullOrBlank()
         _state.update { it.copy(hasCredentials = hasCredentials) }
         if (hasCredentials) {
             loadInstitutions("")
@@ -122,17 +127,22 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
     fun saveNotificationTime(time: String) {
         viewModelScope.launch {
             repo.saveNotificationTime(time)
+            val versionCode = currentVersionCode()
+            DailyRoundupScheduler.schedule(getApplication(), versionCode)
         }
+    }
+
+    private fun currentVersionCode(): Int = try {
+        getApplication<android.app.Application>().packageManager
+            .getPackageInfo(getApplication<android.app.Application>().packageName, 0).longVersionCode.toInt()
+    } catch (e: Exception) {
+        0
     }
 
     fun checkForUpdate() {
         viewModelScope.launch {
             _state.update { it.copy(updateCheckStatus = UpdateCheckStatus.Checking("Checking for updates…")) }
-            val versionCode = try {
-                getApplication<android.app.Application>().packageManager.getPackageInfo(getApplication<android.app.Application>().packageName, 0).longVersionCode.toInt()
-            } catch (e: Exception) {
-                0
-            }
+            val versionCode = currentVersionCode()
             val inputData = androidx.work.Data.Builder().putInt(UpdateCheckerWorker.VERSION_CODE_KEY, versionCode).build()
             androidx.work.WorkManager.getInstance(getApplication<android.app.Application>())
                 .enqueueUniqueWork(UpdateCheckerWorker::class.java.simpleName, androidx.work.ExistingWorkPolicy.REPLACE, androidx.work.OneTimeWorkRequestBuilder<UpdateCheckerWorker>().setInputData(inputData).build())
@@ -141,11 +151,7 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
             try {
                 val latest = checkForUpdateResult()
                 latest?.let { (versionCode, versionName) ->
-                    val currentVersionCode = try {
-                        getApplication<android.app.Application>().packageManager.getPackageInfo(getApplication<android.app.Application>().packageName, 0).longVersionCode.toInt()
-                    } catch (e: Exception) {
-                        0
-                    }
+                    val currentVersionCode = currentVersionCode()
                     if (versionCode > currentVersionCode) {
                         _state.update { it.copy(updateCheckStatus = UpdateCheckStatus.Success("Update found: v$versionName (build $versionCode)")) }
                     } else {
@@ -203,17 +209,22 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
     
+    // NB: kept in sync with UpdateCheckerWorker.extractVersionCode.
+    // Each pattern carries the group holding the version code - the tag pattern captures the
+    // major version first, so its code is in group 2.
     private fun extractVersionCode(text: String): Int? {
         val patterns = listOf(
-            Pattern.compile("versionCode[\\s:=]+(\\d+)"),
-            Pattern.compile("version[\\s:=]+(\\d+)"),
-            Pattern.compile("v(\\d+)(?:\\.\\d+)?[-\\.]"),
-            Pattern.compile("app[-\\s](\\d+)\\."),
+            Pattern.compile("versionCode[\\s:=]+(\\d+)") to 1,
+            Pattern.compile("version[\\s:]+code[\\s:=]+(\\d+)") to 1,
+            Pattern.compile("\\bbuild[\\s:=]+(\\d+)") to 1,
+            Pattern.compile("app[-\\s]v?(\\d+)\\.apk") to 1,
+            Pattern.compile("(?:^|\\s)v?(\\d{2,})(?:\\s|$)") to 1,
+            Pattern.compile("v(\\d+)(?:\\.\\d+)+[-_.](\\d+)") to 2,
         )
-        for (pattern in patterns) {
+        for ((pattern, group) in patterns) {
             val matcher = pattern.matcher(text)
             if (matcher.find()) {
-                return matcher.group(1).toIntOrNull()
+                return matcher.group(group)?.toIntOrNull()
             }
         }
         return null
@@ -233,16 +244,21 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
         return null
     }
 
+    private var cachedInstitutions: List<InstitutionDto>? = null
+
     fun loadInstitutions(query: String) {
         viewModelScope.launch {
-            runCatching { repo.institutions("GB") }
-                .onSuccess { all ->
-                    val q = query.trim().lowercase()
-                    val filtered =
-                        if (q.isEmpty()) all else all.filter { it.name.lowercase().contains(q) }
-                    _state.update { it.copy(institutions = filtered) }
-                }
-                .onFailure { e -> _state.update { it.copy(error = e.message) } }
+            val all = runCatching {
+                cachedInstitutions?.takeIf { it.isNotEmpty() }
+                    ?: repo.institutions("GB").also { cachedInstitutions = it }
+            }.getOrElse { e ->
+                _state.update { it.copy(error = e.message) }
+                return@launch
+            }
+            val q = query.trim().lowercase()
+            val filtered =
+                if (q.isEmpty()) all else all.filter { it.name.lowercase().contains(q) }
+            _state.update { it.copy(institutions = filtered) }
         }
     }
 
@@ -283,11 +299,12 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
 
     fun clearData() {
         viewModelScope.launch {
-            repo.saveConnections(emptyList())
-            repo.saveSecret("", "")
+            runCatching { repo.clearAllData() }
+                .onFailure { e -> _state.update { it.copy(error = e.message) } }
             _state.update { RootUiState(connections = emptyList(), manualRules = emptyList(), showRecurringOnly = true, showInternalTransfers = false, versionName = "", versionCode = 0) }
             _secretId.value = ""
             _secretKey.value = ""
+            cachedInstitutions = null
         }
     }
 
@@ -403,7 +420,7 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
 
     private suspend fun loadLocal() {
         val all = repo.transactions()
-        val rules = RecurringAnalyzer.analyze(all)
+        val detectedRules = RecurringAnalyzer.analyze(all)
         val ignored = repo.ignoredRules.first()
         val manualRules = repo.manualRules.first()
         val accounts = repo.accounts()
@@ -412,19 +429,17 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
         } catch (e: Exception) {
             "1.0.0"
         }
-        val versionCode = try {
-            getApplication<android.app.Application>().packageManager.getPackageInfo(getApplication<android.app.Application>().packageName, 0).longVersionCode.toInt()
-        } catch (e: Exception) {
-            0
-        }
+        val versionCode = currentVersionCode()
+        val manualRecurring = manualRules.mapNotNull { it.toRecurringRule() }
+        val allRules = detectedRules + manualRecurring
         _state.update {
             it.copy(
                 accounts = accounts,
-                transactions = all.take(500),
-                rules = rules,
+                transactions = all,
+                rules = detectedRules,
                 manualRules = manualRules,
                 ignoredRules = ignored,
-                budget = BudgetEngine.snapshot(all, rules.filter { rule -> rule.key !in ignored }, accounts),
+                budget = BudgetEngine.snapshot(all, allRules.filter { rule -> rule.key !in ignored }, accounts),
                 connections = repo.connections.first(),
                 versionName = versionName,
                 versionCode = versionCode,

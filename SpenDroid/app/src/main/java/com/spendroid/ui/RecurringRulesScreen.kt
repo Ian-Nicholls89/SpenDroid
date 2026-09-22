@@ -11,13 +11,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Card
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -32,13 +29,11 @@ import java.time.LocalDate
 import java.time.format.TextStyle
 import java.util.Locale
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RecurringRulesScreen(
     rules: List<RecurringRule>,
     manualRules: List<ManualRecurringRuleEntity>,
     ignored: Set<String>,
-    onBack: () -> Unit,
     onToggle: (String, Boolean) -> Unit,
     onAddManual: () -> Unit,
 ) {
@@ -47,42 +42,40 @@ fun RecurringRulesScreen(
     val manualIncome = manualRules.filter { it.direction == "IN" }
     val manualFixed = manualRules.filter { it.direction == "OUT" }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Recurring payments") },
-                navigationIcon = {
-                    TextButton(onClick = onBack) { Text("Back") }
-                },
-                actions = {
-                    TextButton(onClick = onAddManual) {
-                        Text("Add manual")
-                    }
-                },
-            )
-        },
-    ) { padding ->
-        if (rules.isEmpty() && manualRules.isEmpty()) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding)
-                    .padding(16.dp),
-            ) {
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    Text(
-                        "No recurring payments detected yet. Link a bank and sync transactions, or add manually.",
-                        modifier = Modifier.padding(16.dp),
-                    )
+    if (rules.isEmpty() && manualRules.isEmpty()) {
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text(
+                    "No recurring payments detected yet. Link a bank and sync transactions, or add manual rules.",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Spacer(Modifier.height(12.dp))
+                TextButton(onClick = onAddManual) {
+                    Text("Add manual rule")
                 }
             }
-            return@Scaffold
         }
+        return
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("Recurring payments", style = MaterialTheme.typography.titleMedium)
+            TextButton(onClick = onAddManual) {
+                Text("Add manual")
+            }
+        }
+        Spacer(Modifier.height(4.dp))
         LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .padding(16.dp),
+            modifier = Modifier.fillMaxSize(),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             if (income.isNotEmpty() || manualIncome.isNotEmpty()) {
@@ -91,7 +84,7 @@ fun RecurringRulesScreen(
                     RuleRow(rule, ignored.contains(rule.key)) { onToggle(rule.key, it) }
                 }
                 items(manualIncome, key = { it.id }) { rule ->
-                    ManualRuleRow(rule) { /* no toggle for manual - always active */ }
+                    ManualRuleRow(rule)
                 }
                 item { Spacer(Modifier.height(8.dp)) }
             }
@@ -101,7 +94,7 @@ fun RecurringRulesScreen(
                     RuleRow(rule, ignored.contains(rule.key)) { onToggle(rule.key, it) }
                 }
                 items(manualFixed, key = { it.id }) { rule ->
-                    ManualRuleRow(rule) { /* no toggle for manual - always active */ }
+                    ManualRuleRow(rule)
                 }
             }
         }
@@ -111,7 +104,6 @@ fun RecurringRulesScreen(
 @Composable
 private fun ManualRuleRow(
     rule: ManualRecurringRuleEntity,
-    onDelete: () -> Unit,
 ) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Row(
@@ -133,7 +125,6 @@ private fun ManualRuleRow(
                     color = MaterialTheme.colorScheme.primary,
                 )
             }
-            // Could add delete button here
         }
     }
 }

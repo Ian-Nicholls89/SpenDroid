@@ -44,12 +44,7 @@ class GoCardlessRepository private constructor(
     val secretKey: Flow<String?> = secrets.secretKey
     val connections: Flow<List<Connection>> = secrets.connections
     val ignoredRules: Flow<Set<String>> = secrets.ignoredRules
-    val manualRules: Flow<List<ManualRecurringRuleEntity>> = kotlinx.coroutines.flow.flow {
-        while (true) {
-            emit(dao.getActiveManualRules())
-            kotlinx.coroutines.delay(1_000)
-        }
-    }
+    val manualRules: Flow<List<ManualRecurringRuleEntity>> = dao.activeManualRulesFlow()
     val notificationTime: Flow<String> = secrets.notificationTime
 
     suspend fun setRuleIgnored(key: String, ignored: Boolean) {
@@ -78,6 +73,15 @@ class GoCardlessRepository private constructor(
 
     suspend fun updateAccount(account: AccountEntity) {
         dao.updateAccount(account)
+    }
+
+    suspend fun clearAllData() {
+        dao.deleteAllTransactions()
+        dao.deleteAllAccounts()
+        dao.deleteAllManualRules()
+        // Clear the store before the cached token, so nothing can refresh it back in between.
+        secrets.clearAll()
+        tokenManager.clear()
     }
 
     suspend fun institutions(country: String): List<InstitutionDto> = dataApi.institutions(country)
@@ -201,15 +205,22 @@ class GoCardlessRepository private constructor(
     }
 
     private fun isLikelyInternalTransfer(tx1: TransactionEntity, tx2: TransactionEntity): Boolean {
-        if (tx1.amountMinor == -tx2.amountMinor && tx1.currency == tx2.currency) {
-            val date1 = try { LocalDate.parse(tx1.bookingDate) } catch (_: Exception) { return false }
-            val date2 = try { LocalDate.parse(tx2.bookingDate) } catch (_: Exception) { return false }
-            if (Math.abs(date1.toEpochDay() - date2.toEpochDay()) <= 1) {
-                val ref1 = (tx1.description ?: "").lowercase()
-                val ref2 = (tx2.description ?: "").lowercase()
-                if (ref1.isNotBlank() && ref2.isNotBlank() && ref1 == ref2) return true
-                return true // same amount, opposite, same day ±1
-            }
+        if (tx1.amountMinor != -tx2.amountMinor || tx1.currency != tx2.currency) return false
+        val date1 = try { LocalDate.parse(tx1.bookingDate) } catch (_: Exception) { return false }
+        val date2 = try { LocalDate.parse(tx2.bookingDate) } catch (_: Exception) { return false }
+        if (Math.abs(date1.toEpochDay() - date2.toEpochDay()) > 1) return false
+
+        val ref1 = (tx1.description ?: "").trim().lowercase()
+        val ref2 = (tx2.description ?: "").trim().lowercase()
+        val payee1 = tx1.payee.trim().lowercase()
+        val payee2 = tx2.payee.trim().lowercase()
+
+        if (ref1.isNotBlank() && ref1 == ref2) return true
+        if (payee1.isNotBlank() && payee1 == payee2) return true
+        if (ref1.isNotBlank() && ref2.isNotBlank()) {
+            val a = ref1.split("[^a-z0-9]+".toRegex()).filter { it.length > 2 }.toSet()
+            val b = ref2.split("[^a-z0-9]+".toRegex()).filter { it.length > 2 }.toSet()
+            if (a.isNotEmpty() && a == b) return true
         }
         return false
     }
@@ -333,8 +344,14 @@ class GoCardlessRepository private constructor(
                 .callTimeout(30, TimeUnit.SECONDS)
                 .addInterceptor(logging)
                 .authenticator { _, response ->
-                    val token = runBlocking { tokenManager.get() }
-                    response.request.newBuilder().header("Authorization", "Bearer $token").build()
+                    // Guard against an infinite 401 loop: never re-attach a token
+                    // to a request that already carried one.
+                    if (response.request.header("Authorization") != null) {
+                        null
+                    } else {
+                        val token = runBlocking { tokenManager.get() }
+                        response.request.newBuilder().header("Authorization", "Bearer $token").build()
+                    }
                 }
                 .build()
 

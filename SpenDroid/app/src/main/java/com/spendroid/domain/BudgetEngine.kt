@@ -5,6 +5,7 @@ import com.spendroid.data.db.AccountType
 import com.spendroid.data.db.TransactionEntity
 import java.time.LocalDate
 import java.time.temporal.ChronoUnit
+import kotlin.math.abs
 
 object BudgetEngine {
 
@@ -44,8 +45,11 @@ object BudgetEngine {
         // Identify primary income (largest regular income)
         val primaryIncome = incomeRules.maxByOrNull { monthlyEquivalent(it) }
 
-        val averageMonthlyIncome = incomeRules.sumOf { monthlyEquivalent(it) }
-        val fixedMonthlyOutgoings = fixedRules.sumOf { monthlyEquivalent(it) }
+        // Both are reported as positive magnitudes so the subtraction below is a subtraction:
+        // OUT rules carry a negative amountMinor, and summing them signed would add the
+        // outgoings back onto the budget instead.
+        val averageMonthlyIncome = incomeRules.sumOf { abs(monthlyEquivalent(it)) }
+        val fixedMonthlyOutgoings = fixedRules.sumOf { abs(monthlyEquivalent(it)) }
         val variableBudget = (averageMonthlyIncome - fixedMonthlyOutgoings).coerceAtLeast(0L)
 
         val today = referenceTime.toLocalDate()
@@ -59,13 +63,18 @@ object BudgetEngine {
 
         val daysUntilNextIncome = nextIncomeDate?.let { ChronoUnit.DAYS.between(today, it).toInt() }
 
-        val fixedKeys = fixedRules.map { it.key }.toSet()
+        // Detected rules are keyed by groupKey, so they exclude their transactions with a set
+        // lookup. Manual rules never produce a matching key and need the fuzzy matcher - but
+        // there are only a handful of them, so the inner scan stays cheap.
+        val detectedFixedKeys = fixedRules.filterNot { it.isManual }.map { it.key }.toSet()
+        val manualFixedRules = fixedRules.filter { it.isManual }
         val variableDebits = booked.filter { tx ->
             val date = RecurringAnalyzer.parseBookingDate(tx.bookingDate) ?: return@filter false
             tx.amountMinor < 0 &&
                 date >= cycleStart &&
                 (cycleEnd == null || date <= cycleEnd) &&
-                RecurringAnalyzer.groupKey(tx) !in fixedKeys
+                RecurringAnalyzer.groupKey(tx) !in detectedFixedKeys &&
+                manualFixedRules.none { RecurringAnalyzer.matches(it, tx) }
         }
 
         val spentThisCycle = variableDebits.sumOf { -it.amountMinor }
@@ -81,7 +90,7 @@ object BudgetEngine {
                 .mapNotNull { rule ->
                     val due = RecurringAnalyzer.nextOccurrence(rule, today)
                     if (due.isAfter(today) && !due.isAfter(nextIncomeDate)) {
-                        UpcomingPayment(rule, due, rule.amountMinor)
+                        UpcomingPayment(rule, due, abs(rule.amountMinor))
                     } else {
                         null
                     }
