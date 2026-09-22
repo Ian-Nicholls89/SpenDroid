@@ -23,6 +23,7 @@ import kotlinx.coroutines.launch
 object DailyRoundupScheduler {
 
     private const val UNIQUE_NAME = "daily_roundup"
+    private const val SYNC_UNIQUE_NAME = "daily_sync"
     private const val REAUTH_UNIQUE_NAME = "reauth_reminders"
     private const val UPDATE_CHECK_UNIQUE_NAME = "update_checker"
 
@@ -38,6 +39,24 @@ object DailyRoundupScheduler {
             val formatter = DateTimeFormatter.ofPattern("HH:mm")
             val notificationTimeLocal = runCatching { LocalTime.parse(notificationTime, formatter) }
                 .getOrDefault(LocalTime.of(21, 0))
+
+            // Sync an hour ahead of the roundup so the notification reports fresh figures.
+            // Requires network: without it an offline run burns the day's sync, and anything
+            // that ages past the API's 90-day window cannot be fetched again.
+            val syncRequest = PeriodicWorkRequestBuilder<DailySyncWorker>(1, TimeUnit.DAYS)
+                .setInitialDelay(
+                    initialDelayMillis(notificationTimeLocal.minusHours(1)),
+                    TimeUnit.MILLISECONDS,
+                )
+                .setConstraints(
+                    Constraints.Builder()
+                        .setRequiredNetworkType(NetworkType.CONNECTED)
+                        .build(),
+                )
+                .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 15, TimeUnit.MINUTES)
+                .build()
+            WorkManager.getInstance(context.applicationContext)
+                .enqueueUniquePeriodicWork(SYNC_UNIQUE_NAME, ExistingPeriodicWorkPolicy.UPDATE, syncRequest)
 
             val roundupRequest = PeriodicWorkRequestBuilder<DailyRoundupWorker>(1, TimeUnit.DAYS)
                 .setInitialDelay(initialDelayMillis(notificationTimeLocal), TimeUnit.MILLISECONDS)

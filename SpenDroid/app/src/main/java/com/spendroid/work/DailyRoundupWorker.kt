@@ -22,12 +22,9 @@ class DailyRoundupWorker(
     override suspend fun doWork(): Result {
         val app = applicationContext as BudgetApplication
 
-        app.repository.connections.first().forEach { connection ->
-            connection.accountIds.forEach { accountId ->
-                runCatching { app.repository.importAccount(connection.institutionName, accountId) }
-            }
-        }
-
+        // Reads whatever DailySyncWorker last stored. Syncing here as well meant a failure to
+        // reach the API was swallowed silently, and tied the data refresh to the user's
+        // chosen notification time.
         val transactions = app.repository.transactions()
         if (transactions.isEmpty()) return Result.success()
 
