@@ -33,6 +33,10 @@ object CreditCardEngine {
         val currency: String,
         /** Everything charged since the last payment: billed plus not-yet-billed. */
         val outstandingMinor: Long,
+        /** The part already on a closed statement, so its amount is settled. */
+        val billedMinor: Long,
+        /** Charged since the statement closed; will land on the following bill. */
+        val unbilledMinor: Long,
         val dueDate: LocalDate?,
         /** Day of month the payment nominally lands on, before weekend drift. */
         val nominalPaymentDay: Int?,
@@ -88,11 +92,24 @@ object CreditCardEngine {
             val nominalDay = inferPaymentDay(paymentDates)
             val due = nominalDay?.let { nextPaymentDate(it, today) }
 
+            // The statement closed roughly a payment term before the bill is taken. Splitting
+            // there separates a settled amount from one still moving, which is the difference
+            // between "this is your bill" and "this is what it is heading towards".
+            val statementClose = due?.minusDays(TYPICAL_PAYMENT_TERM_DAYS)
+                ?.takeIf { !it.isAfter(today) }
+            val unbilled = if (statementClose == null) {
+                0L
+            } else {
+                outstandingSince(cardTxs, statementClose)
+            }
+
             bills += CardBill(
                 cardAccountId = card.id,
                 cardLabel = card.label,
                 currency = card.currency,
                 outstandingMinor = outstanding,
+                billedMinor = (outstanding - unbilled).coerceAtLeast(0L),
+                unbilledMinor = unbilled.coerceAtMost(outstanding),
                 dueDate = due,
                 nominalPaymentDay = nominalDay,
                 dueDateInferred = paymentDates.size >= MIN_PAYMENTS_TO_INFER,
@@ -214,4 +231,7 @@ object CreditCardEngine {
     }
 
     private const val PAYMENT_MATCH_DAYS = 5L
+
+    /** UK cards typically fall due around three weeks after the statement closes. */
+    private const val TYPICAL_PAYMENT_TERM_DAYS = 23L
 }

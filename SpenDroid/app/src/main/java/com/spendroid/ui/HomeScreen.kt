@@ -1,41 +1,44 @@
 package com.spendroid.ui
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Divider
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.CreditCard
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.spendroid.data.Connection
 import com.spendroid.data.db.AccountEntity
@@ -43,6 +46,7 @@ import com.spendroid.data.db.TransactionEntity
 import com.spendroid.domain.BudgetSnapshot
 import com.spendroid.domain.CARD_BILL_KEY_PREFIX
 import com.spendroid.domain.CategoryEngine
+import com.spendroid.domain.CreditCardEngine
 import com.spendroid.domain.CategoryTotal
 import com.spendroid.domain.TrendSummary
 import com.spendroid.domain.TrendsEngine
@@ -56,23 +60,197 @@ import java.time.temporal.ChronoUnit
 import java.util.Locale
 import kotlin.math.max
 
-private val InColor = Color(0xFF2E7D32)
-private val OutColor = Color(0xFFC62828)
+internal val InColor = Color(0xFF2E7D32)
+internal val OutColor = Color(0xFFC62828)
 
-private val CategoryColors = listOf(
-    Color(0xFF43A047),
-    Color(0xFF1E88E5),
-    Color(0xFFFB8C00),
-    Color(0xFFE53935),
-    Color(0xFF8E24AA),
-    Color(0xFF00ACC1),
-    Color(0xFF3949AB),
-    Color(0xFFF4511E),
-    Color(0xFF00897B),
-    Color(0xFF6D4C41),
-)
+/**
+ * How much of the variable budget is gone, as a fraction. Null when there is no budget to
+ * measure against.
+ */
+private fun budgetUsedFraction(budget: BudgetSnapshot): Float? {
+    if (budget.variableMonthlyBudget <= 0L) return null
+    return (budget.spentThisCycle.toFloat() / budget.variableMonthlyBudget.toFloat())
+        .coerceIn(0f, 1f)
+}
 
-private const val DISPLAY_TRANSACTION_LIMIT = 200
+/** How far through the pay cycle today is, as a fraction. */
+private fun cycleElapsedFraction(budget: BudgetSnapshot): Float? {
+    val end = budget.cycleEnd ?: return null
+    val total = ChronoUnit.DAYS.between(budget.cycleStart, end).toFloat()
+    if (total <= 0f) return null
+    val gone = ChronoUnit.DAYS.between(budget.cycleStart, LocalDate.now()).toFloat()
+    return (gone / total).coerceIn(0f, 1f)
+}
+
+/**
+ * "£742 left" reads very differently with 8 days to go than with 24, so say which it is:
+ * spending against time, not just the remaining balance.
+ */
+private fun paceCaption(budget: BudgetSnapshot): String? {
+    val used = budgetUsedFraction(budget) ?: return null
+    val elapsed = cycleElapsedFraction(budget) ?: return null
+    val expected = (budget.variableMonthlyBudget * elapsed).toLong()
+    val difference = expected - budget.spentThisCycle
+    val throughCycle = "${(elapsed * 100).toInt()}% through the cycle"
+    return when {
+        difference > 500L -> "$throughCycle · ahead by ${formatMoney(difference, "GBP")}"
+        difference < -500L -> "$throughCycle · over by ${formatMoney(-difference, "GBP")}"
+        else -> "$throughCycle · on track"
+    }
+}
+
+/**
+ * Budget used, drawn as an arc. The track marks how far through the cycle today is, so a gap
+ * between the two is the whole signal.
+ */
+@Composable
+private fun SpendingPaceRing(budget: BudgetSnapshot) {
+    val used = budgetUsedFraction(budget)
+    val elapsed = cycleElapsedFraction(budget)
+    if (used == null) return
+
+    Box(contentAlignment = Alignment.Center, modifier = Modifier.size(78.dp)) {
+        Canvas(modifier = Modifier.size(78.dp)) {
+            val stroke = 9.dp.toPx()
+            val inset = stroke / 2f
+            val arcSize = Size(size.width - stroke, size.height - stroke)
+            val offset = Offset(inset, inset)
+
+            drawArc(
+                color = Color.White.copy(alpha = 0.25f),
+                startAngle = -90f,
+                sweepAngle = 360f,
+                useCenter = false,
+                topLeft = offset,
+                size = arcSize,
+                style = Stroke(width = stroke, cap = StrokeCap.Round),
+            )
+            elapsed?.let {
+                drawArc(
+                    color = Color.White.copy(alpha = 0.45f),
+                    startAngle = -90f,
+                    sweepAngle = 360f * it,
+                    useCenter = false,
+                    topLeft = offset,
+                    size = arcSize,
+                    style = Stroke(width = stroke, cap = StrokeCap.Round),
+                )
+            }
+            drawArc(
+                color = Color.White,
+                startAngle = -90f,
+                sweepAngle = 360f * used,
+                useCenter = false,
+                topLeft = offset,
+                size = arcSize,
+                style = Stroke(width = stroke, cap = StrokeCap.Round),
+            )
+        }
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(
+                "${(used * 100).toInt()}%",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = Color.White,
+            )
+            Text(
+                "used",
+                style = MaterialTheme.typography.labelSmall,
+                color = Color.White.copy(alpha = 0.8f),
+            )
+        }
+    }
+}
+
+/**
+ * The card bill, split into the part already on a closed statement and the part still
+ * accruing. Both are owed; only the first has a settled amount, which is why the split is
+ * worth showing rather than one total.
+ */
+@Composable
+private fun CardBillCard(bill: CreditCardEngine.CardBill) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Filled.CreditCard,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(18.dp),
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    bill.cardLabel,
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.weight(1f),
+                    maxLines = 1,
+                )
+                Text(
+                    formatMoney(bill.outstandingMinor, bill.currency),
+                    style = MaterialTheme.typography.titleMedium.copy(fontFeatureSettings = "tnum"),
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+            Spacer(Modifier.height(12.dp))
+            Row {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        "Billed",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        formatMoney(bill.billedMinor, bill.currency),
+                        style = MaterialTheme.typography.titleSmall.copy(fontFeatureSettings = "tnum"),
+                    )
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        "Since statement",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        formatMoney(bill.unbilledMinor, bill.currency),
+                        style = MaterialTheme.typography.titleSmall.copy(fontFeatureSettings = "tnum"),
+                    )
+                }
+            }
+            if (bill.outstandingMinor > 0L) {
+                Spacer(Modifier.height(10.dp))
+                val billedShare = bill.billedMinor.toFloat() / bill.outstandingMinor.toFloat()
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(8.dp),
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .weight(billedShare.coerceAtLeast(0.001f))
+                            .fillMaxHeight()
+                            .background(MaterialTheme.colorScheme.primary),
+                    )
+                    Box(
+                        modifier = Modifier
+                            .weight((1f - billedShare).coerceAtLeast(0.001f))
+                            .fillMaxHeight()
+                            .background(MaterialTheme.colorScheme.primaryContainer),
+                    )
+                }
+            }
+            bill.dueDate?.let { due ->
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    // Inferred from payment history, and direct debits shift around weekends
+                    // and bank holidays, so the date is approximate on purpose.
+                    "Estimated · due ~${due.format(dateFormat)}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
 
 private data class MonthTotals(
     val inSum: Long,
@@ -88,8 +266,7 @@ fun HomeScreen(
     state: RootUiState,
     onRefresh: () -> Unit,
     onRelink: (Connection) -> Unit,
-    onToggleRecurring: () -> Unit,
-    onToggleInternal: () -> Unit,
+    onSeeAllTransactions: () -> Unit,
     onLinkBank: () -> Unit,
 ) {
     Column(
@@ -106,6 +283,13 @@ fun HomeScreen(
             HeroBudgetCard(budget)
             Spacer(Modifier.height(16.dp))
         }
+
+        state.budget?.cardBills.orEmpty()
+            .filter { it.outstandingMinor > 0L }
+            .forEach { bill ->
+                CardBillCard(bill)
+                Spacer(Modifier.height(16.dp))
+            }
 
         // Both engines walk the whole transaction history. Keyed on the list so they run when
         // the data changes rather than on every recomposition.
@@ -147,74 +331,20 @@ fun HomeScreen(
         }
         Spacer(Modifier.height(16.dp))
 
-        Row(
+        // The list lives on its own destination now; the dashboard keeps a way in.
+        TextButton(
+            onClick = onSeeAllTransactions,
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("Transactions", style = MaterialTheme.typography.titleMedium)
-            TextButton(onClick = onRefresh) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        Icons.Default.Refresh,
-                        contentDescription = null,
-                        modifier = Modifier.size(16.dp),
-                    )
-                    Spacer(Modifier.width(4.dp))
-                    Text(if (state.syncing) "Syncing…" else "Refresh")
-                }
-            }
-        }
-        Spacer(Modifier.height(8.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilterChip(
-                selected = state.showRecurringOnly,
-                onClick = onToggleRecurring,
-                label = { Text("Recurring only") },
+            Text("See all transactions")
+            Spacer(Modifier.width(6.dp))
+            Icon(
+                Icons.AutoMirrored.Filled.ArrowForward,
+                contentDescription = null,
+                modifier = Modifier.size(18.dp),
             )
-            FilterChip(
-                selected = state.showInternalTransfers,
-                onClick = onToggleInternal,
-                label = { Text("Internal transfers") },
-            )
-        }
-        Spacer(Modifier.height(8.dp))
-
-        val visible = remember(
-            state.transactions,
-            state.showRecurringOnly,
-            state.showInternalTransfers,
-        ) {
-            state.transactions
-                .filter { tx ->
-                    (!state.showRecurringOnly || tx.isRecurring) &&
-                        (state.showInternalTransfers || !tx.isInternalTransfer)
-                }
-                .take(DISPLAY_TRANSACTION_LIMIT)
         }
 
-        if (visible.isEmpty()) {
-            Text(
-                "No transactions match current filters.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-            )
-        } else {
-            if (state.transactions.size > DISPLAY_TRANSACTION_LIMIT) {
-                Text(
-                    "Showing the latest ${visible.size} of ${state.transactions.size} transactions.",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Spacer(Modifier.height(4.dp))
-            }
-            visible.forEachIndexed { index, tx ->
-                TransactionRow(tx, isLast = index == visible.lastIndex)
-            }
-        }
         state.error?.let { error ->
             Spacer(Modifier.height(12.dp))
             Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
@@ -287,17 +417,30 @@ private fun HeroBudgetCard(budget: BudgetSnapshot) {
                     )
                 }
                 Spacer(Modifier.height(12.dp))
-                Text(
-                    "Available to spend",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = Color.White.copy(alpha = 0.85f),
-                )
-                Text(
-                    formatMoney(budget.availableToSpend, "GBP"),
-                    style = MaterialTheme.typography.headlineLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White,
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    SpendingPaceRing(budget)
+                    Spacer(Modifier.width(16.dp))
+                    Column {
+                        Text(
+                            "Available to spend",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = Color.White.copy(alpha = 0.85f),
+                        )
+                        Text(
+                            formatMoney(budget.availableToSpend, "GBP"),
+                            style = MaterialTheme.typography.headlineLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White,
+                        )
+                        paceCaption(budget)?.let { caption ->
+                            Text(
+                                caption,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color.White.copy(alpha = 0.8f),
+                            )
+                        }
+                    }
+                }
                 Spacer(Modifier.height(12.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
                     HeroStat("Spent today", formatMoney(budget.spentToday, "GBP"))
@@ -395,41 +538,47 @@ private fun CategoryBreakdownCard(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Spacer(Modifier.height(8.dp))
-            breakdown.forEachIndexed { index, total ->
+            // Label above the bar rather than beside it: the old fixed 120.dp column clipped
+            // "Bills & Utilities" and "Entertainment" on narrow screens.
+            breakdown.forEach { total ->
                 val maxAmount = breakdown.firstOrNull()?.amountMinor ?: 1L
                 val fraction = if (maxAmount > 0) total.amountMinor.toFloat() / maxAmount.toFloat() else 0f
-                val barColor = CategoryColors[index % CategoryColors.size]
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        total.category.label,
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.width(120.dp),
-                    )
+                val visual = total.category.visual
+                Column(modifier = Modifier.padding(vertical = 5.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            visual.icon,
+                            contentDescription = null,
+                            tint = visual.color,
+                            modifier = Modifier.size(16.dp),
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            total.category.label,
+                            style = MaterialTheme.typography.bodyMedium,
+                            maxLines = 1,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Text(
+                            "${total.count}×",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            formatMoney(total.amountMinor, total.currency),
+                            style = MaterialTheme.typography.bodyMedium.copy(fontFeatureSettings = "tnum"),
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    }
+                    Spacer(Modifier.height(4.dp))
                     LinearProgressIndicator(
                         progress = { fraction },
                         modifier = Modifier
-                            .weight(1f)
+                            .fillMaxWidth()
                             .height(8.dp),
-                        color = barColor,
+                        color = visual.color,
                         trackColor = MaterialTheme.colorScheme.surfaceVariant,
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Text(
-                        formatMoney(total.amountMinor, total.currency),
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.width(80.dp),
-                        textAlign = TextAlign.End,
-                    )
-                    Text(
-                        "${total.count}×",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
@@ -629,97 +778,6 @@ private fun AccountCard(account: AccountEntity) {
                 )
             }
         }
-    }
-}
-
-@Composable
-private fun TransactionRow(tx: TransactionEntity, isLast: Boolean = false) {
-    val amount = formatMoney(tx.amountMinor, tx.currency)
-    val category = CategoryEngine.classify(tx)
-    val isInternal = tx.isInternalTransfer
-    val isRecurring = tx.isRecurring
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(16.dp, 8.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = if (isInternal) MaterialTheme.colorScheme.surfaceContainerHighest else MaterialTheme.colorScheme.surface
-        ),
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(12.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    Text(
-                        tx.payee.ifBlank { tx.description?.ifBlank { "Unknown" } ?: "Unknown" },
-                        style = MaterialTheme.typography.bodyMedium,
-                        maxLines = 1,
-                        modifier = Modifier.weight(1f),
-                    )
-                    Text(
-                        category.label,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier
-                            .background(MaterialTheme.colorScheme.surfaceVariant, MaterialTheme.shapes.small)
-                            .padding(horizontal = 6.dp, vertical = 2.dp),
-                    )
-                    if (isInternal) {
-                        Text(
-                            "↔ Internal",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier
-                                .background(MaterialTheme.colorScheme.primaryContainer, MaterialTheme.shapes.small)
-                                .padding(horizontal = 6.dp, vertical = 2.dp),
-                        )
-                    }
-                    if (isRecurring) {
-                        Text(
-                            "⟳ Recurring",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.tertiary,
-                            modifier = Modifier
-                                .background(MaterialTheme.colorScheme.tertiaryContainer, MaterialTheme.shapes.small)
-                                .padding(horizontal = 6.dp, vertical = 2.dp),
-                        )
-                    }
-                }
-                Text(
-                    listOf(tx.bookingDate.takeIf { it.isNotBlank() }, tx.description?.takeIf { it.isNotBlank() })
-                        .filterNotNull()
-                        .joinToString(" · "),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
-            Spacer(Modifier.width(12.dp))
-            Text(
-                amount,
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.SemiBold,
-                color = if (tx.amountMinor >= 0) InColor else OutColor,
-                textAlign = TextAlign.End,
-                modifier = Modifier.widthIn(min = 80.dp),
-            )
-        }
-    }
-    if (!isLast) {
-        Divider(
-            modifier = Modifier.padding(horizontal = 16.dp),
-            color = MaterialTheme.colorScheme.outlineVariant,
-        )
     }
 }
 
