@@ -231,6 +231,16 @@ class GoCardlessRepository private constructor(
 
     suspend fun accounts(): List<AccountEntity> = dao.accounts()
 
+    /** Full serialised copy of the local database, for backup. */
+    suspend fun exportJson(): String = BackupExporter.toJson(
+        accounts = dao.accounts(),
+        // Deliberately not transactions(), which joins through the accounts table and would
+        // drop history belonging to an account row that has since gone.
+        transactions = dao.allTransactions(),
+        manualRules = dao.getActiveManualRules(),
+        ignoredRules = secrets.ignoredRules.first(),
+    )
+
     suspend fun transactions(): List<TransactionEntity> = dao.accounts()
         .flatMap { dao.transactionsFor(it.id) }
         .sortedByDescending { it.bookingDate }

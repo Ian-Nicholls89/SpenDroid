@@ -33,7 +33,16 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.SharingStarted
+
+sealed interface ExportStatus {
+    object Idle : ExportStatus
+    object Working : ExportStatus
+    data class Done(val message: String) : ExportStatus
+    data class Failed(val message: String) : ExportStatus
+}
 
 sealed interface UpdateCheckStatus {
     data class Checking(val message: String) : UpdateCheckStatus
@@ -59,6 +68,7 @@ data class RootUiState(
     val showRecurringOnly: Boolean = true,
     val showInternalTransfers: Boolean = false,
     val updateCheckStatus: UpdateCheckStatus = UpdateCheckStatus.Idle,
+    val exportStatus: ExportStatus = ExportStatus.Idle,
     val versionName: String = "",
     val versionCode: Int = 0,
 )
@@ -199,6 +209,27 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
 
     fun toggleInternalTransfers() {
         _state.update { it.copy(showInternalTransfers = !it.showInternalTransfers) }
+    }
+
+    /** Writes a full backup to a location the user picked through the system file picker. */
+    fun exportTo(destination: Uri) {
+        viewModelScope.launch {
+            _state.update { it.copy(exportStatus = ExportStatus.Working) }
+            val status = runCatching {
+                val json = repo.exportJson()
+                withContext(Dispatchers.IO) {
+                    getApplication<Application>().contentResolver
+                        .openOutputStream(destination)
+                        ?.use { out -> out.write(json.toByteArray()) }
+                        ?: error("Could not open the selected file for writing")
+                }
+                json.length
+            }.fold(
+                onSuccess = { ExportStatus.Done("Backup saved (${it / 1024} KB)") },
+                onFailure = { ExportStatus.Failed(it.message ?: it.javaClass.simpleName) },
+            )
+            _state.update { it.copy(exportStatus = status) }
+        }
     }
 
     fun clearData() {

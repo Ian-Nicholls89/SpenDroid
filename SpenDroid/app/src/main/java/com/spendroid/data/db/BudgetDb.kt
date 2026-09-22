@@ -69,6 +69,14 @@ interface BudgetDao {
     @Query("SELECT * FROM transactions WHERE accountId = :accountId ORDER BY bookingDate DESC, transactionId DESC")
     suspend fun transactionsFor(accountId: String): List<TransactionEntity>
 
+    /**
+     * Every stored transaction, including any whose account row no longer exists. Normal
+     * reads go through the accounts table, so those rows are invisible to the app - but they
+     * are still history that cannot be re-fetched, so a backup has to include them.
+     */
+    @Query("SELECT * FROM transactions ORDER BY bookingDate DESC, transactionId DESC")
+    suspend fun allTransactions(): List<TransactionEntity>
+
     @Query("DELETE FROM transactions WHERE accountId = :accountId")
     suspend fun deleteTransactions(accountId: String)
 

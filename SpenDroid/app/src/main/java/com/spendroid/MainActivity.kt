@@ -189,6 +189,7 @@ class MainActivity : ComponentActivity() {
                                     AppScreen.Settings -> SettingsScreen(
                                         state = state,
                                         onSave = viewModel::saveSecret,
+                                        onExport = viewModel::exportTo,
                                         onClearData = viewModel::clearData,
                                         onCheckUpdate = viewModel::checkForUpdate,
                                         secretId = viewModel.secretIdValue.collectAsStateWithLifecycle().value,

@@ -1,5 +1,8 @@
 package com.spendroid.ui
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -19,6 +22,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Divider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.Tab
@@ -34,6 +38,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import java.time.LocalDate
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 
@@ -56,6 +61,7 @@ private fun parseNotificationTime(value: String): LocalTime =
 fun SettingsScreen(
     state: RootUiState,
     onSave: (String, String) -> Unit,
+    onExport: (Uri) -> Unit,
     onClearData: () -> Unit,
     onCheckUpdate: () -> Unit,
     secretId: String,
@@ -119,6 +125,8 @@ fun SettingsScreen(
                 )
 
                 SettingsTab.DATA -> DataSection(
+                    state = state,
+                    onExport = onExport,
                     onClearData = onClearData,
                 )
             }
@@ -330,10 +338,48 @@ private fun NotificationsSection(
 
 @Composable
 private fun DataSection(
+    state: RootUiState,
+    onExport: (Uri) -> Unit,
     onClearData: () -> Unit,
 ) {
     Text("Data management", style = MaterialTheme.typography.titleMedium)
     Spacer(Modifier.height(8.dp))
+
+    val exportPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json"),
+    ) { uri -> uri?.let(onExport) }
+
+    OutlinedButton(
+        onClick = {
+            val stamp = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd"))
+            exportPicker.launch("spendroid-backup-$stamp.json")
+        },
+        enabled = state.exportStatus !is ExportStatus.Working,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Text(if (state.exportStatus is ExportStatus.Working) "Exporting…" else "Export backup")
+    }
+    Text(
+        "Transactions older than 90 days can't be re-downloaded from your bank, so this file " +
+            "is the only copy. Keep it somewhere safe.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    when (val status = state.exportStatus) {
+        is ExportStatus.Done -> Text(
+            status.message,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.primary,
+        )
+        is ExportStatus.Failed -> Text(
+            "Export failed: ${status.message}",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.error,
+        )
+        else -> {}
+    }
+
+    Spacer(Modifier.height(16.dp))
     Button(
         onClick = onClearData,
         colors = ButtonDefaults.buttonColors(

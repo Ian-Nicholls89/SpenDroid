@@ -53,6 +53,6 @@ class DailySyncWorker(
 
     companion object {
         private const val MAX_ATTEMPTS = 4
-        private val MIN_RESYNC_INTERVAL_MS = TimeUnit.HOURS.toMillis(20)
+        private val MIN_RESYNC_INTERVAL_MS = TimeUnit.HOURS.toMillis(6)
     }
 }
