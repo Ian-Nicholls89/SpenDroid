@@ -137,7 +137,7 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
                     }
                 } ?: _state.update { it.copy(updateCheckStatus = UpdateCheckStatus.Error("Unable to check for updates")) }
             } catch (e: Exception) {
-                _state.update { it.copy(updateCheckStatus = UpdateCheckStatus.Error("Error: ${e.message}")) }
+                _state.update { it.copy(updateCheckStatus = UpdateCheckStatus.Error("Error: ${e.message ?: e.class.simpleName}")) }
             }
         }
     }
