@@ -220,6 +220,8 @@ object BudgetEngine {
                 .filter { it != baseCurrency }
                 .toSet(),
             creditCardAccountIds = creditCardAccountIds,
+            confirmedSettlementKeys = cardAnalysis.confirmedSettlementKeys,
+            cardPayerKeys = cardAnalysis.cardPaymentKeys,
             budgetModel = budgetModel,
             potAccountId = potAccount?.id,
             openingBalanceMinor = openingBalance,

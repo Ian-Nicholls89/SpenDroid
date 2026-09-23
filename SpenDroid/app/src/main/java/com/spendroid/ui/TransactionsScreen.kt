@@ -82,13 +82,30 @@ fun TransactionsScreen(
         state.showInternalTransfers,
         state.transactionQuery,
         state.accountFilter,
+        state.budget?.confirmedSettlementKeys,
     ) {
         val query = state.transactionQuery.tidyPayee().lowercase()
+        val settlements = state.budget?.confirmedSettlementKeys.orEmpty()
+        val payers = state.budget?.cardPayerKeys.orEmpty()
         state.transactions
             .filter { tx ->
-                (state.accountFilter == null || tx.accountId == state.accountFilter) &&
+                val id = "${tx.accountId}|${tx.transactionId}"
+                // Paying a card posts a credit on the card and a debit on the account that
+                // paid. They are one event, and the debit is the half that matters: it is
+                // the money actually leaving. The credit only restates it, in green, in a
+                // list of spending - so it is dropped unless you are looking at that card's
+                // own transactions, where its ledger has to balance.
+                val duplicateHalf = id in settlements &&
+                    state.accountFilter != tx.accountId &&
+                    !state.showInternalTransfers
+                // Pairing may also have flagged the paying debit as a transfer. By shape it
+                // is one; by consequence it is spending, so it stays visible.
+                val realOutflow = id in payers
+
+                !duplicateHalf &&
+                    (state.accountFilter == null || tx.accountId == state.accountFilter) &&
                     (!state.showRecurringOnly || tx.isRecurring) &&
-                    (state.showInternalTransfers || !tx.isInternalTransfer) &&
+                    (state.showInternalTransfers || !tx.isInternalTransfer || realOutflow) &&
                     (
                         query.isEmpty() ||
                             tx.payee.tidyPayee().lowercase().contains(query) ||

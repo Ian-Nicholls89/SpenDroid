@@ -93,6 +93,12 @@ object CreditCardEngine {
          * are positive amounts, so without naming them they read as salary.
          */
         val cardSettlementKeys: Set<String>,
+        /**
+         * The subset of [cardSettlementKeys] whose other leg was actually found on a real
+         * account. Only these are safe to hide: a settlement identified by guesswork might
+         * be something else entirely, and hiding data is the costlier mistake.
+         */
+        val confirmedSettlementKeys: Set<String>,
     )
 
     fun analyze(
@@ -101,12 +107,15 @@ object CreditCardEngine {
         today: LocalDate = LocalDate.now(),
     ): CardAnalysis {
         val cards = accounts.filter { it.accountType == AccountType.CREDIT_CARD }
-        if (cards.isEmpty()) return CardAnalysis(emptyList(), emptySet(), emptySet())
+        if (cards.isEmpty()) {
+            return CardAnalysis(emptyList(), emptySet(), emptySet(), emptySet())
+        }
 
         val byAccount = transactions.groupBy { it.accountId }
         val bills = mutableListOf<CardBill>()
         val paymentKeys = mutableSetOf<String>()
         val settlementKeys = mutableSetOf<String>()
+        val confirmedSettlements = mutableSetOf<String>()
 
         for (card in cards) {
             val cardTxs = byAccount[card.id].orEmpty().filter { !it.isPending }
@@ -130,8 +139,12 @@ object CreditCardEngine {
 
             val payments = identifyPayments(cardTxs, payerTxs)
             payments.forEach { (cardTx, payerTx) ->
-                payerTx?.let { paymentKeys.add("${it.accountId}|${it.transactionId}") }
-                settlementKeys.add("${cardTx.accountId}|${cardTx.transactionId}")
+                val settlement = "${cardTx.accountId}|${cardTx.transactionId}"
+                settlementKeys.add(settlement)
+                payerTx?.let {
+                    paymentKeys.add("${it.accountId}|${it.transactionId}")
+                    confirmedSettlements.add(settlement)
+                }
             }
             val paymentIds = payments.mapTo(mutableSetOf()) { (cardTx, _) -> cardTx.transactionId }
 
@@ -186,7 +199,7 @@ object CreditCardEngine {
             )
         }
 
-        return CardAnalysis(bills, paymentKeys, settlementKeys)
+        return CardAnalysis(bills, paymentKeys, settlementKeys, confirmedSettlements)
     }
 
     /** A candidate statement day and how well it reproduced the bills actually paid. */

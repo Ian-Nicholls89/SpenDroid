@@ -81,6 +81,13 @@ data class BudgetSnapshot(
     val cardPaymentKeys: Set<String> = emptySet(),
     /** Which accounts are credit cards, where a positive amount is never earnings. */
     val creditCardAccountIds: Set<String> = emptySet(),
+    /**
+     * Credits on a card that settle a bill and whose paying debit was found. The same event
+     * is already on the list as that debit, so these are the duplicate half.
+     */
+    val confirmedSettlementKeys: Set<String> = emptySet(),
+    /** The debits that pay a card: real money leaving, however transfer-shaped they look. */
+    val cardPayerKeys: Set<String> = emptySet(),
     /** The currency every figure here is expressed in. */
     val baseCurrency: String = "GBP",
     /**
