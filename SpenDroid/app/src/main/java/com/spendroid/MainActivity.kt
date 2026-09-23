@@ -26,11 +26,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountBalance
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ReceiptLong
+import androidx.compose.material.icons.automirrored.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.Divider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
@@ -62,6 +61,7 @@ import com.spendroid.ui.OnboardingScreen
 import com.spendroid.ui.RecurringRulesScreen
 import com.spendroid.ui.RootViewModel
 import com.spendroid.ui.SettingsScreen
+import com.spendroid.ui.TransactionsScreen
 import com.spendroid.ui.theme.BudgetTheme
 
 enum class AppScreen(
@@ -72,7 +72,7 @@ enum class AppScreen(
     val icon: ImageVector,
 ) {
     Home("home", "Dashboard", "Home", Icons.Filled.Home),
-    Activity("activity", "Activity", "Activity", Icons.Filled.ReceiptLong),
+    Activity("activity", "Activity", "Activity", Icons.AutoMirrored.Filled.ReceiptLong),
     Accounts("accounts", "Accounts", "Accounts", Icons.Filled.AccountBalance),
     Rules("rules", "Recurring rules", "Rules", Icons.Filled.Repeat),
     Settings("settings", "Settings", "Settings", Icons.Filled.Settings);

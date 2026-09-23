@@ -781,7 +781,9 @@ private fun AccountCard(account: AccountEntity) {
     }
 }
 
-private val syncFormatter = DateTimeFormatter.ofPattern("d MMM, HH:mm", Locale.getDefault())
-
+// Resolved per call, not once into a static: the locale captured at class-init time would
+// survive a language change and keep formatting in the old one.
 private fun syncTime(epochMillis: Long): String =
-    Instant.ofEpochMilli(epochMillis).atZone(ZoneId.systemDefault()).format(syncFormatter)
+    Instant.ofEpochMilli(epochMillis)
+        .atZone(ZoneId.systemDefault())
+        .format(DateTimeFormatter.ofPattern("d MMM, HH:mm", Locale.getDefault()))
