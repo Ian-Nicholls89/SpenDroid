@@ -51,8 +51,14 @@ fun InsightsScreen(
     onSetBudgetGoal: (Category, Long) -> Unit,
 ) {
     val cardPaymentKeys = state.budget?.cardPaymentKeys.orEmpty()
+    val cardAccountIds = state.budget?.creditCardAccountIds.orEmpty()
     val breakdown = remember(state.transactions, state.categoryRules, cardPaymentKeys) {
-        CategoryEngine.spendingBreakdown(state.transactions, state.categoryRules, cardPaymentKeys)
+        CategoryEngine.spendingBreakdown(
+            state.transactions,
+            state.categoryRules,
+            cardPaymentKeys,
+            cardAccountIds,
+        )
     }
     val trends = remember(state.transactions) { TrendsEngine.analyze(state.transactions) }
 

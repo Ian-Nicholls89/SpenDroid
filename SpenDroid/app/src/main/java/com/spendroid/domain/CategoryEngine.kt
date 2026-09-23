@@ -159,6 +159,7 @@ object CategoryEngine {
         tx: TransactionEntity,
         userRules: List<CategoryRuleEntity> = emptyList(),
         cardPaymentKeys: Set<String> = emptySet(),
+        creditCardAccountIds: Set<String> = emptySet(),
     ): Category {
         tx.categoryOverride
             ?.let { name -> runCatching { Category.valueOf(name) }.getOrNull() }
@@ -179,7 +180,11 @@ object CategoryEngine {
             ?.let { rule -> runCatching { Category.valueOf(rule.category) }.getOrNull() }
             ?.let { return it }
 
-        if (tx.amountMinor >= 0) return Category.SALARY  // positive = income → salary
+        // A positive amount is income - except on a credit card, where it is a refund or a
+        // bill settlement and never earnings. Settlements are named above, so what is left
+        // is a refund, and a refund is best described by whoever sent it: falling through to
+        // the keyword list files an Amazon refund under the same heading as an Amazon order.
+        if (tx.amountMinor >= 0 && tx.accountId !in creditCardAccountIds) return Category.SALARY
 
         for ((category, patterns) in compiledRules) {
             if (category == Category.SALARY) continue // handled above
@@ -194,9 +199,12 @@ object CategoryEngine {
         transactions: List<TransactionEntity>,
         userRules: List<CategoryRuleEntity> = emptyList(),
         cardPaymentKeys: Set<String> = emptySet(),
+        creditCardAccountIds: Set<String> = emptySet(),
     ): List<CategoryTotal> {
         val debits = transactions.filter { it.amountMinor < 0 && !it.isPending }
-        val grouped = debits.groupBy { classify(it, userRules, cardPaymentKeys) }
+        val grouped = debits.groupBy {
+            classify(it, userRules, cardPaymentKeys, creditCardAccountIds)
+        }
         return grouped.map { (cat, txs) ->
             val dominant = txs.maxByOrNull { -it.amountMinor }?.currency ?: "GBP"
             CategoryTotal(

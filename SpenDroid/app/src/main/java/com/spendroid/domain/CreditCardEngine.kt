@@ -112,12 +112,21 @@ object CreditCardEngine {
             val cardTxs = byAccount[card.id].orEmpty().filter { !it.isPending }
             if (cardTxs.isEmpty() && card.balanceMinor == null) continue
 
-            // Credits on a card are payments or refunds. Pairing against the paying account
-            // tells them apart; without a link, fall back to the largest credit per month,
-            // since a paid-in-full bill dwarfs a typical refund.
-            val payerTxs = payerAccountFor(card, accounts)
-                ?.let { byAccount[it.id].orEmpty().filter { tx -> !tx.isPending } }
-                .orEmpty()
+            // Credits on a card are payments or refunds, and telling them apart is the
+            // whole job: a refund counted as a bill corrupts the cycle fit and reads as
+            // money received. The reliable signal is the other leg - the debit that left a
+            // real account - so every account that is not a card is searched, with the
+            // linked one first so it wins a tie. Requiring the link meant an unlinked card
+            // fell straight through to guessing.
+            val linkedPayer = payerAccountFor(card, accounts)
+            val payerTxs = (
+                listOfNotNull(linkedPayer) +
+                    accounts.filter {
+                        it.accountType != AccountType.CREDIT_CARD && it.id != linkedPayer?.id
+                    }
+                )
+                .flatMap { byAccount[it.id].orEmpty() }
+                .filter { tx -> !tx.isPending }
 
             val payments = identifyPayments(cardTxs, payerTxs)
             payments.forEach { (cardTx, payerTx) ->
@@ -330,14 +339,55 @@ object CreditCardEngine {
             }
         }
 
-        // With a paying account linked, matched credits are the payments. Without one, treat
-        // the largest credit in each month as the bill payment.
+        // A matched credit has its other leg on a real account, which settles it.
         if (matched.isNotEmpty()) return matched
+
+        // Nothing matched, so the best available guess is the largest credit each month -
+        // a bill paid in full dwarfs a typical refund. But a refund reverses a charge, and
+        // that leaves a trace: an earlier debit on this card for the same amount. Anything
+        // carrying that trace is dropped rather than guessed into a bill.
         return credits
+            .filterNot { looksLikeRefund(it, cardTxs) }
             .groupBy { it.bookingDate.take(7) }
             .values
             .mapNotNull { monthCredits -> monthCredits.maxByOrNull { it.amountMinor } }
             .map { it to null }
+    }
+
+    /**
+     * Whether this credit looks like the reversal of a charge rather than a bill payment.
+     *
+     * A refund returns a specific purchase, so somewhere earlier on the same card there is a
+     * debit of exactly that amount - and crucially it carries the same name, because the
+     * money is coming back from the merchant it went to. A bill payment carries the bank's
+     * own wording instead.
+     *
+     * The amount alone is not enough. A statement settled in full equals the sum of its
+     * charges, and in a quiet month that is a single charge, so matching on amount by itself
+     * reads a perfectly ordinary bill payment as a refund.
+     */
+    private fun looksLikeRefund(
+        credit: TransactionEntity,
+        cardTxs: List<TransactionEntity>,
+    ): Boolean {
+        val creditDate = RecurringAnalyzer.parseBookingDate(credit.bookingDate) ?: return false
+        return cardTxs.any { tx ->
+            if (tx.amountMinor != -credit.amountMinor) return@any false
+            if (!sameMerchant(credit.payee, tx.payee)) return@any false
+            val date = RecurringAnalyzer.parseBookingDate(tx.bookingDate) ?: return@any false
+            !date.isAfter(creditDate) && date.isAfter(creditDate.minusDays(REFUND_WINDOW_DAYS))
+        }
+    }
+
+    /**
+     * Whether two payees name the same merchant. Containment either way, so a bank's
+     * "CURRYS PC WORLD REFUND" still matches the "CURRYS PC WORLD" it reverses.
+     */
+    private fun sameMerchant(one: String, other: String): Boolean {
+        val a = one.lowercase().trim().replace(Regex("\\s+"), " ")
+        val b = other.lowercase().trim().replace(Regex("\\s+"), " ")
+        if (a.isBlank() || b.isBlank()) return false
+        return a == b || a.contains(b) || b.contains(a)
     }
 
     /**
@@ -427,6 +477,9 @@ object CreditCardEngine {
     }
 
     private const val PAYMENT_MATCH_DAYS = 5L
+
+    /** How far back a refund can reasonably be reversing a charge. */
+    private const val REFUND_WINDOW_DAYS = 120L
 
     /** UK cards typically fall due around three weeks after the statement closes. */
     private const val TYPICAL_PAYMENT_TERM_DAYS = 23L

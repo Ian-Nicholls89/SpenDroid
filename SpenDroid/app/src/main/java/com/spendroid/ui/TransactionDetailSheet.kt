@@ -49,9 +49,11 @@ fun TransactionDetailSheet(
     onAlwaysCategorise: (TransactionEntity, Category) -> Unit,
     onMarkTransfer: (TransactionEntity, Boolean) -> Unit,
     cardPaymentKeys: Set<String> = emptySet(),
+    creditCardAccountIds: Set<String> = emptySet(),
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    val current = CategoryEngine.classify(transaction, userRules, cardPaymentKeys)
+    val current =
+        CategoryEngine.classify(transaction, userRules, cardPaymentKeys, creditCardAccountIds)
     val visual = current.visual
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {

@@ -196,6 +196,7 @@ object BudgetEngine {
             // Both sides, so the credit on the card reads as a bill settlement rather
             // than as salary. The filter above deliberately uses the payer side only.
             cardPaymentKeys = cardAnalysis.cardPaymentKeys + cardAnalysis.cardSettlementKeys,
+            creditCardAccountIds = creditCardAccountIds,
             budgetModel = budgetModel,
             potAccountId = potAccount?.id,
             openingBalanceMinor = openingBalance,

@@ -220,6 +220,8 @@ fun TransactionsScreen(
                                 null
                             },
                             cardPaymentKeys = state.budget?.cardPaymentKeys.orEmpty(),
+                            creditCardAccountIds =
+                                state.budget?.creditCardAccountIds.orEmpty(),
                             onClick = { selected = tx },
                         )
                         HorizontalDivider(
@@ -248,6 +250,7 @@ fun TransactionsScreen(
             transaction = tx,
             userRules = state.categoryRules,
             cardPaymentKeys = state.budget?.cardPaymentKeys.orEmpty(),
+            creditCardAccountIds = state.budget?.creditCardAccountIds.orEmpty(),
             onDismiss = { selected = null },
             onOverrideCategory = { t, c -> onOverrideCategory(t, c); selected = null },
             onAlwaysCategorise = { t, c -> onAlwaysCategorise(t, c); selected = null },
@@ -317,9 +320,10 @@ private fun TransactionRow(
     userRules: List<CategoryRuleEntity>,
     accountName: String? = null,
     cardPaymentKeys: Set<String> = emptySet(),
+    creditCardAccountIds: Set<String> = emptySet(),
     onClick: () -> Unit,
 ) {
-    val category = CategoryEngine.classify(tx, userRules, cardPaymentKeys)
+    val category = CategoryEngine.classify(tx, userRules, cardPaymentKeys, creditCardAccountIds)
     val visual = category.visual
     val amount = formatMoney(tx.amountMinor, tx.currency)
     val name = tx.payee.tidyPayee().ifBlank { tx.description?.tidyPayee()?.ifBlank { "Unknown" } ?: "Unknown" }
