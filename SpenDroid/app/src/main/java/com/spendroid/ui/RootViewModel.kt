@@ -380,6 +380,10 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
 
     suspend fun getRecurringCandidates(): List<RecurringAnalyzer.RecurringCandidate> = RecurringAnalyzer.findCandidates(repo.transactions())
 
+    /** Which balances this bank sent, and which is in use. For the account sheet. */
+    fun balanceTypesFor(account: AccountEntity): List<Pair<String, Boolean>> =
+        repo.balanceTypesFor(account)
+
     fun updateAccount(account: AccountEntity) {
         viewModelScope.launch {
             repo.updateAccount(account)

@@ -65,6 +65,7 @@ fun AccountManagementScreen(
     onLink: (InstitutionDto) -> Unit,
     onRelink: (Connection) -> Unit,
     onUpdateAccount: (AccountEntity) -> Unit,
+    balanceTypesFor: (AccountEntity) -> List<Pair<String, Boolean>> = { emptyList() },
 ) {
     var showLinkDialog by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<AccountEntity?>(null) }
@@ -96,6 +97,7 @@ fun AccountManagementScreen(
         AccountDetailSheet(
             account = account,
             allAccounts = state.accounts,
+            balanceTypes = balanceTypesFor(account),
             onDismiss = { editing = null },
             onSave = {
                 onUpdateAccount(it)
@@ -229,6 +231,7 @@ private fun AccountWalletCard(
 private fun AccountDetailSheet(
     account: AccountEntity,
     allAccounts: List<AccountEntity>,
+    balanceTypes: List<Pair<String, Boolean>>,
     onDismiss: () -> Unit,
     onSave: (AccountEntity) -> Unit,
 ) {
@@ -303,6 +306,30 @@ private fun AccountDetailSheet(
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+            }
+
+            if (balanceTypes.isNotEmpty()) {
+                Spacer(Modifier.height(16.dp))
+                Text("Balances your bank sends", style = MaterialTheme.typography.labelLarge)
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    "Which one means \"what you owe\" differs by bank, so this shows the choice " +
+                        "rather than hiding it. The one in use is marked.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(4.dp))
+                balanceTypes.forEach { (label, inUse) ->
+                    Text(
+                        if (inUse) "● $label" else "○ $label",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (inUse) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                    )
+                }
             }
 
             Spacer(Modifier.height(20.dp))

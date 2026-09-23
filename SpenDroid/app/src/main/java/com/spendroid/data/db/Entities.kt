@@ -22,6 +22,12 @@ data class AccountEntity(
     val lastSynced: Long,
     val accountType: AccountType = AccountType.PERSONAL,
     val linkedCreditCardAccountId: String? = null, // For credit cards: which personal account pays this card
+    /**
+     * Every balance the bank returned, as sent. Which one to show depends on the account
+     * type, and the type can change after the sync that fetched them - keeping the payload
+     * means the choice can be redone immediately instead of waiting for the next sync.
+     */
+    val rawBalancesJson: String? = null,
 )
 
 @Entity(

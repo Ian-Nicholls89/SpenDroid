@@ -107,8 +107,44 @@ class GoCardlessRepository private constructor(
         secrets.saveConnections(connections)
     }
 
+    /**
+     * Saves an edited account, re-choosing its balance when the type changed.
+     *
+     * Which balance to show depends on the type, and the pick was only ever made during a
+     * sync - so switching an account to Credit card left it showing the figure chosen while
+     * it was still a current account, until the next sync came round.
+     */
     suspend fun updateAccount(account: AccountEntity) {
-        dao.updateAccount(account)
+        val previous = dao.accounts().firstOrNull { it.id == account.id }
+        val repicked = if (previous != null && previous.accountType != account.accountType) {
+            account.rawBalancesJson
+                ?.let { runCatching { GSON.fromJson(it, BalancesDto::class.java) }.getOrNull() }
+                ?.let { selectBalance(it, account.accountType) }
+                ?.let { (minor, currency) -> account.copy(balanceMinor = minor, currency = currency) }
+                ?: account
+        } else {
+            account
+        }
+        dao.updateAccount(repicked)
+    }
+
+    /** The balance types this bank sent, and which one is in use, for the account sheet. */
+    fun balanceTypesFor(account: AccountEntity): List<Pair<String, Boolean>> {
+        val parsed = account.rawBalancesJson
+            ?.let { runCatching { GSON.fromJson(it, BalancesDto::class.java) }.getOrNull() }
+            ?: return emptyList()
+        val chosen = selectBalance(parsed, account.accountType)?.first
+        return parsed.balances.mapNotNull { balance ->
+            val type = balance.balanceType ?: return@mapNotNull null
+            val minor = balance.balanceAmount
+                ?.let { runCatching { BigDecimal(it.amount).toMinorLong() }.getOrNull() }
+            val label = buildString {
+                append(type)
+                minor?.let { append(" · ").append(it / 100).append(".").append("%02d".format(kotlin.math.abs(it % 100))) }
+                if (balance.creditLimitIncluded == true) append(" (includes limit)")
+            }
+            label to (minor != null && minor == chosen)
+        }
     }
 
     suspend fun clearAllData() {
@@ -210,6 +246,7 @@ class GoCardlessRepository private constructor(
             lastSynced = System.currentTimeMillis(),
             accountType = existing?.accountType ?: accountType,
             linkedCreditCardAccountId = existing?.linkedCreditCardAccountId,
+            rawBalancesJson = GSON.toJson(balances),
         )
         dao.upsertAccount(entity)
 

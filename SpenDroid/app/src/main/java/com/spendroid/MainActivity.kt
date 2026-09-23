@@ -183,6 +183,7 @@ class MainActivity : ComponentActivity() {
                                     onLink = viewModel::link,
                                     onRelink = viewModel::relink,
                                     onUpdateAccount = viewModel::updateAccount,
+                                    balanceTypesFor = viewModel::balanceTypesFor,
                                 )
 
                                 AppScreen.Rules -> RecurringRulesScreen(
