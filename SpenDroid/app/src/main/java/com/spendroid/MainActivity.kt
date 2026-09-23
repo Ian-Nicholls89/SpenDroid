@@ -128,7 +128,12 @@ class MainActivity : ComponentActivity() {
                                         selected = destination == screen,
                                         onClick = { navigate(destination) },
                                         icon = {
-                                            Icon(destination.icon, contentDescription = null)
+                                            // Label is hidden unless selected, so the icon
+                                            // has to carry the name for a screen reader.
+                                            Icon(
+                                                destination.icon,
+                                                contentDescription = destination.title,
+                                            )
                                         },
                                         label = { Text(destination.shortTitle) },
                                         alwaysShowLabel = false,
@@ -141,6 +146,7 @@ class MainActivity : ComponentActivity() {
                                 ExtendedFloatingActionButton(
                                     onClick = { showLinkDialog = true },
                                     icon = { Icon(Icons.Default.Add, contentDescription = null) },
+                                    // Text already names the action; the icon would repeat it.
                                     text = { Text("Link bank") },
                                 )
                             }

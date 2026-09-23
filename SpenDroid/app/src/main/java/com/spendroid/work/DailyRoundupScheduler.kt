@@ -24,6 +24,7 @@ object DailyRoundupScheduler {
 
     private const val UNIQUE_NAME = "daily_roundup"
     private const val SYNC_UNIQUE_NAME = "daily_sync"
+    private const val ALERTS_UNIQUE_NAME = "daily_alerts"
     private const val REAUTH_UNIQUE_NAME = "reauth_reminders"
     private const val UPDATE_CHECK_UNIQUE_NAME = "update_checker"
 
@@ -63,6 +64,12 @@ object DailyRoundupScheduler {
                 .build()
             WorkManager.getInstance(context.applicationContext)
                 .enqueueUniquePeriodicWork(UNIQUE_NAME, ExistingPeriodicWorkPolicy.UPDATE, roundupRequest)
+
+            val alertsRequest = PeriodicWorkRequestBuilder<AlertsWorker>(1, TimeUnit.DAYS)
+                .setInitialDelay(initialDelayMillis(notificationTimeLocal), TimeUnit.MILLISECONDS)
+                .build()
+            WorkManager.getInstance(context.applicationContext)
+                .enqueueUniquePeriodicWork(ALERTS_UNIQUE_NAME, ExistingPeriodicWorkPolicy.UPDATE, alertsRequest)
 
             val reauthRequest = PeriodicWorkRequestBuilder<ReauthNotificationWorker>(1, TimeUnit.DAYS)
                 .setInitialDelay(initialDelayMillis(notificationTimeLocal), TimeUnit.MILLISECONDS)

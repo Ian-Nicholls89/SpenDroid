@@ -1,5 +1,6 @@
 package com.spendroid.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -10,6 +11,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -59,10 +62,32 @@ fun OnboardingScreen(
         )
         Spacer(Modifier.height(8.dp))
         Text(
-            "Enter your GoCardless Bank Account Data user secret once, then link each bank.",
+            "SpenDroid reads your transactions through GoCardless, the open banking service " +
+                "your bank already supports. Nothing leaves your phone.",
             style = MaterialTheme.typography.bodyMedium,
         )
-        Spacer(Modifier.height(16.dp))
+
+        Spacer(Modifier.height(20.dp))
+        OnboardingStep(
+            number = "1",
+            title = "Create a free GoCardless account",
+            detail = "Sign up at $helpUrl, then open Developers → User secrets and create one. " +
+                "There is no charge for personal use.",
+        )
+        OnboardingStep(
+            number = "2",
+            title = "Paste the two secrets below",
+            detail = "They are stored only on this phone and are never sent anywhere except " +
+                "GoCardless itself.",
+        )
+        OnboardingStep(
+            number = "3",
+            title = "Approve each bank",
+            detail = "Your bank grants access for 90 days at a time. SpenDroid reminds you " +
+                "before it lapses, and keeps everything it has already downloaded.",
+        )
+
+        Spacer(Modifier.height(20.dp))
         OutlinedTextField(
             value = secretId,
             onValueChange = { secretId = it },
@@ -174,6 +199,37 @@ private fun InstitutionRow(
             Button(onClick = onLink, enabled = enabled) {
                 Text("Link")
             }
+        }
+    }
+}
+@Composable
+private fun OnboardingStep(number: String, title: String, detail: String) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 14.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .size(26.dp)
+                .background(MaterialTheme.colorScheme.primaryContainer, CircleShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                number,
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onPrimaryContainer,
+            )
+        }
+        Spacer(Modifier.width(12.dp))
+        Column {
+            Text(title, style = MaterialTheme.typography.titleSmall)
+            Text(
+                detail,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }

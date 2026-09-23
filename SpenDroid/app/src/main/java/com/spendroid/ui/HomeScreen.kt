@@ -39,6 +39,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
@@ -119,7 +121,14 @@ private fun SpendingPaceRing(budget: BudgetSnapshot) {
     val elapsed = cycleElapsedFraction(budget)
     if (used == null) return
 
-    Box(contentAlignment = Alignment.Center, modifier = Modifier.size(78.dp)) {
+    val spoken = paceCaption(budget)
+        ?: "${(used * 100).toInt()} percent of the budget used"
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = Modifier
+            .size(78.dp)
+            .semantics(mergeDescendants = true) { contentDescription = spoken },
+    ) {
         Canvas(modifier = Modifier.size(78.dp)) {
             val stroke = 9.dp.toPx()
             val inset = stroke / 2f
@@ -179,7 +188,14 @@ private fun SpendingPaceRing(budget: BudgetSnapshot) {
  */
 @Composable
 private fun CardBillCard(bill: CreditCardEngine.CardBill) {
-    Card(modifier = Modifier.fillMaxWidth()) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .semantics(mergeDescendants = true) {
+                contentDescription = "${bill.cardLabel}, estimated bill " +
+                    formatMoney(bill.outstandingMinor, bill.currency)
+            },
+    ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
@@ -601,7 +617,8 @@ private fun CategoryBreakdownCard(
                 val fraction = if (maxAmount > 0) total.amountMinor.toFloat() / maxAmount.toFloat() else 0f
                 val visual = total.category.visual
                 val goal = goalFor[total.category.name]?.limitMinor
-                val overBudget = goal != null && total.amountMinor > goal
+                val exceededBy = goal?.let { (total.amountMinor - it).takeIf { over -> over > 0L } }
+                val overBudget = exceededBy != null
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -657,9 +674,9 @@ private fun CategoryBreakdownCard(
                         color = if (overBudget) OutColor else visual.color,
                         trackColor = MaterialTheme.colorScheme.surfaceVariant,
                     )
-                    if (overBudget && goal != null) {
+                    exceededBy?.let { over ->
                         Text(
-                            "${formatMoney(total.amountMinor - goal, total.currency)} over",
+                            "${formatMoney(over, total.currency)} over",
                             style = MaterialTheme.typography.labelSmall,
                             color = OutColor,
                         )
