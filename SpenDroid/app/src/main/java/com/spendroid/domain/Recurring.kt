@@ -81,6 +81,13 @@ data class BudgetSnapshot(
     val cardPaymentKeys: Set<String> = emptySet(),
     /** Which accounts are credit cards, where a positive amount is never earnings. */
     val creditCardAccountIds: Set<String> = emptySet(),
+    /** The currency every figure here is expressed in. */
+    val baseCurrency: String = "GBP",
+    /**
+     * Currencies seen on spending that could not be expressed in [baseCurrency], and so were
+     * left out of the totals. Non-empty means the figures are short by a known amount.
+     */
+    val unconvertedCurrencies: Set<String> = emptySet(),
     /** Which model produced [availableToSpend]. */
     val budgetModel: BudgetModel = BudgetModel.FRESH_START,
     /** The account the main income is paid into, and whose balance forms the pot. */

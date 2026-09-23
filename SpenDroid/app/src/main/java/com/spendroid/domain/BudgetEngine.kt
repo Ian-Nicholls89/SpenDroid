@@ -39,6 +39,12 @@ object BudgetEngine {
 
         val cardAnalysis = CreditCardEngine.analyze(transactions, accounts, referenceTime.toLocalDate())
 
+        // Whatever most accounts are denominated in; everything on screen is shown in it.
+        val baseCurrency = accounts.groupingBy { it.currency }.eachCount()
+            .maxByOrNull { it.value }?.key
+            ?: transactions.firstOrNull()?.currency
+            ?: "GBP"
+
         // Card transactions are excluded because the bill, not the itemised spend, is what
         // leaves the current account - the bill is added to upcomingFixed below. The card
         // payment itself is an internal transfer by shape, but it is the real cash outflow
@@ -49,7 +55,11 @@ object BudgetEngine {
             (!tx.isInternalTransfer || isCardPayment) &&
             tx.bookingDate.isNotBlank() &&
             tx.amountMinor != 0L &&
-            !creditCardAccountIds.contains(tx.accountId)
+            !creditCardAccountIds.contains(tx.accountId) &&
+            // A foreign amount is not a sterling one. Adding 29.85 dollars to a pound total
+            // as though the minor units were pence is simply wrong, and wrong quietly - so
+            // it is left out and reported instead of being folded in.
+            tx.currency == baseCurrency
         }
 
         val booked = relevantTransactions.filter { !it.isPending }
@@ -201,6 +211,14 @@ object BudgetEngine {
             // Both sides, so the credit on the card reads as a bill settlement rather
             // than as salary. The filter above deliberately uses the payer side only.
             cardPaymentKeys = cardAnalysis.cardPaymentKeys + cardAnalysis.cardSettlementKeys,
+            baseCurrency = baseCurrency,
+            unconvertedCurrencies = transactions
+                .asSequence()
+                .filter { !it.isPending && !it.isInternalTransfer && it.amountMinor != 0L }
+                .filter { it.accountId !in creditCardAccountIds }
+                .map { it.currency }
+                .filter { it != baseCurrency }
+                .toSet(),
             creditCardAccountIds = creditCardAccountIds,
             budgetModel = budgetModel,
             potAccountId = potAccount?.id,

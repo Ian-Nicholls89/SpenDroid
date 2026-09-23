@@ -383,6 +383,45 @@ private fun NetPositionCard(accounts: List<AccountEntity>) {
  * biller, and it will be somewhere in the couple of days around the closure. Saying so is
  * more useful than a confident date that turns out wrong.
  */
+/**
+ * Says so when spending has been left out rather than converted.
+ *
+ * The totals are short by a known amount, and saying nothing would make them look complete.
+ */
+@Composable
+private fun ForeignCurrencyBanner(currencies: Set<String>) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+        ),
+    ) {
+        Row(modifier = Modifier.padding(14.dp), verticalAlignment = Alignment.Top) {
+            Icon(
+                Icons.Filled.Info,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onTertiaryContainer,
+                modifier = Modifier.size(20.dp),
+            )
+            Spacer(Modifier.width(12.dp))
+            Column {
+                Text(
+                    "Spending in ${currencies.sorted().joinToString(", ")} is not counted",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onTertiaryContainer,
+                )
+                Text(
+                    "There is no exchange rate to convert it with, so it is left out rather " +
+                        "than added as though it were pounds. The figures below are short by " +
+                        "that much.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onTertiaryContainer,
+                )
+            }
+        }
+    }
+}
+
 @Composable
 private fun BankHolidayBanner(holidayName: String) {
     Card(
@@ -443,6 +482,10 @@ fun HomeScreen(
     ) {
         state.bankHolidayToday?.let { name ->
             BankHolidayBanner(name)
+            Spacer(Modifier.height(16.dp))
+        }
+        state.budget?.unconvertedCurrencies?.takeIf { it.isNotEmpty() }?.let { currencies ->
+            ForeignCurrencyBanner(currencies)
             Spacer(Modifier.height(16.dp))
         }
         if (state.reauthNeeded.isNotEmpty()) {

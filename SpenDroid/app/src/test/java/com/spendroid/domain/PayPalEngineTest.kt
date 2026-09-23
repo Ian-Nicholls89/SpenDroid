@@ -308,4 +308,57 @@ class PayPalEngineTest {
         assertFalse(bankLeg.isInternalTransfer)
         assertEquals(-2499L, result.filter { !it.isInternalTransfer }.sumOf { it.amountMinor })
     }
+
+    /**
+     * A purchase billed in dollars. No amount can match, because PayPal reports what the
+     * merchant charged and the bank reports what it converted that into - which is also why
+     * no exchange rate is needed: the bank already did the conversion, and its leg is the
+     * one kept, so the sterling figure is exact rather than estimated.
+     */
+    @Test
+    fun `a foreign purchase is paired without any exchange rate`() {
+        val transactions = listOf(
+            tx("pp", "2026-09-12", -2985, "Easynews Holdings, Inc").copy(currency = "USD"),
+            tx("bank", "2026-09-15", -2231, "PAYPAL *EASYNEWS"),
+        )
+
+        val result = PayPalEngine.reconcile(transactions, accounts)
+
+        val bankLeg = result.first { it.accountId == "bank" }
+        assertEquals("Easynews Holdings, Inc", bankLeg.payee)
+        assertEquals(-2231L, bankLeg.amountMinor)
+        assertEquals("GBP", bankLeg.currency)
+        assertTrue(result.on("pp", "Easynews").isInternalTransfer)
+
+        // Counted once, in sterling, at the rate actually charged.
+        assertEquals(-2231L, result.filter { !it.isInternalTransfer }.sumOf { it.amountMinor })
+    }
+
+    /** An implausible ratio is a coincidence, not a conversion. */
+    @Test
+    fun `a foreign candidate an order of magnitude away is not paired`() {
+        val transactions = listOf(
+            tx("pp", "2026-09-12", -29850, "Easynews Holdings, Inc").copy(currency = "USD"),
+            tx("bank", "2026-09-15", -2231, "PAYPAL *SOMETHING"),
+        )
+
+        val result = PayPalEngine.reconcile(transactions, accounts)
+
+        assertEquals("PAYPAL *SOMETHING", result.first { it.accountId == "bank" }.payee)
+        assertFalse(result.on("pp", "Easynews").isInternalTransfer)
+    }
+
+    /** Two foreign purchases could each explain the debit, so neither is chosen. */
+    @Test
+    fun `an ambiguous foreign match is declined`() {
+        val transactions = listOf(
+            tx("pp", "2026-09-12", -2985, "Easynews Holdings, Inc").copy(currency = "USD"),
+            tx("pp", "2026-09-13", -2900, "Backblaze").copy(currency = "USD"),
+            tx("bank", "2026-09-15", -2231, "PAYPAL *SOMETHING"),
+        )
+
+        val result = PayPalEngine.reconcile(transactions, accounts)
+
+        assertEquals("PAYPAL *SOMETHING", result.first { it.accountId == "bank" }.payee)
+    }
 }

@@ -43,6 +43,14 @@ object PayPalEngine {
     private const val MAX_LEAD_DAYS = 2L
 
     /**
+     * How far a converted amount may sit from the amount charged. Wide enough for any real
+     * currency against sterling, narrow enough that a coincidence ten times the size cannot
+     * pass for one.
+     */
+    private const val MIN_PLAUSIBLE_RATE = 0.4
+    private const val MAX_PLAUSIBLE_RATE = 2.5
+
+    /**
      * Returns [transactions] with PayPal payments named after their merchant and the duplicate
      * legs marked as internal transfers, which is how everything downstream already knows to
      * leave a row out of spending.
@@ -103,6 +111,18 @@ object PayPalEngine {
                 consumed.add(key(topUp.tx))
                 transfers.add(key(topUp.tx))
                 transfers.add(key(leg.tx))
+                continue
+            }
+
+            // Charged in another currency, where no amount can match because PayPal reports
+            // what the merchant charged and the bank reports what it converted that into.
+            // Pairing them needs no exchange rate at all: the bank already did the
+            // conversion, and its leg is the one kept, so the sterling figure is exact.
+            val foreign = onlyForeignCandidate(merchantDebits, leg, consumed)
+            if (foreign != null) {
+                consumed.add(key(foreign.tx))
+                transfers.add(key(foreign.tx))
+                merchantName(foreign.tx)?.let { renamed[key(leg.tx)] = it }
                 continue
             }
 
@@ -185,6 +205,33 @@ object PayPalEngine {
                 abs(candidate.tx.amountMinor) > wanted &&
                 candidate.date >= leg.date.minusDays(MAX_LAG_DAYS) &&
                 candidate.date <= leg.date.plusDays(MAX_LEAD_DAYS)
+        }
+        return plausible.singleOrNull()
+    }
+
+    /**
+     * The one PayPal payment in the window charged in a different currency, or null if there
+     * is any doubt about which it was.
+     *
+     * A foreign purchase can never match on amount, so the usual evidence is unavailable and
+     * the date window does most of the work. That makes ambiguity likelier, so more than one
+     * candidate is declined rather than guessed - and the implied rate has to be sane, which
+     * rules out a coincidence an order of magnitude away.
+     */
+    private fun onlyForeignCandidate(
+        candidates: List<Dated>,
+        leg: Dated,
+        consumed: Set<String>,
+    ): Dated? {
+        val plausible = candidates.filter { candidate ->
+            if (key(candidate.tx) in consumed) return@filter false
+            if (candidate.tx.currency == leg.tx.currency) return@filter false
+            if (candidate.date < leg.date.minusDays(MAX_LAG_DAYS)) return@filter false
+            if (candidate.date > leg.date.plusDays(MAX_LEAD_DAYS)) return@filter false
+            val charged = abs(candidate.tx.amountMinor).toDouble()
+            if (charged <= 0.0) return@filter false
+            val rate = abs(leg.tx.amountMinor).toDouble() / charged
+            rate in MIN_PLAUSIBLE_RATE..MAX_PLAUSIBLE_RATE
         }
         return plausible.singleOrNull()
     }
