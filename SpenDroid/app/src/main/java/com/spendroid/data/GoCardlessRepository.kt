@@ -238,8 +238,25 @@ class GoCardlessRepository private constructor(
         // drop history belonging to an account row that has since gone.
         transactions = dao.allTransactions(),
         manualRules = dao.getActiveManualRules(),
+        budgetGoals = dao.budgetGoals(),
+        categoryRules = dao.categoryRules(),
         ignoredRules = secrets.ignoredRules.first(),
     )
+
+    /**
+     * Merges a backup into the local database, replacing rows that share a primary key and
+     * keeping everything else. Credentials are not in a backup and are not touched.
+     */
+    suspend fun importJson(json: String): BackupImporter.Restored {
+        val restored = BackupImporter.parse(json)
+        if (restored.accounts.isNotEmpty()) dao.upsertAccounts(restored.accounts)
+        if (restored.transactions.isNotEmpty()) dao.upsertTransactions(restored.transactions)
+        if (restored.manualRules.isNotEmpty()) dao.upsertManualRules(restored.manualRules)
+        restored.budgetGoals.forEach { dao.upsertBudgetGoal(it) }
+        restored.categoryRules.forEach { dao.upsertCategoryRule(it) }
+        secrets.addIgnoredRules(restored.ignoredRules)
+        return restored
+    }
 
     suspend fun transactions(): List<TransactionEntity> = dao.accounts()
         .flatMap { dao.transactionsFor(it.id) }

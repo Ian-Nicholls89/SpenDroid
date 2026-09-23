@@ -62,6 +62,7 @@ fun SettingsScreen(
     state: RootUiState,
     onSave: (String, String) -> Unit,
     onExport: (Uri) -> Unit,
+    onImport: (Uri) -> Unit,
     onClearData: () -> Unit,
     onCheckUpdate: () -> Unit,
     secretId: String,
@@ -127,6 +128,7 @@ fun SettingsScreen(
                 SettingsTab.DATA -> DataSection(
                     state = state,
                     onExport = onExport,
+                    onImport = onImport,
                     onClearData = onClearData,
                 )
             }
@@ -340,6 +342,7 @@ private fun NotificationsSection(
 private fun DataSection(
     state: RootUiState,
     onExport: (Uri) -> Unit,
+    onImport: (Uri) -> Unit,
     onClearData: () -> Unit,
 ) {
     Text("Data management", style = MaterialTheme.typography.titleMedium)
@@ -373,6 +376,39 @@ private fun DataSection(
         )
         is ExportStatus.Failed -> Text(
             "Export failed: ${status.message}",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.error,
+        )
+        else -> {}
+    }
+
+    Spacer(Modifier.height(16.dp))
+
+    val importPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument(),
+    ) { uri -> uri?.let(onImport) }
+
+    OutlinedButton(
+        onClick = { importPicker.launch(arrayOf("application/json", "*/*")) },
+        enabled = state.importStatus !is ImportStatus.Working,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Text(if (state.importStatus is ImportStatus.Working) "Restoring…" else "Restore from backup")
+    }
+    Text(
+        "Merges a backup into what's already here. Existing transactions are replaced by their " +
+            "backed-up copy; anything not in the file is left alone.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    when (val status = state.importStatus) {
+        is ImportStatus.Done -> Text(
+            status.message,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.primary,
+        )
+        is ImportStatus.Failed -> Text(
+            "Restore failed: ${status.message}",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.error,
         )

@@ -37,6 +37,13 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.SharingStarted
 
+sealed interface ImportStatus {
+    object Idle : ImportStatus
+    object Working : ImportStatus
+    data class Done(val message: String) : ImportStatus
+    data class Failed(val message: String) : ImportStatus
+}
+
 sealed interface ExportStatus {
     object Idle : ExportStatus
     object Working : ExportStatus
@@ -69,6 +76,7 @@ data class RootUiState(
     val showInternalTransfers: Boolean = false,
     val updateCheckStatus: UpdateCheckStatus = UpdateCheckStatus.Idle,
     val exportStatus: ExportStatus = ExportStatus.Idle,
+    val importStatus: ImportStatus = ImportStatus.Idle,
     val versionName: String = "",
     val versionCode: Int = 0,
 )
@@ -229,6 +237,36 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
                 onFailure = { ExportStatus.Failed(it.message ?: it.javaClass.simpleName) },
             )
             _state.update { it.copy(exportStatus = status) }
+        }
+    }
+
+    /** Merges a backup file back into the database, then reloads what is on screen. */
+    fun importFrom(source: Uri) {
+        viewModelScope.launch {
+            _state.update { it.copy(importStatus = ImportStatus.Working) }
+            val status = runCatching {
+                val json = withContext(Dispatchers.IO) {
+                    getApplication<Application>().contentResolver
+                        .openInputStream(source)
+                        ?.use { input -> input.readBytes().decodeToString() }
+                        ?: error("Could not open the selected file")
+                }
+                repo.importJson(json)
+            }.fold(
+                onSuccess = { restored ->
+                    if (restored.isEmpty) {
+                        ImportStatus.Failed("That backup contained no accounts or transactions.")
+                    } else {
+                        ImportStatus.Done(
+                            "Restored ${restored.transactions.size} transactions " +
+                                "across ${restored.accounts.size} accounts.",
+                        )
+                    }
+                },
+                onFailure = { ImportStatus.Failed(it.message ?: it.javaClass.simpleName) },
+            )
+            _state.update { it.copy(importStatus = status) }
+            if (status is ImportStatus.Done) loadLocal()
         }
     }
 

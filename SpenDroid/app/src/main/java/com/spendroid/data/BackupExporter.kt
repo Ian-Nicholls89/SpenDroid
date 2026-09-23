@@ -1,6 +1,8 @@
 package com.spendroid.data
 
 import com.spendroid.data.db.AccountEntity
+import com.spendroid.data.db.BudgetGoalEntity
+import com.spendroid.data.db.CategoryRuleEntity
 import com.spendroid.data.db.ManualRecurringRuleEntity
 import com.spendroid.data.db.TransactionEntity
 import org.json.JSONArray
@@ -17,12 +19,14 @@ import org.json.JSONObject
 object BackupExporter {
 
     /** Bumped when the shape changes, so a future import can tell what it is reading. */
-    const val FORMAT_VERSION = 1
+    const val FORMAT_VERSION = 2
 
     fun toJson(
         accounts: List<AccountEntity>,
         transactions: List<TransactionEntity>,
         manualRules: List<ManualRecurringRuleEntity>,
+        budgetGoals: List<BudgetGoalEntity>,
+        categoryRules: List<CategoryRuleEntity>,
         ignoredRules: Set<String>,
         exportedAtMillis: Long = System.currentTimeMillis(),
     ): String {
@@ -95,6 +99,34 @@ object BackupExporter {
                             .put("anchorDay", rule.anchorDay)
                             .put("startDate", rule.startDate)
                             .put("isActive", rule.isActive),
+                    )
+                }
+            },
+        )
+
+        root.put(
+            "budgetGoals",
+            JSONArray().also { arr ->
+                budgetGoals.forEach { goal ->
+                    arr.put(
+                        JSONObject()
+                            .put("category", goal.category)
+                            .put("limitMinor", goal.limitMinor)
+                            .put("currency", goal.currency),
+                    )
+                }
+            },
+        )
+
+        root.put(
+            "categoryRules",
+            JSONArray().also { arr ->
+                categoryRules.forEach { rule ->
+                    arr.put(
+                        JSONObject()
+                            .put("pattern", rule.pattern)
+                            .put("category", rule.category)
+                            .put("createdAt", rule.createdAt),
                     )
                 }
             },

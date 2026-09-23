@@ -88,4 +88,7 @@ dependencies {
     implementation(libs.okhttp.logging)
     implementation(libs.androidx.work.ktx)
     debugImplementation(libs.androidx.compose.ui.tooling)
+    testImplementation(libs.junit)
+    // Android ships org.json; a JVM unit test needs a real implementation.
+    testImplementation(libs.org.json)
 }

@@ -86,6 +86,16 @@ class SecretsStore(private val context: Context) {
         }
     }
 
+    /** Adds to the ignored set rather than replacing it, so a restore cannot un-ignore. */
+    suspend fun addIgnoredRules(keys: Set<String>) {
+        if (keys.isEmpty()) return
+        val current = parseStringSet(context.dataStore.data.first()[Keys.IGNORED_RULES]).toMutableSet()
+        current.addAll(keys)
+        context.dataStore.edit { prefs ->
+            prefs[Keys.IGNORED_RULES] = JSONArray(current.toList()).toString()
+        }
+    }
+
     suspend fun setRuleIgnored(key: String, ignored: Boolean) {
         val current = parseStringSet(context.dataStore.data.first()[Keys.IGNORED_RULES]).toMutableSet()
         if (ignored) current.add(key) else current.remove(key)

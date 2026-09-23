@@ -186,6 +186,7 @@ class MainActivity : ComponentActivity() {
                                     state = state,
                                     onSave = viewModel::saveSecret,
                                     onExport = viewModel::exportTo,
+                                    onImport = viewModel::importFrom,
                                     onClearData = viewModel::clearData,
                                     onCheckUpdate = viewModel::checkForUpdate,
                                     secretId = viewModel.secretIdValue.collectAsStateWithLifecycle().value,
