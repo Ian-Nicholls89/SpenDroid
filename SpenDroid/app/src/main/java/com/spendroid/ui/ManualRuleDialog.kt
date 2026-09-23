@@ -27,6 +27,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -56,7 +57,7 @@ fun ManualRuleDialog(
     var amount by remember { mutableStateOf("") }
     var currency by remember { mutableStateOf("GBP") }
     var cadence by remember { mutableStateOf("MONTHLY") }
-    var anchorDay by remember { mutableStateOf(LocalDate.now().dayOfMonth) }
+    var anchorDay by remember { mutableIntStateOf(LocalDate.now().dayOfMonth) }
     var startDate by remember { mutableStateOf(LocalDate.now().format(DateTimeFormatter.ISO_DATE)) }
     var candidates by remember { mutableStateOf<List<RecurringAnalyzer.RecurringCandidate>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
@@ -335,7 +336,6 @@ private fun describeCadence(cadence: com.spendroid.domain.Cadence, anchorDay: In
     com.spendroid.domain.Cadence.MONTHLY_LAST_BUSINESS_DAY -> "Monthly · last working day"
     com.spendroid.domain.Cadence.QUARTERLY -> "Quarterly"
     com.spendroid.domain.Cadence.ANNUAL -> "Yearly"
-    else -> cadence.name
 }
 
 private fun dayName(value: Int): String = try {

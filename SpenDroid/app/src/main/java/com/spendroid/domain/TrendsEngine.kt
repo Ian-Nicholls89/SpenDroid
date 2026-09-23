@@ -26,9 +26,15 @@ object TrendsEngine {
     fun analyze(transactions: List<TransactionEntity>): TrendSummary {
         val booked = transactions.filter { !it.isPending && it.bookingDate.isNotBlank() }
 
-        val byMonth = booked.groupBy { tx ->
-            runCatching { YearMonth.parse(tx.bookingDate.substring(0, 7), monthFormatter) }.getOrNull()
-        }.filterKeys { it != null } as Map<YearMonth, List<TransactionEntity>>
+        // Pair each transaction with its month first, so rows with an unparseable date drop
+        // out before grouping and the map never has a nullable key to cast away.
+        val byMonth: Map<YearMonth, List<TransactionEntity>> = booked
+            .mapNotNull { tx ->
+                runCatching { YearMonth.parse(tx.bookingDate.substring(0, 7), monthFormatter) }
+                    .getOrNull()
+                    ?.let { month -> month to tx }
+            }
+            .groupBy({ it.first }, { it.second })
 
         val months = byMonth.keys.sorted().takeLast(12)
 

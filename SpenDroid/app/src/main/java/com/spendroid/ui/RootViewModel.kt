@@ -3,6 +3,7 @@ package com.spendroid.ui
 import android.app.Application
 import android.content.Intent
 import android.net.Uri
+import androidx.core.net.toUri
 import androidx.browser.customtabs.CustomTabsIntent
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -330,7 +331,7 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
             val appContext = getApplication<Application>().applicationContext
             val customTabs = CustomTabsIntent.Builder().build()
             customTabs.intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            customTabs.launchUrl(appContext, Uri.parse(link))
+            customTabs.launchUrl(appContext, link.toUri())
             _state.update { it.copy(error = "Opened bank auth. Waiting for authorisation…") }
             val done = repo.pollUntilAuthorised(req.id ?: error("Missing requisition id"))
             _state.update { it.copy(error = "Authorisation complete. Status: ${done.status}, accounts: ${done.accounts.size}") }

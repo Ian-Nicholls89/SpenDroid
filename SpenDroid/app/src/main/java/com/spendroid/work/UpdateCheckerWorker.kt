@@ -4,7 +4,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
+import androidx.core.net.toUri
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.work.CoroutineWorker
@@ -50,7 +50,7 @@ class UpdateCheckerWorker(
         }
         manager.createNotificationChannel(channel)
 
-        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(RELEASES_URL))
+        val intent = Intent(Intent.ACTION_VIEW, RELEASES_URL.toUri())
         val pendingIntent = android.app.PendingIntent.getActivity(
             applicationContext,
             0,
