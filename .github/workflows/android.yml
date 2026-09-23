@@ -2,9 +2,7 @@ name: Android CI/CD
 
 on:
   push:
-    # Temporary: lets this branch prove the workflow runs before master does. The release
-    # job is guarded to master pushes, so nothing publishes from here.
-    branches: [master, restructure-and-review-fixes]
+    branches: [master]
   pull_request:
     branches: [master]
 
