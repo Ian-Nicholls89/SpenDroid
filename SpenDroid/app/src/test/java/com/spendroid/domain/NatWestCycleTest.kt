@@ -21,7 +21,11 @@ class NatWestCycleTest {
 
     private var seq = 0
 
-    private fun tx(date: String, amountMinor: Long) = TransactionEntity(
+    private fun tx(
+        date: String,
+        amountMinor: Long,
+        declaredPayment: Boolean = false,
+    ) = TransactionEntity(
         accountId = "card",
         transactionId = "tx-${seq++}",
         bookingDate = date,
@@ -32,6 +36,8 @@ class NatWestCycleTest {
         description = null,
         isPending = false,
         rawJson = null,
+        // No paying account in these fixtures, so the user's word is what identifies a bill.
+        isCardPayment = declaredPayment,
     )
 
     private fun card(balanceMinor: Long) = AccountEntity(
@@ -63,9 +69,9 @@ class NatWestCycleTest {
         val transactions = listOf(tx("2026-06-20", -1000)) +
             // The statement that closed 23 Jul, paid 17 Aug.
             listOf(tx("2026-06-30", -2000), tx("2026-07-22", -1500), tx("2026-07-23", -2500)) +
-            listOf(tx("2026-08-17", 6000)) +
+            listOf(tx("2026-08-17", 6000, declaredPayment = true)) +
             augustStatement +
-            listOf(tx("2026-09-17", 5000)) +
+            listOf(tx("2026-09-17", 5000, declaredPayment = true)) +
             septemberStatement +
             listOf(tx("2026-09-25", -700)) // after the close, so next month's problem
 
@@ -94,7 +100,7 @@ class NatWestCycleTest {
     fun `one visible bill is still enough to solve the cycle`() {
         val transactions = listOf(tx("2026-06-30", -1000)) + // 90 days back from today
             augustStatement +
-            listOf(tx("2026-09-17", 5000)) +
+            listOf(tx("2026-09-17", 5000, declaredPayment = true)) +
             septemberStatement +
             listOf(tx("2026-09-25", -700))
 
@@ -128,11 +134,11 @@ class NatWestCycleTest {
             // Closed 30 Jun, paid 22 Jul.
             tx("2026-06-25", -3000),
             tx("2026-06-30", -1000),
-            tx("2026-07-22", 4000),
+            tx("2026-07-22", 4000, declaredPayment = true),
             // Closed 30 Jul, paid 22 Aug.
             tx("2026-07-01", -500),
             tx("2026-07-30", -2500),
-            tx("2026-08-22", 3000),
+            tx("2026-08-22", 3000, declaredPayment = true),
             // Still in flight.
             tx("2026-08-15", -1800),
             tx("2026-09-20", -600),

@@ -39,6 +39,7 @@ fun SpendingScreen(
     onOverrideCategory: (TransactionEntity, Category?) -> Unit,
     onAlwaysCategorise: (TransactionEntity, Category) -> Unit,
     onMarkTransfer: (TransactionEntity, Boolean) -> Unit,
+    onMarkCardPayment: (TransactionEntity, Boolean) -> Unit,
     onSetBudgetGoal: (Category, Long) -> Unit,
 ) {
     var selected by rememberSaveable { mutableIntStateOf(0) }
@@ -64,6 +65,7 @@ fun SpendingScreen(
                 onOverrideCategory = onOverrideCategory,
                 onAlwaysCategorise = onAlwaysCategorise,
                 onMarkTransfer = onMarkTransfer,
+                onMarkCardPayment = onMarkCardPayment,
             )
             SpendingTab.INSIGHTS -> InsightsScreen(
                 state = state,

@@ -48,6 +48,7 @@ fun TransactionDetailSheet(
     onOverrideCategory: (TransactionEntity, Category?) -> Unit,
     onAlwaysCategorise: (TransactionEntity, Category) -> Unit,
     onMarkTransfer: (TransactionEntity, Boolean) -> Unit,
+    onMarkCardPayment: (TransactionEntity, Boolean) -> Unit = { _, _ -> },
     cardPaymentKeys: Set<String> = emptySet(),
     creditCardAccountIds: Set<String> = emptySet(),
 ) {
@@ -154,6 +155,26 @@ fun TransactionDetailSheet(
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+
+            // Only a credit on a card raises the question, and only when its other leg was
+            // never found - a payment from an account the app can see is matched already.
+            if (transaction.accountId in creditCardAccountIds && transaction.amountMinor > 0) {
+                Spacer(Modifier.height(8.dp))
+                FilterChip(
+                    selected = transaction.isCardPayment,
+                    onClick = { onMarkCardPayment(transaction, !transaction.isCardPayment) },
+                    label = { Text("This pays my card bill") },
+                )
+                Text(
+                    "Money coming onto a card is either a bill payment or a refund, and " +
+                        "they look identical. Saying which lets the statement cycle and the " +
+                        "bill forecast be worked out when the paying account is not linked. " +
+                        "Applies to every payment on this card named the same way, so this " +
+                        "only needs saying once.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
     }
 }

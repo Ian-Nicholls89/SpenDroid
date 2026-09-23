@@ -40,7 +40,13 @@ class CardRuleLeakTest {
 
     private var seq = 0
 
-    private fun tx(account: String, date: String, amountMinor: Long, payee: String) =
+    private fun tx(
+        account: String,
+        date: String,
+        amountMinor: Long,
+        payee: String,
+        declaredPayment: Boolean = false,
+    ) =
         TransactionEntity(
             accountId = account,
             transactionId = "tx-${seq++}",
@@ -52,6 +58,7 @@ class CardRuleLeakTest {
             description = null,
             isPending = false,
             rawJson = null,
+            isCardPayment = declaredPayment,
         )
 
     /** Salary in, and a bill settled at the same amount every month on the card. */
@@ -60,7 +67,7 @@ class CardRuleLeakTest {
             add(tx("bank", it, 250000, "UKHSA SALARY"))
         }
         listOf("2026-06-15", "2026-07-15", "2026-08-15").forEach {
-            add(tx("card", it, 30000, "PAYMENT RECEIVED THANK YOU"))
+            add(tx("card", it, 30000, "PAYMENT RECEIVED THANK YOU", declaredPayment = true))
             add(tx("card", it, -1499, "NETFLIX.COM"))
         }
     }

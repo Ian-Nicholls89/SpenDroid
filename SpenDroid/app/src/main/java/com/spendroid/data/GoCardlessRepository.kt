@@ -107,6 +107,10 @@ class GoCardlessRepository private constructor(
         dao.setInternalTransfer(accountId, transactionId, isTransfer)
     }
 
+    suspend fun setCardPayment(accountId: String, transactionId: String, isPayment: Boolean) {
+        dao.setCardPayment(accountId, transactionId, isPayment)
+    }
+
     suspend fun addCategoryRule(pattern: String, category: String) {
         dao.upsertCategoryRule(CategoryRuleEntity(pattern.trim().lowercase(), category))
     }
@@ -591,6 +595,7 @@ class GoCardlessRepository private constructor(
                     isInternalTransfer = prior.isInternalTransfer,
                     isRecurring = prior.isRecurring,
                     categoryOverride = prior.categoryOverride,
+                    isCardPayment = prior.isCardPayment,
                 )
             }
         }

@@ -133,18 +133,69 @@ class CardRefundTest {
     }
 
     /**
-     * A refund inside the window of the charge it reverses is dropped; an unrelated credit
-     * long after any matching charge is still available to be read as a payment.
+     * With no paying debit anywhere and nothing said by the user, a credit is simply
+     * unexplained. It used to be guessed into a bill on the strength of being the largest
+     * that month; now it is passed over, which is the honest answer.
      */
     @Test
-    fun `only a credit reversing a recent charge is treated as a refund`() {
-        val stale = listOf(
-            tx("card", "2026-01-05", -8000, "CURRYS PC WORLD"),
-            tx("card", "2026-09-12", 8000, "PAYMENT RECEIVED"),
+    fun `an unexplained credit is passed over rather than guessed`() {
+        val transactions = listOf(
+            tx("card", "2026-09-02", -8000, "CURRYS PC WORLD"),
+            tx("card", "2026-09-12", 8000, "CURRYS PC WORLD REFUND"),
+            tx("card", "2026-09-15", 12000, "PAYMENT RECEIVED"),
         )
 
-        val analysis = CreditCardEngine.analyze(stale, listOf(card), today)
+        val analysis = CreditCardEngine.analyze(transactions, listOf(card), today)
 
-        assertFalse(analysis.cardSettlementKeys.isEmpty())
+        assertTrue(analysis.cardSettlementKeys.isEmpty())
+    }
+
+    /** Saying so is enough, and is as good as finding the other leg. */
+    @Test
+    fun `a credit the user declares a bill payment counts as one`() {
+        val declared = tx("card", "2026-09-15", 12000, "PAYMENT RECEIVED")
+            .copy(isCardPayment = true)
+        val transactions = listOf(
+            tx("card", "2026-09-02", -8000, "CURRYS PC WORLD"),
+            tx("card", "2026-09-12", 8000, "CURRYS PC WORLD REFUND"),
+            declared,
+        )
+
+        val analysis = CreditCardEngine.analyze(transactions, listOf(card), today)
+
+        assertEquals(setOf("card|${declared.transactionId}"), analysis.cardSettlementKeys)
+        assertEquals(setOf("card|${declared.transactionId}"), analysis.confirmedSettlementKeys)
+    }
+
+    /**
+     * Marking one payment has to settle the rest, or the same answer is wanted every month.
+     * A bill is named by the bank, so its wording repeats; the declaration travels with it.
+     */
+    @Test
+    fun `declaring one payment identifies every later one worded the same`() {
+        val transactions = listOf(
+            tx("card", "2026-07-15", 40000, "DIRECT DEBIT PAYMENT").copy(isCardPayment = true),
+            tx("card", "2026-08-15", 52000, "DIRECT DEBIT PAYMENT"),
+            tx("card", "2026-09-15", 31000, "DIRECT DEBIT PAYMENT"),
+        )
+
+        val analysis = CreditCardEngine.analyze(transactions, listOf(card), today)
+
+        assertEquals(3, analysis.cardSettlementKeys.size)
+    }
+
+    /** But not a refund, which carries the merchant's name rather than the bank's. */
+    @Test
+    fun `a differently worded credit is not swept up by the declaration`() {
+        val transactions = listOf(
+            tx("card", "2026-08-15", 52000, "DIRECT DEBIT PAYMENT").copy(isCardPayment = true),
+            tx("card", "2026-09-02", -8000, "CURRYS PC WORLD"),
+            tx("card", "2026-09-12", 8000, "CURRYS PC WORLD REFUND"),
+        )
+
+        val analysis = CreditCardEngine.analyze(transactions, listOf(card), today)
+
+        assertEquals(1, analysis.cardSettlementKeys.size)
+        assertTrue(analysis.cardSettlementKeys.single().endsWith(transactions[0].transactionId))
     }
 }

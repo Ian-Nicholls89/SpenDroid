@@ -71,6 +71,7 @@ fun TransactionsScreen(
     onOverrideCategory: (TransactionEntity, Category?) -> Unit,
     onAlwaysCategorise: (TransactionEntity, Category) -> Unit,
     onMarkTransfer: (TransactionEntity, Boolean) -> Unit,
+    onMarkCardPayment: (TransactionEntity, Boolean) -> Unit,
 ) {
     var selected by remember { mutableStateOf<TransactionEntity?>(null) }
 
@@ -272,6 +273,7 @@ fun TransactionsScreen(
             onOverrideCategory = { t, c -> onOverrideCategory(t, c); selected = null },
             onAlwaysCategorise = { t, c -> onAlwaysCategorise(t, c); selected = null },
             onMarkTransfer = { t, v -> onMarkTransfer(t, v); selected = null },
+            onMarkCardPayment = { t, v -> onMarkCardPayment(t, v); selected = null },
         )
     }
 }

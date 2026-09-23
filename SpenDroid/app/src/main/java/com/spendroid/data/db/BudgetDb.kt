@@ -20,7 +20,7 @@ import kotlinx.coroutines.flow.Flow
         RuleOverrideEntity::class,
         CategoryRuleEntity::class,
     ],
-    version = 11,
+    version = 12,
     exportSchema = false,
 )
 abstract class BudgetDb : RoomDatabase() {
@@ -67,6 +67,13 @@ abstract class BudgetDb : RoomDatabase() {
          * Only the two types PayPal could have been auto-detected as are touched, so a type
          * the user chose deliberately is left alone.
          */
+        val MIGRATION_11_12 = object : Migration(11, 12) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "ALTER TABLE transactions ADD COLUMN isCardPayment INTEGER NOT NULL DEFAULT 0",
+                )
+            }
+        }
         val MIGRATION_10_11 = object : Migration(10, 11) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL(
@@ -184,6 +191,9 @@ interface BudgetDao {
 
     @Query("UPDATE transactions SET categoryOverride = :category WHERE accountId = :accountId AND transactionId = :transactionId")
     suspend fun setCategoryOverride(accountId: String, transactionId: String, category: String?)
+
+    @Query("UPDATE transactions SET isCardPayment = :isPayment WHERE accountId = :accountId AND transactionId = :transactionId")
+    suspend fun setCardPayment(accountId: String, transactionId: String, isPayment: Boolean)
 
     @Query("UPDATE transactions SET isRecurring = 1 WHERE accountId = :accountId AND transactionId = :transactionId")
     suspend fun updateRecurring(accountId: String, transactionId: String)

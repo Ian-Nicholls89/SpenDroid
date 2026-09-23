@@ -80,6 +80,7 @@ object BackupImporter {
                 rawJson = o.nullableString("rawJson"),
                 isInternalTransfer = o.optBoolean("isInternalTransfer", false),
                 isRecurring = o.optBoolean("isRecurring", false),
+                isCardPayment = o.optBoolean("isCardPayment", false),
             )
         }
 

@@ -362,6 +362,13 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    fun markAsCardPayment(tx: TransactionEntity, isPayment: Boolean) {
+        viewModelScope.launch {
+            repo.setCardPayment(tx.accountId, tx.transactionId, isPayment)
+            loadLocal()
+        }
+    }
+
     fun setBudgetGoal(category: Category, limitMinor: Long) {
         viewModelScope.launch {
             repo.setBudgetGoal(category.name, limitMinor)

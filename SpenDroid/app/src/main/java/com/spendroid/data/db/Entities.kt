@@ -59,6 +59,12 @@ data class TransactionEntity(
     val isRecurring: Boolean = false,
     /** A category the user set for this one transaction, overriding every rule. */
     val categoryOverride: String? = null,
+    /**
+     * Set by the user on a credit on a card to say it settles a bill rather than reversing a
+     * purchase. Only needed where the paying account is not linked, since a payment made
+     * from an account the app can see is matched to its other leg automatically.
+     */
+    val isCardPayment: Boolean = false,
 )
 
 @Entity(tableName = "manual_recurring_rules")

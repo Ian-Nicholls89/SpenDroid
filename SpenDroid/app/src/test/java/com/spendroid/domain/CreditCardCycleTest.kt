@@ -34,7 +34,11 @@ class CreditCardCycleTest {
 
     private var seq = 0
 
-    private fun tx(date: String, amountMinor: Long) = TransactionEntity(
+    private fun tx(
+        date: String,
+        amountMinor: Long,
+        declaredPayment: Boolean = false,
+    ) = TransactionEntity(
         accountId = "card",
         transactionId = "tx-${seq++}",
         bookingDate = date,
@@ -45,6 +49,8 @@ class CreditCardCycleTest {
         description = null,
         isPending = false,
         rawJson = null,
+        // No paying account in these fixtures, so the user's word is what identifies a bill.
+        isCardPayment = declaredPayment,
     )
 
     /**
@@ -59,11 +65,11 @@ class CreditCardCycleTest {
         // close by one day either way and these land on the wrong statement.
         tx("2026-07-09", -100),
         tx("2026-07-10", -700),
-        tx("2026-08-01", 8800), // pays the statement that closed 10 Jul
+        tx("2026-08-01", 8800, declaredPayment = true), // pays the statement that closed 10 Jul
         tx("2026-07-11", -200),
         tx("2026-07-20", -4000),
         tx("2026-08-09", -2000),
-        tx("2026-09-01", 6200), // pays the statement that closed 10 Aug
+        tx("2026-09-01", 6200, declaredPayment = true), // pays the statement that closed 10 Aug
         tx("2026-08-20", -2500), // on the statement that closed 10 Sep, due 1 Oct
         tx("2026-09-15", -1500), // since that close, so not yet billed
     )
@@ -123,7 +129,7 @@ class CreditCardCycleTest {
     fun `a payment made after the close does not wipe out charges made since`() {
         val transactions = listOf(
             tx("2026-09-05", -2500), // on the statement that closed 10 Sep
-            tx("2026-09-15", 2500), // clears it
+            tx("2026-09-15", 2500, declaredPayment = true), // clears it
             tx("2026-09-18", -1500), // after the close, so still accruing
         )
         val bill = CreditCardEngine

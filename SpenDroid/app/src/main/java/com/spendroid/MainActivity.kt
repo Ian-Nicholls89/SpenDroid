@@ -167,6 +167,7 @@ class MainActivity : ComponentActivity() {
                                     onOverrideCategory = viewModel::overrideCategory,
                                     onAlwaysCategorise = viewModel::alwaysCategorise,
                                     onMarkTransfer = viewModel::markAsTransfer,
+                                    onMarkCardPayment = viewModel::markAsCardPayment,
                                     onSetBudgetGoal = viewModel::setBudgetGoal,
                                 )
 

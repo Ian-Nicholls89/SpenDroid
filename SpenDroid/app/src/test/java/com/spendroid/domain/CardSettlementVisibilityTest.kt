@@ -65,17 +65,14 @@ class CardSettlementVisibilityTest {
         assertTrue("bank|${payer.transactionId}" in analysis.cardPaymentKeys)
     }
 
-    /**
-     * With no paying debit anywhere, the credit was identified by guesswork. It is still
-     * treated as a bill for the cycle, but it is not evidence enough to remove a row.
-     */
+    /** With no paying debit and nothing declared, there is no settlement to hide. */
     @Test
-    fun `a settlement arrived at by guesswork is not`() {
-        val settlement = tx("card", "2026-09-15", 95778, "DIRECT DEBIT PAYMENT")
+    fun `an unexplained credit is not a settlement at all`() {
+        val credit = tx("card", "2026-09-15", 95778, "DIRECT DEBIT PAYMENT")
 
-        val analysis = CreditCardEngine.analyze(listOf(settlement), listOf(card), today)
+        val analysis = CreditCardEngine.analyze(listOf(credit), listOf(card), today)
 
-        assertTrue("card|${settlement.transactionId}" in analysis.cardSettlementKeys)
+        assertEquals(emptySet<String>(), analysis.cardSettlementKeys)
         assertEquals(emptySet<String>(), analysis.confirmedSettlementKeys)
     }
 

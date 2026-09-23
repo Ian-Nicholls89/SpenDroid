@@ -83,6 +83,7 @@ object BackupExporter {
                             .put("isPending", tx.isPending)
                             .put("isInternalTransfer", tx.isInternalTransfer)
                             .put("isRecurring", tx.isRecurring)
+                            .put("isCardPayment", tx.isCardPayment)
                             // rawJson is the untouched payload from the bank. It is the only
                             // way to recover a field this app does not model yet, so a backup
                             // that dropped it would not really be a backup.
