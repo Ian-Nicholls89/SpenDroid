@@ -25,14 +25,14 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountBalance
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.automirrored.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -61,7 +61,7 @@ import com.spendroid.ui.OnboardingScreen
 import com.spendroid.ui.RecurringRulesScreen
 import com.spendroid.ui.RootViewModel
 import com.spendroid.ui.SettingsScreen
-import com.spendroid.ui.TransactionsScreen
+import com.spendroid.ui.SpendingScreen
 import com.spendroid.ui.theme.BudgetTheme
 
 enum class AppScreen(
@@ -72,7 +72,7 @@ enum class AppScreen(
     val icon: ImageVector,
 ) {
     Home("home", "Dashboard", "Home", Icons.Filled.Home),
-    Activity("activity", "Activity", "Activity", Icons.AutoMirrored.Filled.ReceiptLong),
+    Spending("spending", "Spending", "Spending", Icons.AutoMirrored.Filled.ReceiptLong),
     Accounts("accounts", "Accounts", "Accounts", Icons.Filled.AccountBalance),
     Rules("rules", "Recurring rules", "Rules", Icons.Filled.Repeat),
     Settings("settings", "Settings", "Settings", Icons.Filled.Settings);
@@ -141,16 +141,6 @@ class MainActivity : ComponentActivity() {
                                 }
                             }
                         },
-                        floatingActionButton = {
-                            if (screen == AppScreen.Home) {
-                                ExtendedFloatingActionButton(
-                                    onClick = { showLinkDialog = true },
-                                    icon = { Icon(Icons.Default.Add, contentDescription = null) },
-                                    // Text already names the action; the icon would repeat it.
-                                    text = { Text("Link bank") },
-                                )
-                            }
-                        },
                     ) { padding ->
                         Box(
                             modifier = Modifier
@@ -162,12 +152,12 @@ class MainActivity : ComponentActivity() {
                                     state = state,
                                     onRefresh = viewModel::refresh,
                                     onRelink = viewModel::relink,
-                                    onSeeAllTransactions = { navigate(AppScreen.Activity) },
+                                    onSeeAllTransactions = { navigate(AppScreen.Spending) },
                                     onSetBudgetGoal = viewModel::setBudgetGoal,
                                     onLinkBank = { showLinkDialog = true },
                                 )
 
-                                AppScreen.Activity -> TransactionsScreen(
+                                AppScreen.Spending -> SpendingScreen(
                                     state = state,
                                     onRefresh = viewModel::refresh,
                                     onToggleRecurring = viewModel::toggleRecurringOnly,
@@ -176,6 +166,7 @@ class MainActivity : ComponentActivity() {
                                     onOverrideCategory = viewModel::overrideCategory,
                                     onAlwaysCategorise = viewModel::alwaysCategorise,
                                     onMarkTransfer = viewModel::markAsTransfer,
+                                    onSetBudgetGoal = viewModel::setBudgetGoal,
                                 )
 
                                 AppScreen.Accounts -> AccountManagementScreen(
@@ -223,6 +214,28 @@ class MainActivity : ComponentActivity() {
                         onSaveSecret = viewModel::saveSecret,
                         onSearch = viewModel::loadInstitutions,
                         onLink = viewModel::link,
+                    )
+                }
+
+                state.justLinked?.let { linkedName ->
+                    AlertDialog(
+                        onDismissRequest = viewModel::dismissLinkPrompt,
+                        title = { Text("$linkedName linked") },
+                        text = {
+                            Text(
+                                "Its accounts are syncing now. Would you like to link another " +
+                                    "bank while you are here?",
+                            )
+                        },
+                        confirmButton = {
+                            TextButton(onClick = {
+                                viewModel.dismissLinkPrompt()
+                                showLinkDialog = true
+                            }) { Text("Link another") }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = viewModel::dismissLinkPrompt) { Text("Done") }
+                        },
                     )
                 }
 

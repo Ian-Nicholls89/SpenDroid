@@ -103,6 +103,8 @@ data class RootUiState(
     val bankHolidayToday: String? = null,
     /** Step-by-step status while linking a bank. Not a failure. */
     val linkProgress: String? = null,
+    /** Name of a bank just linked, while we ask whether another is wanted. */
+    val justLinked: String? = null,
     val versionName: String = "",
     val versionCode: Int = 0,
 )
@@ -501,6 +503,9 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
                         linkingBank = null,
                         error = null,
                         linkProgress = null,
+                        // Most people have more than one account, and this is the moment they
+                        // are already in the flow and have the bank's app to hand.
+                        justLinked = institution.name,
                         reauthNeeded = it.reauthNeeded.filter { c -> c.institutionId != institution.id },
                     )
                 }
@@ -519,6 +524,10 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
                 _state.update { it.copy(linkingBank = null, linkProgress = null, error = message) }
             }
         _state.update { it.copy(linkingBank = null) }
+    }
+
+    fun dismissLinkPrompt() {
+        _state.update { it.copy(justLinked = null) }
     }
 
     fun refresh() {
