@@ -46,12 +46,19 @@ import java.time.LocalDate
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 
+/**
+ * Three tabs rather than five. Three of the old ones held a single control each, which made
+ * the row a way of hiding six settings behind five labels rather than a way of organising
+ * them - and five labels sharing a phone's width is what broke "Notifications" into
+ * "Notifi / catio / ns" in the first place.
+ *
+ * Grouped by how often they are touched: things you tune, things you set up once, and things
+ * you only read.
+ */
 private enum class SettingsTab(val label: String) {
-    CREDENTIALS("Credentials"),
-    BUDGET("Budget"),
-    UPDATES("Updates"),
-    NOTIFICATIONS("Notifications"),
-    DATA("Data"),
+    PREFERENCES("Preferences"),
+    SETUP("Setup & data"),
+    ABOUT("About"),
 }
 
 private val timeFormatter = DateTimeFormatter.ofPattern("HH:mm")
@@ -78,6 +85,8 @@ fun SettingsScreen(
     onSaveNotificationTime: (String) -> Unit,
 ) {
     var selectedTab by rememberSaveable { mutableIntStateOf(0) }
+    // A tab index saved before this row had three entries would otherwise index past the end.
+    selectedTab = selectedTab.coerceIn(0, SettingsTab.entries.lastIndex)
     var secretIdField by rememberSaveable(secretId) { mutableStateOf(secretId) }
     var secretKeyField by rememberSaveable(secretKey) { mutableStateOf(secretKey) }
     var saved by rememberSaveable { mutableStateOf(false) }
@@ -115,47 +124,51 @@ fun SettingsScreen(
                 .padding(16.dp),
         ) {
             when (SettingsTab.entries[selectedTab]) {
-                SettingsTab.CREDENTIALS -> CredentialsSection(
-                    secretId = secretIdField,
-                    onSecretIdChange = {
-                        secretIdField = it
-                        saved = false
-                    },
-                    secretKey = secretKeyField,
-                    onSecretKeyChange = {
-                        secretKeyField = it
-                        saved = false
-                    },
-                    saved = saved,
-                    onSave = {
-                        onSave(secretIdField.trim(), secretKeyField.trim())
-                        saved = true
-                    },
-                )
+                SettingsTab.PREFERENCES -> {
+                    BudgetSection(
+                        current = state.budgetModel,
+                        onSelect = onSetBudgetModel,
+                    )
+                    SectionBreak()
+                    NotificationsSection(
+                        selectedTime = selectedTime,
+                        onPickTime = { showTimePicker = true },
+                    )
+                }
 
-                SettingsTab.BUDGET -> BudgetSection(
-                    current = state.budgetModel,
-                    onSelect = onSetBudgetModel,
-                )
+                SettingsTab.SETUP -> {
+                    CredentialsSection(
+                        secretId = secretIdField,
+                        onSecretIdChange = {
+                            secretIdField = it
+                            saved = false
+                        },
+                        secretKey = secretKeyField,
+                        onSecretKeyChange = {
+                            secretKeyField = it
+                            saved = false
+                        },
+                        saved = saved,
+                        onSave = {
+                            onSave(secretIdField.trim(), secretKeyField.trim())
+                            saved = true
+                        },
+                    )
+                    SectionBreak()
+                    DataSection(
+                        state = state,
+                        onExport = onExport,
+                        onImport = onImport,
+                        onClearData = onClearData,
+                    )
+                }
 
-                SettingsTab.UPDATES -> UpdatesSection(
+                SettingsTab.ABOUT -> UpdatesSection(
                     state = state,
                     versionName = state.versionName,
                     versionCode = state.versionCode,
                     onCheckUpdate = onCheckUpdate,
                     onOpenInstallSettings = onOpenInstallSettings,
-                )
-
-                SettingsTab.NOTIFICATIONS -> NotificationsSection(
-                    selectedTime = selectedTime,
-                    onPickTime = { showTimePicker = true },
-                )
-
-                SettingsTab.DATA -> DataSection(
-                    state = state,
-                    onExport = onExport,
-                    onImport = onImport,
-                    onClearData = onClearData,
                 )
             }
         }
@@ -201,6 +214,14 @@ fun SettingsScreen(
             onDismiss = { showTimePicker = false },
         )
     }
+}
+
+/** Separates two sections sharing a tab, so they do not read as one long form. */
+@Composable
+private fun SectionBreak() {
+    Spacer(Modifier.height(24.dp))
+    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+    Spacer(Modifier.height(24.dp))
 }
 
 @Composable
