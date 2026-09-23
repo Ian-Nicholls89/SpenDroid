@@ -21,6 +21,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -300,7 +301,9 @@ fun HomeScreen(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(16.dp),
+            // Extra room at the bottom so the last row clears the floating action button,
+            // which was sitting on top of the link status and error text.
+            .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 88.dp),
     ) {
         if (state.reauthNeeded.isNotEmpty()) {
             ReauthBanner(state.reauthNeeded, onRelink)
@@ -377,6 +380,14 @@ fun HomeScreen(
             )
         }
 
+        state.linkProgress?.let { progress ->
+            Spacer(Modifier.height(12.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                Spacer(Modifier.width(10.dp))
+                Text(progress, style = MaterialTheme.typography.bodySmall)
+            }
+        }
         state.error?.let { error ->
             Spacer(Modifier.height(12.dp))
             Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)

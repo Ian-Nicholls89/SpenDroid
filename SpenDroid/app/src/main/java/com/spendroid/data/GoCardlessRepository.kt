@@ -23,6 +23,7 @@ import com.spendroid.data.remote.TransactionDto
 import com.spendroid.data.remote.TransactionsDto
 import com.spendroid.domain.RecurringAnalyzer
 import com.google.gson.Gson
+import java.io.IOException
 import java.math.BigDecimal
 import java.time.LocalDate
 import java.util.concurrent.TimeUnit
@@ -129,15 +130,36 @@ class GoCardlessRepository private constructor(
     suspend fun pollUntilAuthorised(requisitionId: String): RequisitionDto {
         val startTime = System.currentTimeMillis()
         val timeoutMs = 5 * 60 * 1000 // 5 minutes
-        var req = dataApi.requisition(requisitionId)
+
+        // The user is in a browser for most of this, and leaving and returning to the app is
+        // exactly when a phone drops one network and picks up another. A lookup that fails
+        // mid-poll is not a failed authorisation, so keep polling until the deadline and only
+        // surface a network error if it never recovers.
+        var lastNetworkError: Exception? = null
+        suspend fun poll(): RequisitionDto? = try {
+            dataApi.requisition(requisitionId).also { lastNetworkError = null }
+        } catch (e: IOException) {
+            lastNetworkError = e
+            null
+        }
+
+        var req = poll()
         var pollCount = 0
-        while (req.status != "SA" && req.status != "LN" && req.status !in setOf("EX", "RE") && req.accounts.isEmpty()) {
+        while (req == null ||
+            (req.status != "SA" && req.status != "LN" && req.status !in setOf("EX", "RE") && req.accounts.isEmpty())
+        ) {
             if (System.currentTimeMillis() - startTime > timeoutMs) {
-                error("Polling timed out after 5 minutes. Last status: ${req.status}, accounts: ${req.accounts.size}, polls: $pollCount")
+                lastNetworkError?.let {
+                    throw IOException(
+                        "Couldn't reach GoCardless - check your connection and try again.", it,
+                    )
+                }
+                error("Polling timed out after 5 minutes. Last status: ${req?.status}, accounts: ${req?.accounts?.size ?: 0}, polls: $pollCount")
             }
             delay(3_000)
             pollCount++
-            req = dataApi.requisition(requisitionId)
+            req = poll() ?: req
+            if (req == null) continue
         }
         if (req.status == "EX") error("Requisition expired. Status: EX, accounts: ${req.accounts.size}, polls: $pollCount")
         if (req.status == "RE") error("Requisition rejected. Status: RE, accounts: ${req.accounts.size}, polls: $pollCount")
@@ -378,7 +400,10 @@ class GoCardlessRepository private constructor(
 
     companion object {
         private const val BASE_URL = "https://bankaccountdata.gocardless.com/api/v2/"
-        private const val REDIRECT_URI = "http://localhost:8080/budgetapp"
+        // A custom scheme MainActivity registers, so the bank hands control back to the
+        // app. This used to be http://localhost:8080, which nothing serves - the browser
+        // just showed a connection error and the user had to find their way back.
+        private const val REDIRECT_URI = "spendroid://link-complete"
         private val GSON: Gson = Gson()
 
         fun create(context: Context, dao: BudgetDao): GoCardlessRepository {

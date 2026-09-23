@@ -84,6 +84,8 @@ data class RootUiState(
     val categoryRules: List<CategoryRuleEntity> = emptyList(),
     val budgetGoals: List<BudgetGoalEntity> = emptyList(),
     val transactionQuery: String = "",
+    /** Step-by-step status while linking a bank. Not a failure. */
+    val linkProgress: String? = null,
     val versionName: String = "",
     val versionCode: Int = 0,
 )
@@ -370,17 +372,17 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
     private suspend fun doLink(institution: InstitutionDto) {
         _state.update { it.copy(linkingBank = institution.name, error = null) }
         runCatching {
-            _state.update { it.copy(error = "Creating requisition…") }
+            _state.update { it.copy(linkProgress = "Contacting GoCardless…") }
             val req = repo.createRequisition(institution)
-            _state.update { it.copy(error = "Requisition created: ${req.id}, status: ${req.status}") }
+            _state.update { it.copy(linkProgress = "Opening ${institution.name}…") }
             val link = req.link ?: error("GoCardless did not return a link")
             val appContext = getApplication<Application>().applicationContext
             val customTabs = CustomTabsIntent.Builder().build()
             customTabs.intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             customTabs.launchUrl(appContext, link.toUri())
-            _state.update { it.copy(error = "Opened bank auth. Waiting for authorisation…") }
+            _state.update { it.copy(linkProgress = "Waiting for you to approve access…") }
             val done = repo.pollUntilAuthorised(req.id ?: error("Missing requisition id"))
-            _state.update { it.copy(error = "Authorisation complete. Status: ${done.status}, accounts: ${done.accounts.size}") }
+            _state.update { it.copy(linkProgress = "Approved. Fetching accounts…") }
             if (done.accounts.isEmpty()) error("No accounts returned by ${institution.name}. Status: ${done.status}")
             val connection = Connection(
                 institutionId = institution.id,
@@ -389,7 +391,7 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
                 accountIds = done.accounts,
             )
             repo.saveConnection(connection)
-            _state.update { it.copy(error = "Importing ${done.accounts.size} account(s)…") }
+            _state.update { it.copy(linkProgress = "Importing ${done.accounts.size} account(s)…") }
             done.accounts.forEach { repo.importAccount(institution.name, it) }
         }
             .onSuccess {
@@ -397,13 +399,23 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
                     it.copy(
                         linkingBank = null,
                         error = null,
+                        linkProgress = null,
                         reauthNeeded = it.reauthNeeded.filter { c -> c.institutionId != institution.id },
                     )
                 }
                 loadLocal()
             }
             .onFailure { e ->
-                _state.update { it.copy(linkingBank = null, error = "Link failed: ${e.message}") }
+                // A DNS or connection failure is worth naming as such: the fix is to check
+                // the connection and retry, not to pick a different bank.
+                val message = when (e) {
+                    is java.net.UnknownHostException ->
+                        "Couldn't reach GoCardless. Check your connection and try again."
+                    is java.io.IOException ->
+                        e.message ?: "Network error while linking. Try again."
+                    else -> "Link failed: ${e.message}"
+                }
+                _state.update { it.copy(linkingBank = null, linkProgress = null, error = message) }
             }
         _state.update { it.copy(linkingBank = null) }
     }

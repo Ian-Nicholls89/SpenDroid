@@ -14,16 +14,27 @@
 
         <activity
             android:name=".MainActivity"
-            android:exported="true">
+            android:exported="true"
+            android:launchMode="singleTask">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <!-- Where GoCardless sends the browser once the bank is done, so control comes
+                 back here instead of a dead localhost address. singleTask means returning
+                 resumes the existing screen rather than stacking a second copy on top. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="spendroid" android:host="link-complete" />
             </intent-filter>
         </activity>
 
         <receiver
             android:name=".widget.AvailableToSpendWidgetReceiver"
-            android:exported="false">
+            android:exported="true">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
             </intent-filter>
