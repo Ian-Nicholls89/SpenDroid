@@ -62,6 +62,7 @@ import androidx.compose.material3.FilterChip
 import com.spendroid.data.db.TransactionEntity
 import com.spendroid.domain.RecurringAnalyzer
 import java.time.LocalDate
+import com.spendroid.domain.TrendBasis
 
 /**
  * Where spending is analysed, as opposed to the dashboard, which says where the cycle
@@ -89,11 +90,22 @@ fun InsightsScreen(
     }
     val trends = remember(state.transactions) { TrendsEngine.analyze(state.transactions) }
     val categoryTrends = remember(state.transactions, state.categoryRules, cardPaymentKeys) {
+        // The real dates the main income actually landed on, which is where each cycle
+        // began. Derived rather than re-predicted, so the periods match what happened.
+        val cycleStarts = state.budget?.primaryIncomeRule?.let { rule ->
+            state.transactions
+                .filter { RecurringAnalyzer.matches(rule, it) }
+                .mapNotNull { RecurringAnalyzer.parseBookingDate(it.bookingDate) }
+                .distinct()
+                .sorted()
+        }.orEmpty()
         TrendsEngine.categoryTrends(
-            state.transactions,
-            state.categoryRules,
-            cardPaymentKeys,
-            cardAccountIds,
+            transactions = state.transactions,
+            userRules = state.categoryRules,
+            cardPaymentKeys = cardPaymentKeys,
+            creditCardAccountIds = cardAccountIds,
+            cycleStarts = cycleStarts,
+            currentCycleEnd = state.budget?.cycleEnd,
         )
     }
 
@@ -369,7 +381,12 @@ private fun TrendsCard(trends: TrendSummary, categoryTrends: List<CategoryTrend>
                 )
                 Spacer(Modifier.height(2.dp))
                 Text(
-                    "Each period is ${categoryTrends.first().windowDays} days, over the last ${categoryTrends.first().spanDays + categoryTrends.first().windowDays} days",
+                    when (categoryTrends.first().basis) {
+                        TrendBasis.PAY_CYCLE ->
+                            "The first ${categoryTrends.first().windowDays} days of each pay cycle, so far this one"
+                        TrendBasis.ROLLING_DAYS ->
+                            "Each period is ${categoryTrends.first().windowDays} days"
+                    },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -566,7 +583,7 @@ private fun CategorySparkline(trend: CategoryTrend) {
         }
         Spacer(Modifier.height(2.dp))
         Text(
-            "${formatMoney(trend.firstMinor, trend.currency)} → ${formatMoney(trend.lastMinor, trend.currency)} per ${trend.windowDays} days",
+            "${formatMoney(trend.firstMinor, trend.currency)} → ${formatMoney(trend.lastMinor, trend.currency)} ${if (trend.basis == TrendBasis.PAY_CYCLE) "a cycle" else "per ${trend.windowDays} days"}",
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

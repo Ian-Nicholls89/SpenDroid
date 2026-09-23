@@ -46,6 +46,25 @@ class CategoryTrendsTest {
     private fun trends(transactions: List<TransactionEntity>) =
         TrendsEngine.categoryTrends(transactions, rules, today = today)
 
+    /** Paid on the 25th, so a cycle runs from the 25th to the 24th. */
+    private val cycleStarts = listOf(
+        LocalDate.of(2026, 6, 25),
+        LocalDate.of(2026, 7, 25),
+        LocalDate.of(2026, 8, 25),
+    )
+
+    private fun cycleTrends(
+        transactions: List<TransactionEntity>,
+        starts: List<LocalDate> = cycleStarts,
+        cycleEnd: LocalDate? = LocalDate.of(2026, 9, 24),
+    ) = TrendsEngine.categoryTrends(
+        transactions = transactions,
+        userRules = rules,
+        cycleStarts = starts,
+        currentCycleEnd = cycleEnd,
+        today = today,
+    )
+
     /** Work lunches climbing steadily while groceries hold roughly level. */
     private fun history() = listOf(
         tx("2026-06-26", -26800, "TESCO STORES"),
@@ -158,5 +177,75 @@ class CategoryTrendsTest {
         assertEquals(3, groceries.seriesMinor.size)
         // Thirty days of £10 in every window, so all three are identical.
         assertEquals(listOf(30000L, 30000L, 30000L), groceries.seriesMinor)
+    }
+
+    /**
+     * The current cycle is only part-run, so the ones before it are cut at the same point
+     * through. Comparing a part-run cycle against whole ones would report a fall every time.
+     */
+    @Test
+    fun `past cycles are cut at the same point through as the current one`() {
+        // 25 Aug to 24 Sep is 31 days; today is the 23rd, so 30 of them have run.
+        val spending = listOf(
+            // Day 1 of each cycle: inside the comparison at any point through.
+            tx("2026-06-25", -5000, "TESCO STORES"),
+            tx("2026-07-25", -5000, "TESCO STORES"),
+            tx("2026-08-25", -5000, "TESCO STORES"),
+            // The last day of each past cycle, which 30/31 of the way through excludes.
+            tx("2026-07-24", -9900, "TESCO STORES"),
+            tx("2026-08-24", -9900, "TESCO STORES"),
+        )
+
+        val groceries = cycleTrends(spending).first { it.category == Category.GROCERIES }
+
+        assertEquals(TrendBasis.PAY_CYCLE, groceries.basis)
+        assertEquals(listOf(5000L, 5000L, 5000L), groceries.seriesMinor)
+        assertEquals(0f, groceries.change!!, 0.001f)
+    }
+
+    /**
+     * A monthly bill belongs to exactly one cycle however long the month is. Fixed windows
+     * drift against the calendar until one eventually holds two and the next holds none.
+     */
+    @Test
+    fun `a monthly bill lands once in every cycle`() {
+        // Something on the first cycle's opening day, so all three are covered in full.
+        val rent = listOf(tx("2026-06-25", -1500, "TESCO STORES")) +
+            cycleStarts.map { start ->
+                tx(start.plusDays(3).toString(), -40000, "BRITISH GAS")
+            }
+
+        val bills = cycleTrends(rent).first { it.category == Category.BILLS }
+
+        assertEquals(listOf(40000L, 40000L, 40000L), bills.seriesMinor)
+    }
+
+    /** Without a run of cycles there is nothing to compare, so fixed windows take over. */
+    @Test
+    fun `no known cycle falls back to rolling windows`() {
+        val result = cycleTrends(history(), starts = emptyList())
+
+        assertEquals(TrendBasis.ROLLING_DAYS, result.first().basis)
+        assertEquals(30, result.first().windowDays)
+    }
+
+    /**
+     * A cycle the history only covers part of would be short for a reason that has nothing
+     * to do with spending, so it is left out rather than compared against.
+     */
+    @Test
+    fun `a cycle the data starts part way through is not compared against`() {
+        val late = listOf(
+            // The data begins mid-way through the June cycle, so that one cannot be used.
+            tx("2026-07-20", -5000, "TESCO STORES"),
+            tx("2026-07-28", -5000, "TESCO STORES"),
+            tx("2026-08-28", -5000, "TESCO STORES"),
+        )
+
+        val groceries = cycleTrends(late).first { it.category == Category.GROCERIES }
+
+        // Only the July cycle and the current one are covered from their first day.
+        assertEquals(2, groceries.seriesMinor.size)
+        assertEquals(listOf(5000L, 5000L), groceries.seriesMinor)
     }
 }

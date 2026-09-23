@@ -22,6 +22,19 @@ data class MonthSummary(
  * A total going up says nothing about why. This is the answer to that: the same stretch of
  * time, split by where the money went.
  */
+/** What a period in a [CategoryTrend] is measured in. */
+enum class TrendBasis {
+    /**
+     * Pay cycles, compared at the same point through each. Preferred, because everything
+     * else in the app is measured this way and because a cycle contains exactly one of each
+     * monthly bill however long the month is.
+     */
+    PAY_CYCLE,
+
+    /** Rolling windows of fixed length, for when no income cycle has been detected. */
+    ROLLING_DAYS,
+}
+
 data class CategoryTrend(
     val category: Category,
     /**
@@ -32,6 +45,7 @@ data class CategoryTrend(
     val seriesMinor: List<Long>,
     /** How many days each entry covers. */
     val windowDays: Int,
+    val basis: TrendBasis,
     val firstMinor: Long,
     val lastMinor: Long,
     val currency: String,
@@ -89,25 +103,32 @@ object TrendsEngine {
     }
 
     /**
-     * Each category's spending over a run of equal-length periods, ranked by how much it has
+     * Each category's spending over a run of comparable periods, ranked by how much it has
      * moved rather than by size - a large category that never changes is not news.
      *
-     * Deliberately not calendar months. The API returns ninety days, so the oldest month is
-     * a stub of a few days and the current one is however far through it happens to be;
-     * comparing across them made a flat category look like it had doubled. Rolling windows
-     * anchored on today are all the same length, so the only thing a change can mean is that
-     * spending changed.
+     * Pay cycles where they are known, because the app measures everything else that way and
+     * because a cycle holds exactly one of each monthly bill however long the month happens
+     * to be. Fixed windows cannot promise that: thirty days drifts against a calendar month,
+     * so a bill eventually lands twice in one window and not at all in the next, and the
+     * category jumps without anything having changed.
      *
-     * Only whole windows the data actually covers are used, so the first point is never a
-     * partial period pretending to be a full one.
+     * The current cycle is only part-run, so past cycles are cut at the same point through -
+     * eleven days into a cycle compares against the first eleven days of the ones before it.
+     * Cut by proportion rather than by day count, since what is being matched is the set of
+     * recurring payments reached by that point, and a shorter cycle reaches them sooner.
+     *
+     * Falls back to rolling windows when no cycle is known, and returns nothing at all
+     * rather than compare two periods of different lengths.
      */
     fun categoryTrends(
         transactions: List<TransactionEntity>,
         userRules: List<CategoryRuleEntity> = emptyList(),
         cardPaymentKeys: Set<String> = emptySet(),
         creditCardAccountIds: Set<String> = emptySet(),
+        cycleStarts: List<LocalDate> = emptyList(),
+        currentCycleEnd: LocalDate? = null,
         windowDays: Int = 30,
-        maxWindows: Int = 6,
+        maxPeriods: Int = 6,
         today: LocalDate = LocalDate.now(),
         minimumMinor: Long = 1000L,
     ): List<CategoryTrend> {
@@ -120,30 +141,26 @@ object TrendsEngine {
         if (dated.isEmpty()) return emptyList()
 
         val earliest = dated.minOf { it.first }
-        val daysHeld = ChronoUnit.DAYS.between(earliest, today).toInt() + 1
-        val windows = (daysHeld / windowDays).coerceAtMost(maxWindows)
-        // One window is a figure, not a trend, and half a window is a misleading one.
-        if (windows < 2) return emptyList()
+        val cyclePeriods = cyclePeriods(cycleStarts, currentCycleEnd, today, earliest, maxPeriods)
+        val basis = if (cyclePeriods != null) TrendBasis.PAY_CYCLE else TrendBasis.ROLLING_DAYS
+        val periods = cyclePeriods
+            ?: rollingPeriods(earliest, today, windowDays, maxPeriods)
+            ?: return emptyList()
 
-        // Window 0 is the oldest of those used; the newest always ends today.
-        val bounds = (0 until windows).map { index ->
-            val endOffset = (windows - 1 - index).toLong() * windowDays
-            val end = today.minusDays(endOffset)
-            val start = end.minusDays(windowDays - 1L)
-            start to end
+        val spanDays = periods.last().let {
+            ChronoUnit.DAYS.between(it.first, it.second).toInt() + 1
         }
-
         val currency = dated.first().second.currency
 
         return dated
-            .filter { (date, _) -> !date.isBefore(bounds.first().first) }
+            .filter { (date, _) -> !date.isBefore(periods.first().first) }
             .groupBy { (_, tx) ->
                 CategoryEngine.classify(tx, userRules, cardPaymentKeys, creditCardAccountIds)
             }
             .mapNotNull { (category, rows) ->
-                val series = bounds.map { (start, end) ->
+                val series = periods.map { (from, to) ->
                     rows
-                        .filter { (date, _) -> !date.isBefore(start) && !date.isAfter(end) }
+                        .filter { (date, _) -> !date.isBefore(from) && !date.isAfter(to) }
                         .sumOf { (_, tx) -> -tx.amountMinor }
                 }
                 // A category that barely registers is noise, not a trend.
@@ -151,7 +168,8 @@ object TrendsEngine {
                 CategoryTrend(
                     category = category,
                     seriesMinor = series,
-                    windowDays = windowDays,
+                    windowDays = spanDays,
+                    basis = basis,
                     firstMinor = series.first(),
                     lastMinor = series.last(),
                     currency = currency,
@@ -160,6 +178,61 @@ object TrendsEngine {
             // Biggest movers first, in either direction; a category with nothing to compare
             // against sinks to the bottom rather than being dropped.
             .sortedByDescending { it.change?.let { c -> kotlin.math.abs(c) } ?: -1f }
+    }
+
+    /**
+     * Each cycle cut at the same proportion through as the current one has run.
+     *
+     * Null when there is no run of cycles to compare, which sends the caller to fixed
+     * windows rather than to a comparison between periods of different lengths.
+     */
+    private fun cyclePeriods(
+        cycleStarts: List<LocalDate>,
+        currentCycleEnd: LocalDate?,
+        today: LocalDate,
+        earliest: LocalDate,
+        maxPeriods: Int,
+    ): List<Pair<LocalDate, LocalDate>>? {
+        val starts = cycleStarts.distinct().sorted().filter { !it.isAfter(today) }
+        if (starts.size < 2) return null
+
+        val currentStart = starts.last()
+        val currentLength = ChronoUnit.DAYS
+            .between(currentStart, currentCycleEnd ?: today)
+            .toInt() + 1
+        if (currentLength <= 0) return null
+        val elapsed = ChronoUnit.DAYS.between(currentStart, today).toInt() + 1
+        val fraction = (elapsed.toFloat() / currentLength.toFloat()).coerceIn(0f, 1f)
+
+        // Only cycles the data covers from their first day; a cycle the history starts
+        // part way through would be short for a reason that has nothing to do with spending.
+        val usable = starts.dropLast(1).filter { !it.isBefore(earliest) }
+        if (usable.isEmpty()) return null
+
+        val periods = usable.takeLast(maxPeriods - 1).map { start ->
+            val next = starts[starts.indexOf(start) + 1]
+            val length = ChronoUnit.DAYS.between(start, next).toInt()
+            val days = Math.round(length * fraction).coerceIn(1, length)
+            start to start.plusDays(days - 1L)
+        }
+        return periods + (currentStart to today)
+    }
+
+    /** Whole fixed-length windows ending today, oldest first, or null if fewer than two. */
+    private fun rollingPeriods(
+        earliest: LocalDate,
+        today: LocalDate,
+        windowDays: Int,
+        maxPeriods: Int,
+    ): List<Pair<LocalDate, LocalDate>>? {
+        val daysHeld = ChronoUnit.DAYS.between(earliest, today).toInt() + 1
+        val windows = (daysHeld / windowDays).coerceAtMost(maxPeriods)
+        // One period is a figure, not a trend, and half a period is a misleading one.
+        if (windows < 2) return null
+        return (0 until windows).map { index ->
+            val end = today.minusDays((windows - 1 - index).toLong() * windowDays)
+            end.minusDays(windowDays - 1L) to end
+        }
     }
 
     private val monthFormatter = DateTimeFormatter.ofPattern("yyyy-MM")
