@@ -27,7 +27,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.PrimaryTabRow
+import androidx.compose.material3.PrimaryScrollableTabRow
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -86,12 +86,25 @@ fun SettingsScreen(
     var selectedTime by rememberSaveable { mutableStateOf(parseNotificationTime(notificationTime).format(timeFormatter)) }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        PrimaryTabRow(selectedTabIndex = selectedTab) {
+        // Scrollable, not fixed: five labels sharing the width evenly left "Notifications"
+        // about 70dp, so it broke mid-word into "Notifi / catio / ns". Each tab now takes
+        // the width its own label needs and the row scrolls if they do not all fit.
+        PrimaryScrollableTabRow(
+            selectedTabIndex = selectedTab,
+            edgePadding = 12.dp,
+        ) {
             SettingsTab.entries.forEachIndexed { index, tab ->
                 Tab(
                     selected = selectedTab == index,
                     onClick = { selectedTab = index },
-                    text = { Text(tab.label) },
+                    text = {
+                        Text(
+                            tab.label,
+                            maxLines = 1,
+                            softWrap = false,
+                            style = MaterialTheme.typography.titleSmall,
+                        )
+                    },
                 )
             }
         }

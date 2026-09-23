@@ -44,6 +44,11 @@ data class RecurringRule(
      * account, so the budget has to be able to tell where a rule came from.
      */
     val accountIds: Set<String> = emptySet(),
+    /**
+     * True when every occurrence is money moving between the user's own accounts. Such a
+     * rule is not income and not an outgoing, however regular it looks.
+     */
+    val internalTransfer: Boolean = false,
 ) {
     val isManual: Boolean get() = key.startsWith(MANUAL_KEY_PREFIX)
 }

@@ -375,7 +375,24 @@ class GoCardlessRepository private constructor(
         }
     }
 
-    private fun detectInternalTransfers(transactions: List<TransactionEntity>): List<Pair<TransactionEntity, TransactionEntity>> {
+    /**
+     * Pairs off the two halves of a move between the user's own accounts.
+     *
+     * The payee is deliberately not required to match. It names the *counterparty*, so the
+     * two legs of the same transfer are named differently by design - the money leaves as
+     * "JOINT ACCOUNT BILLS" and arrives as "BILLS NICHO". Insisting they agree meant genuine
+     * transfers were never paired, and the standing order into the joint account was read as
+     * a monthly salary.
+     *
+     * What is required instead is that the pairing be unambiguous. Only the user's own
+     * accounts are visible here, so an exact opposite amount within a day is already strong
+     * evidence; where more than one transaction could be the other half, the references
+     * break the tie, and if they cannot, nothing is paired. A wrong pair hides real spending,
+     * which is worse than leaving a transfer on show.
+     */
+    private fun detectInternalTransfers(
+        transactions: List<TransactionEntity>,
+    ): List<Pair<TransactionEntity, TransactionEntity>> {
         val byAccount = transactions.groupBy { it.accountId }
         val accountIds = byAccount.keys.toList()
         val pairs = mutableListOf<Pair<TransactionEntity, TransactionEntity>>()
@@ -387,28 +404,34 @@ class GoCardlessRepository private constructor(
                 val txs2 = byAccount[accountIds[j]] ?: emptyList()
 
                 for (tx1 in txs1) {
-                    if (used.contains("${tx1.accountId}|${tx1.transactionId}")) continue
-                    for (tx2 in txs2) {
-                        if (used.contains("${tx2.accountId}|${tx2.transactionId}")) continue
-                        if (isLikelyInternalTransfer(tx1, tx2)) {
-                            pairs.add(tx1 to tx2)
-                            used.add("${tx1.accountId}|${tx1.transactionId}")
-                            used.add("${tx2.accountId}|${tx2.transactionId}")
-                            break
-                        }
+                    if (transferKey(tx1) in used) continue
+                    val candidates = txs2.filter {
+                        transferKey(it) !in used && couldOffset(tx1, it)
                     }
+                    val match = candidates.singleOrNull()
+                        ?: candidates.singleOrNull { referencesAgree(tx1, it) }
+                        ?: continue
+                    pairs.add(tx1 to match)
+                    used.add(transferKey(tx1))
+                    used.add(transferKey(match))
                 }
             }
         }
         return pairs
     }
 
-    private fun isLikelyInternalTransfer(tx1: TransactionEntity, tx2: TransactionEntity): Boolean {
+    private fun transferKey(tx: TransactionEntity) = "${tx.accountId}|${tx.transactionId}"
+
+    /** Equal and opposite, same currency, close enough in time to be one movement. */
+    private fun couldOffset(tx1: TransactionEntity, tx2: TransactionEntity): Boolean {
         if (tx1.amountMinor != -tx2.amountMinor || tx1.currency != tx2.currency) return false
         val date1 = try { LocalDate.parse(tx1.bookingDate) } catch (_: Exception) { return false }
         val date2 = try { LocalDate.parse(tx2.bookingDate) } catch (_: Exception) { return false }
-        if (Math.abs(date1.toEpochDay() - date2.toEpochDay()) > 1) return false
+        return Math.abs(date1.toEpochDay() - date2.toEpochDay()) <= 1
+    }
 
+    /** Whether the two sides name the same movement, used only to break a tie. */
+    private fun referencesAgree(tx1: TransactionEntity, tx2: TransactionEntity): Boolean {
         val ref1 = (tx1.description ?: "").trim().lowercase()
         val ref2 = (tx2.description ?: "").trim().lowercase()
         val payee1 = tx1.payee.trim().lowercase()

@@ -66,6 +66,11 @@ object BudgetEngine {
         // Manual rules carry no accounts and are always the user's own statement of a real
         // commitment, so they are kept.
         val cashRules = rules.filter { rule ->
+            // Moving your own money between your own accounts is neither earning nor
+            // spending, however monthly it looks. Excluding the transactions was not enough:
+            // the rule built from them still reached income and fixed outgoings, so a
+            // standing order into a joint account was counted as a salary.
+            if (rule.internalTransfer) return@filter false
             rule.accountIds.isEmpty() || !rule.accountIds.all { it in creditCardAccountIds }
         }
         val incomeRules = cashRules.filter { it.direction == Direction.IN }
