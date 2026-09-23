@@ -2,6 +2,8 @@ package com.spendroid.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -65,22 +67,27 @@ fun TransactionsScreen(
     onToggleRecurring: () -> Unit,
     onToggleInternal: () -> Unit,
     onQueryChange: (String) -> Unit,
+    onAccountFilter: (String?) -> Unit,
     onOverrideCategory: (TransactionEntity, Category?) -> Unit,
     onAlwaysCategorise: (TransactionEntity, Category) -> Unit,
     onMarkTransfer: (TransactionEntity, Boolean) -> Unit,
 ) {
     var selected by remember { mutableStateOf<TransactionEntity?>(null) }
 
+    val accountNames = remember(state.accounts) { state.accounts.associate { it.id to it.label } }
+
     val visible = remember(
         state.transactions,
         state.showRecurringOnly,
         state.showInternalTransfers,
         state.transactionQuery,
+        state.accountFilter,
     ) {
         val query = state.transactionQuery.tidyPayee().lowercase()
         state.transactions
             .filter { tx ->
-                (!state.showRecurringOnly || tx.isRecurring) &&
+                (state.accountFilter == null || tx.accountId == state.accountFilter) &&
+                    (!state.showRecurringOnly || tx.isRecurring) &&
                     (state.showInternalTransfers || !tx.isInternalTransfer) &&
                     (
                         query.isEmpty() ||
@@ -125,6 +132,35 @@ fun TransactionsScreen(
                 )
             }
 
+            if (state.accounts.size > 1) {
+                item {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState())
+                            .padding(horizontal = 16.dp, vertical = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        FilterChip(
+                            selected = state.accountFilter == null,
+                            onClick = { onAccountFilter(null) },
+                            label = { Text("All accounts") },
+                        )
+                        state.accounts.forEach { account ->
+                            FilterChip(
+                                selected = state.accountFilter == account.id,
+                                onClick = {
+                                    onAccountFilter(
+                                        if (state.accountFilter == account.id) null else account.id,
+                                    )
+                                },
+                                label = { Text(account.label, maxLines = 1) },
+                            )
+                        }
+                    }
+                }
+            }
+
             item {
                 Row(
                     modifier = Modifier
@@ -151,6 +187,7 @@ fun TransactionsScreen(
                         hasQuery = state.transactionQuery.isNotEmpty(),
                         onClearFilters = {
                             onQueryChange("")
+                            onAccountFilter(null)
                             if (state.showRecurringOnly) onToggleRecurring()
                             if (!state.showInternalTransfers) onToggleInternal()
                         },
@@ -176,6 +213,12 @@ fun TransactionsScreen(
                         TransactionRow(
                             tx = tx,
                             userRules = state.categoryRules,
+                            // Redundant once the list is filtered to a single account.
+                            accountName = if (state.accountFilter == null) {
+                                accountNames[tx.accountId]
+                            } else {
+                                null
+                            },
                             onClick = { selected = tx },
                         )
                         HorizontalDivider(
@@ -270,6 +313,7 @@ private fun NoMatches(hasQuery: Boolean, onClearFilters: () -> Unit) {
 private fun TransactionRow(
     tx: TransactionEntity,
     userRules: List<CategoryRuleEntity>,
+    accountName: String? = null,
     onClick: () -> Unit,
 ) {
     val category = CategoryEngine.classify(tx, userRules)
@@ -309,6 +353,7 @@ private fun TransactionRow(
             Text(
                 buildList {
                     add(category.label)
+                    accountName?.let(::add)
                     tx.bookingDate.takeIf { it.isNotBlank() }?.let(::add)
                     if (tx.isInternalTransfer) add("transfer")
                     if (tx.isRecurring) add("recurring")

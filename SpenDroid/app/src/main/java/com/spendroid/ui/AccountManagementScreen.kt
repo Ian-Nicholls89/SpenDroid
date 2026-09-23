@@ -8,6 +8,7 @@ package com.spendroid.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
@@ -66,6 +67,7 @@ fun AccountManagementScreen(
     onRelink: (Connection) -> Unit,
     onUpdateAccount: (AccountEntity) -> Unit,
     balanceTypesFor: (AccountEntity) -> List<Pair<String, Boolean>> = { emptyList() },
+    onSeeTransactions: (AccountEntity) -> Unit = {},
 ) {
     var showLinkDialog by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<AccountEntity?>(null) }
@@ -98,6 +100,10 @@ fun AccountManagementScreen(
             account = account,
             allAccounts = state.accounts,
             balanceTypes = balanceTypesFor(account),
+            onSeeTransactions = {
+                editing = null
+                onSeeTransactions(account)
+            },
             onDismiss = { editing = null },
             onSave = {
                 onUpdateAccount(it)
@@ -232,6 +238,7 @@ private fun AccountDetailSheet(
     account: AccountEntity,
     allAccounts: List<AccountEntity>,
     balanceTypes: List<Pair<String, Boolean>>,
+    onSeeTransactions: () -> Unit,
     onDismiss: () -> Unit,
     onSave: (AccountEntity) -> Unit,
 ) {
@@ -250,7 +257,11 @@ private fun AccountDetailSheet(
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         Column(modifier = Modifier.padding(start = 20.dp, end = 20.dp, bottom = 28.dp)) {
             Text(account.institutionName, style = MaterialTheme.typography.labelMedium)
-            Spacer(Modifier.height(10.dp))
+            Spacer(Modifier.height(4.dp))
+            TextButton(onClick = onSeeTransactions, contentPadding = PaddingValues(0.dp)) {
+                Text("See this account's transactions")
+            }
+            Spacer(Modifier.height(6.dp))
 
             OutlinedTextField(
                 value = label,

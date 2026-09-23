@@ -163,6 +163,7 @@ class MainActivity : ComponentActivity() {
                                     onToggleRecurring = viewModel::toggleRecurringOnly,
                                     onToggleInternal = viewModel::toggleInternalTransfers,
                                     onQueryChange = viewModel::setTransactionQuery,
+                                    onAccountFilter = viewModel::setAccountFilter,
                                     onOverrideCategory = viewModel::overrideCategory,
                                     onAlwaysCategorise = viewModel::alwaysCategorise,
                                     onMarkTransfer = viewModel::markAsTransfer,
@@ -175,6 +176,10 @@ class MainActivity : ComponentActivity() {
                                     onRelink = viewModel::relink,
                                     onUpdateAccount = viewModel::updateAccount,
                                     balanceTypesFor = viewModel::balanceTypesFor,
+                                    onSeeTransactions = { account ->
+                                        viewModel.setAccountFilter(account.id)
+                                        navigate(AppScreen.Spending)
+                                    },
                                 )
 
                                 AppScreen.Rules -> RecurringRulesScreen(
