@@ -76,7 +76,7 @@ fun TransactionDetailSheet(
                 Spacer(Modifier.width(14.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        transaction.payee.ifBlank { "Unknown" },
+                        transaction.payee.tidyPayee().ifBlank { "Unknown" },
                         style = MaterialTheme.typography.titleMedium,
                     )
                     Text(
@@ -129,7 +129,7 @@ fun TransactionDetailSheet(
                 Spacer(Modifier.height(10.dp))
                 AssistChip(
                     onClick = { onAlwaysCategorise(transaction, current) },
-                    label = { Text("Always ${current.label} for ${transaction.payee.take(24)}") },
+                    label = { Text("Always ${current.label} for ${transaction.payee.tidyPayee().take(24)}") },
                 )
                 Text(
                     "Applies to every transaction whose name contains this one's, now and in future.",

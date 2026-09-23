@@ -21,16 +21,31 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.runtime.Composable
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.spendroid.data.db.ManualRecurringRuleEntity
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.ui.text.font.FontWeight
+import com.spendroid.domain.BudgetSnapshot
+import com.spendroid.domain.CARD_BILL_KEY_PREFIX
 import com.spendroid.domain.Cadence
 import com.spendroid.domain.Direction
 import com.spendroid.domain.RecurringRule
 import com.spendroid.ui.formatMoney
 import java.time.DayOfWeek
 import java.time.LocalDate
+import java.time.format.DateTimeFormatter
+import java.time.temporal.ChronoUnit
 import java.time.format.TextStyle
 import java.util.Locale
 
@@ -43,6 +58,7 @@ fun RecurringRulesScreen(
     onAddManual: () -> Unit,
     primaryIncomeKey: String? = null,
     onSetPrimaryIncome: (String?) -> Unit = {},
+    budget: BudgetSnapshot? = null,
 ) {
     val income = rules.filter { it.direction == Direction.IN }
     val fixed = rules.filter { it.direction == Direction.OUT }
@@ -85,6 +101,9 @@ fun RecurringRulesScreen(
             modifier = Modifier.fillMaxSize(),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
+            if (budget?.nextIncomeDate != null) {
+                item { CycleTimeline(budget) }
+            }
             if (income.isNotEmpty() || manualIncome.isNotEmpty()) {
                 item { Text("Income", style = MaterialTheme.typography.titleMedium) }
                 item {
@@ -173,74 +192,211 @@ private fun RuleRow(
     onSetPrimary: () -> Unit = {},
     onToggle: (Boolean) -> Unit,
 ) {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            if (canBePrimary) {
-                IconButton(onClick = onSetPrimary) {
-                    Icon(
-                        if (isPrimaryIncome) Icons.Filled.Star else Icons.Filled.StarBorder,
-                        contentDescription = if (isPrimaryIncome) {
-                            "Sets your pay cycle. Tap to unset."
-                        } else {
-                            "Use this income to set your pay cycle"
-                        },
-                        tint = if (isPrimaryIncome) {
-                            MaterialTheme.colorScheme.primary
-                        } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant
-                        },
-                    )
-                }
-            }
-            Column(modifier = Modifier.weight(1f)) {
-                Text(rule.payee.ifBlank { "Unknown" }, style = MaterialTheme.typography.titleSmall)
-                if (isPrimaryIncome) {
-                    Text(
-                        "Sets the pay cycle",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                }
-                Text(
-                    "${describeRule(rule)} · ${formatMoney(rule.amountMinor, rule.currency)} · " +
-                        "${rule.occurrences} seen · ${(rule.score * 100).toInt()}%",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Text(
-                    if (ignored) "Excluded from budget" else "Counted in budget",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 48.dp)
+            .padding(vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (canBePrimary) {
+            IconButton(onClick = onSetPrimary, modifier = Modifier.size(36.dp)) {
+                Icon(
+                    if (isPrimaryIncome) Icons.Filled.Star else Icons.Filled.StarBorder,
+                    contentDescription = if (isPrimaryIncome) {
+                        "Sets your pay cycle. Tap to unset."
+                    } else {
+                        "Use this income to set your pay cycle"
+                    },
+                    tint = if (isPrimaryIncome) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                    modifier = Modifier.size(20.dp),
                 )
             }
-            Switch(
-                checked = !ignored,
-                onCheckedChange = { onToggle(!it) },
+            Spacer(Modifier.width(4.dp))
+        }
+
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                rule.payee.tidyPayee().ifBlank { "Unknown" },
+                style = MaterialTheme.typography.bodyMedium,
+                maxLines = 1,
+                color = if (ignored) {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                } else {
+                    MaterialTheme.colorScheme.onSurface
+                },
             )
+            Text(
+                buildList {
+                    add(describeRule(rule))
+                    if (isPrimaryIncome) add("sets the cycle")
+                    if (ignored) add("excluded")
+                }.joinToString(" · "),
+                style = MaterialTheme.typography.labelSmall,
+                color = if (isPrimaryIncome) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
+                maxLines = 1,
+            )
+        }
+
+        // Confidence as a bar rather than a percentage: the exact figure was never the point,
+        // only whether the app has seen enough of something to be trusted about it.
+        ConfidenceBar(rule)
+        Spacer(Modifier.width(10.dp))
+
+        Text(
+            formatMoney(rule.amountMinor, rule.currency),
+            style = MaterialTheme.typography.bodyMedium.copy(fontFeatureSettings = "tnum"),
+            fontWeight = FontWeight.SemiBold,
+            color = if (rule.direction == Direction.IN) InColor else MaterialTheme.colorScheme.onSurface,
+        )
+        Spacer(Modifier.width(4.dp))
+        Switch(checked = !ignored, onCheckedChange = { onToggle(!it) })
+    }
+    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+}
+
+@Composable
+private fun ConfidenceBar(rule: RecurringRule) {
+    val fraction = rule.score.coerceIn(0f, 1f)
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Box(
+            modifier = Modifier
+                .width(40.dp)
+                .height(4.dp)
+                .background(MaterialTheme.colorScheme.surfaceVariant, CircleShape)
+                .semantics {
+                    contentDescription =
+                        "Seen ${rule.occurrences} times, confidence ${(fraction * 100).toInt()} percent"
+                },
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(fraction)
+                    .height(4.dp)
+                    .background(
+                        if (fraction < 0.6f) {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        } else {
+                            MaterialTheme.colorScheme.primary
+                        },
+                        CircleShape,
+                    ),
+            )
+        }
+        Text(
+            "${rule.occurrences}×",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+private fun CycleTimeline(budget: BudgetSnapshot) {
+    val today = LocalDate.now()
+    val nextIncome = budget.nextIncomeDate ?: return
+    val daysLeft = ChronoUnit.DAYS.between(today, nextIncome).coerceAtLeast(0)
+    val dateFormat = DateTimeFormatter.ofPattern("d MMM")
+
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text("Still to come this cycle", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "Until ${nextIncome.format(dateFormat)} · $daysLeft day${if (daysLeft == 1L) "" else "s"}",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+
+            if (budget.upcomingFixed.isEmpty()) {
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    "Nothing known is due before then.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                Spacer(Modifier.height(10.dp))
+                budget.upcomingFixed.forEach { payment ->
+                    val forecast = payment.rule.key.startsWith(CARD_BILL_KEY_PREFIX)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(8.dp)
+                                .background(
+                                    if (forecast) {
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                    } else {
+                                        MaterialTheme.colorScheme.error
+                                    },
+                                    CircleShape,
+                                ),
+                        )
+                        Spacer(Modifier.width(10.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                payment.rule.payee.tidyPayee(),
+                                style = MaterialTheme.typography.bodyMedium,
+                                maxLines = 1,
+                            )
+                            Text(
+                                if (forecast) {
+                                    "estimated · ~${payment.dueDate.format(dateFormat)}"
+                                } else {
+                                    payment.dueDate.format(dateFormat)
+                                },
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Text(
+                            "−" + formatMoney(payment.amountMinor, payment.rule.currency),
+                            style = MaterialTheme.typography.bodyMedium.copy(fontFeatureSettings = "tnum"),
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(10.dp))
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            Spacer(Modifier.height(8.dp))
+            Row {
+                Text(
+                    "After everything known lands",
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.weight(1f),
+                )
+                Text(
+                    formatMoney(budget.availableToSpend, "GBP"),
+                    style = MaterialTheme.typography.titleSmall.copy(fontFeatureSettings = "tnum"),
+                    fontWeight = FontWeight.Bold,
+                )
+            }
         }
     }
 }
 
 fun describeRule(rule: RecurringRule): String = when (rule.cadence) {
-    Cadence.WEEKLY ->
-        "Weekly · ${dayName(rule.anchorDay)}"
-    Cadence.FORTNIGHTLY ->
-        "Every 2 weeks"
-    Cadence.MONTHLY ->
-        "Monthly · day ${rule.anchorDay}"
-    Cadence.MONTHLY_LAST_DAY ->
-        "Monthly · last day"
-    Cadence.MONTHLY_LAST_BUSINESS_DAY ->
-        "Monthly · last working day"
-    Cadence.QUARTERLY ->
-        "Quarterly"
-    Cadence.ANNUAL ->
-        "Yearly"
+    Cadence.WEEKLY -> "Weekly · ${dayName(rule.anchorDay)}"
+    Cadence.FORTNIGHTLY -> "Every 2 weeks"
+    Cadence.MONTHLY -> "Monthly · day ${rule.anchorDay}"
+    Cadence.MONTHLY_LAST_DAY -> "Monthly · last day"
+    Cadence.MONTHLY_LAST_BUSINESS_DAY -> "Monthly · last working day"
+    Cadence.QUARTERLY -> "Quarterly"
+    Cadence.ANNUAL -> "Yearly"
 }
 
 private fun dayName(value: Int): String = try {

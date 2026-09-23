@@ -77,15 +77,15 @@ fun TransactionsScreen(
         state.showInternalTransfers,
         state.transactionQuery,
     ) {
-        val query = state.transactionQuery.trim().lowercase()
+        val query = state.transactionQuery.tidyPayee().lowercase()
         state.transactions
             .filter { tx ->
                 (!state.showRecurringOnly || tx.isRecurring) &&
                     (state.showInternalTransfers || !tx.isInternalTransfer) &&
                     (
                         query.isEmpty() ||
-                            tx.payee.lowercase().contains(query) ||
-                            tx.description?.lowercase()?.contains(query) == true
+                            tx.payee.tidyPayee().lowercase().contains(query) ||
+                            tx.description?.tidyPayee()?.lowercase()?.contains(query) == true
                         )
             }
             .take(DISPLAY_TRANSACTION_LIMIT)
@@ -275,7 +275,7 @@ private fun TransactionRow(
     val category = CategoryEngine.classify(tx, userRules)
     val visual = category.visual
     val amount = formatMoney(tx.amountMinor, tx.currency)
-    val name = tx.payee.ifBlank { tx.description?.ifBlank { "Unknown" } ?: "Unknown" }
+    val name = tx.payee.tidyPayee().ifBlank { tx.description?.tidyPayee()?.ifBlank { "Unknown" } ?: "Unknown" }
 
     Row(
         modifier = Modifier

@@ -194,6 +194,7 @@ class MainActivity : ComponentActivity() {
                                     onAddManual = { showManualDialog = true },
                                     primaryIncomeKey = state.primaryIncomeKey,
                                     onSetPrimaryIncome = viewModel::setPrimaryIncome,
+                                    budget = state.budget,
                                 )
 
                                 AppScreen.Settings -> SettingsScreen(

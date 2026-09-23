@@ -618,7 +618,7 @@ private fun HeroBudgetCard(budget: BudgetSnapshot) {
                                 .padding(vertical = 2.dp),
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
-                                Text(payment.rule.payee, style = MaterialTheme.typography.bodyMedium, color = Color.White)
+                                Text(payment.rule.payee.tidyPayee(), style = MaterialTheme.typography.bodyMedium, color = Color.White)
                                 // A card bill is forecast from the outstanding balance, so it
                                 // should not read as a confirmed amount and date.
                                 val isForecast = payment.rule.key.startsWith(CARD_BILL_KEY_PREFIX)

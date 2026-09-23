@@ -394,13 +394,20 @@ class GoCardlessRepository private constructor(
             amountMinor = minor,
             currency = amount.currency,
             payee = payee,
-            description = info.ifBlank { null },
+            description = info.collapseSpaces().ifBlank { null },
             isPending = pending,
             rawJson = GSON.toJson(tx),
             isInternalTransfer = false,
             isRecurring = false,
         )
     }
+
+    /**
+     * Banks send fixed-width fields, so a name arrives padded: "BILLS        NICHO". trim()
+     * only touches the ends, so the gap survived into the display and into search, where a
+     * query typed with single spaces could never match.
+     */
+    private fun String.collapseSpaces(): String = trim().replace(Regex("\\s+"), " ")
 
     private fun payeeFor(tx: TransactionDto): String {
         val direct = sequenceOf(
@@ -410,13 +417,13 @@ class GoCardlessRepository private constructor(
             tx.ultimateDebtorName,
             tx.ultimateCreditorName,
         ).firstOrNull { !it.isNullOrBlank() }
-        if (direct != null) return direct.trim()
+        if (direct != null) return direct.collapseSpaces()
         val info = when (val riu = tx.remittanceInformationUnstructured) {
             is List<*> -> riu.firstOrNull()?.toString().orEmpty()
             null -> ""
             else -> riu.toString()
         }
-        return info.trim()
+        return info.collapseSpaces()
     }
 
     private fun labelFor(metadata: AccountDetailsDto, info: AccountInfoDto, accountId: String): String {
