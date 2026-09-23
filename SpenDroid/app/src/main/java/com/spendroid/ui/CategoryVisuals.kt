@@ -5,13 +5,16 @@ import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.DirectionsTransit
 import androidx.compose.material.icons.filled.LocalHospital
 import androidx.compose.material.icons.filled.Movie
+import androidx.compose.material.icons.filled.LunchDining
 import androidx.compose.material.icons.filled.Payments
+import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material.icons.automirrored.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Savings
 import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.filled.ShoppingBag
 import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material.icons.filled.SwapHoriz
+import androidx.compose.material.icons.filled.VolunteerActivism
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import com.spendroid.domain.Category
@@ -32,6 +35,9 @@ private val visuals: Map<Category, CategoryVisual> = mapOf(
     Category.BILLS to CategoryVisual(Icons.AutoMirrored.Filled.ReceiptLong, Color(0xFFFB8C00)),
     Category.ENTERTAINMENT to CategoryVisual(Icons.Filled.Movie, Color(0xFF8E24AA)),
     Category.SHOPPING to CategoryVisual(Icons.Filled.ShoppingBag, Color(0xFFE53935)),
+    Category.EATING_OUT to CategoryVisual(Icons.Filled.Restaurant, Color(0xFFD81B60)),
+    Category.WORK_LUNCH to CategoryVisual(Icons.Filled.LunchDining, Color(0xFF827717)),
+    Category.CHARITY to CategoryVisual(Icons.Filled.VolunteerActivism, Color(0xFF5E35B1)),
     Category.SALARY to CategoryVisual(Icons.Filled.Payments, Color(0xFF00897B)),
     Category.TRANSFERS to CategoryVisual(Icons.Filled.SwapHoriz, Color(0xFF3949AB)),
     Category.SAVINGS to CategoryVisual(Icons.Filled.Savings, Color(0xFF00ACC1)),
