@@ -191,11 +191,14 @@ class MainActivity : ComponentActivity() {
                                     ignored = state.ignoredRules,
                                     onToggle = viewModel::setRuleIgnored,
                                     onAddManual = { showManualDialog = true },
+                                    primaryIncomeKey = state.primaryIncomeKey,
+                                    onSetPrimaryIncome = viewModel::setPrimaryIncome,
                                 )
 
                                 AppScreen.Settings -> SettingsScreen(
                                     state = state,
                                     onSave = viewModel::saveSecret,
+                                    onSetBudgetModel = viewModel::setBudgetModel,
                                     onExport = viewModel::exportTo,
                                     onImport = viewModel::importFrom,
                                     onClearData = viewModel::clearData,

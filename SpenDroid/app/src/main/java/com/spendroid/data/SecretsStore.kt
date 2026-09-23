@@ -34,11 +34,27 @@ class SecretsStore(private val context: Context) {
         val REFRESH_TOKEN = stringPreferencesKey("refresh_token")
         val NOTIFICATION_TIME = stringPreferencesKey("notification_time")
         val LAST_NOTIFIED_VERSION = intPreferencesKey("last_notified_version_code")
+        val PRIMARY_INCOME_KEY = stringPreferencesKey("primary_income_key")
+        val BUDGET_MODEL = stringPreferencesKey("budget_model")
     }
 
     val secretId: Flow<String?> = stringFlow(Keys.SECRET_ID)
     val secretKey: Flow<String?> = stringFlow(Keys.SECRET_KEY)
     val refreshToken: Flow<String?> = stringFlow(Keys.REFRESH_TOKEN)
+
+    /** Which income the user chose to drive the pay cycle. */
+    val primaryIncomeKey: Flow<String?> = stringFlow(Keys.PRIMARY_INCOME_KEY)
+    val budgetModel: Flow<String?> = stringFlow(Keys.BUDGET_MODEL)
+
+    suspend fun savePrimaryIncomeKey(key: String?) {
+        context.dataStore.edit { prefs ->
+            if (key == null) prefs.remove(Keys.PRIMARY_INCOME_KEY) else prefs[Keys.PRIMARY_INCOME_KEY] = key
+        }
+    }
+
+    suspend fun saveBudgetModel(name: String) {
+        context.dataStore.edit { prefs -> prefs[Keys.BUDGET_MODEL] = name }
+    }
 
     val ignoredRules: Flow<Set<String>> = context.dataStore.data
         .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
@@ -116,6 +132,7 @@ class SecretsStore(private val context: Context) {
             prefs.remove(Keys.REFRESH_TOKEN)
             prefs.remove(Keys.CONNECTIONS)
             prefs.remove(Keys.IGNORED_RULES)
+            prefs.remove(Keys.PRIMARY_INCOME_KEY)
         }
     }
 

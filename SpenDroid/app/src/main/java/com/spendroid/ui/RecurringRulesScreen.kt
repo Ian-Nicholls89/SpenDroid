@@ -11,10 +11,15 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Card
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -36,6 +41,8 @@ fun RecurringRulesScreen(
     ignored: Set<String>,
     onToggle: (String, Boolean) -> Unit,
     onAddManual: () -> Unit,
+    primaryIncomeKey: String? = null,
+    onSetPrimaryIncome: (String?) -> Unit = {},
 ) {
     val income = rules.filter { it.direction == Direction.IN }
     val fixed = rules.filter { it.direction == Direction.OUT }
@@ -80,8 +87,25 @@ fun RecurringRulesScreen(
         ) {
             if (income.isNotEmpty() || manualIncome.isNotEmpty()) {
                 item { Text("Income", style = MaterialTheme.typography.titleMedium) }
+                item {
+                    Text(
+                        "Mark which income sets your pay cycle. Everything else still adds to " +
+                            "the budget - it just does not move the dates.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(bottom = 6.dp),
+                    )
+                }
                 items(income, key = { it.key }) { rule ->
-                    RuleRow(rule, ignored.contains(rule.key)) { onToggle(rule.key, it) }
+                    RuleRow(
+                        rule = rule,
+                        ignored = ignored.contains(rule.key),
+                        isPrimaryIncome = rule.key == primaryIncomeKey,
+                        canBePrimary = true,
+                        onSetPrimary = {
+                            onSetPrimaryIncome(if (rule.key == primaryIncomeKey) null else rule.key)
+                        },
+                    ) { onToggle(rule.key, it) }
                 }
                 items(manualIncome, key = { it.id }) { rule ->
                     ManualRuleRow(rule)
@@ -144,6 +168,9 @@ fun describeManualRule(rule: ManualRecurringRuleEntity): String = when (rule.cad
 private fun RuleRow(
     rule: RecurringRule,
     ignored: Boolean,
+    isPrimaryIncome: Boolean = false,
+    canBePrimary: Boolean = false,
+    onSetPrimary: () -> Unit = {},
     onToggle: (Boolean) -> Unit,
 ) {
     Card(modifier = Modifier.fillMaxWidth()) {
@@ -153,8 +180,32 @@ private fun RuleRow(
                 .padding(12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            if (canBePrimary) {
+                IconButton(onClick = onSetPrimary) {
+                    Icon(
+                        if (isPrimaryIncome) Icons.Filled.Star else Icons.Filled.StarBorder,
+                        contentDescription = if (isPrimaryIncome) {
+                            "Sets your pay cycle. Tap to unset."
+                        } else {
+                            "Use this income to set your pay cycle"
+                        },
+                        tint = if (isPrimaryIncome) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                    )
+                }
+            }
             Column(modifier = Modifier.weight(1f)) {
                 Text(rule.payee.ifBlank { "Unknown" }, style = MaterialTheme.typography.titleSmall)
+                if (isPrimaryIncome) {
+                    Text(
+                        "Sets the pay cycle",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
                 Text(
                     "${describeRule(rule)} · ${formatMoney(rule.amountMinor, rule.currency)} · " +
                         "${rule.occurrences} seen · ${(rule.score * 100).toInt()}%",

@@ -52,6 +52,12 @@ class GoCardlessRepository private constructor(
     val lastNotifiedVersionCode: Flow<Int> = secrets.lastNotifiedVersionCode
     val categoryRules: Flow<List<CategoryRuleEntity>> = dao.categoryRulesFlow()
     val budgetGoals: Flow<List<BudgetGoalEntity>> = dao.budgetGoalsFlow()
+    val primaryIncomeKey: Flow<String?> = secrets.primaryIncomeKey
+    val budgetModel: Flow<String?> = secrets.budgetModel
+
+    suspend fun savePrimaryIncomeKey(key: String?) = secrets.savePrimaryIncomeKey(key)
+
+    suspend fun saveBudgetModel(name: String) = secrets.saveBudgetModel(name)
 
     suspend fun setCategoryOverride(accountId: String, transactionId: String, category: String?) {
         dao.setCategoryOverride(accountId, transactionId, category)

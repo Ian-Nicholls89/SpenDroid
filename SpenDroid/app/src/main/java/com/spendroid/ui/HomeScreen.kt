@@ -56,6 +56,7 @@ import com.spendroid.data.db.AccountEntity
 import com.spendroid.data.db.AccountType
 import com.spendroid.data.db.BudgetGoalEntity
 import com.spendroid.data.db.TransactionEntity
+import com.spendroid.domain.BudgetModel
 import com.spendroid.domain.BudgetSnapshot
 import com.spendroid.domain.CARD_BILL_KEY_PREFIX
 import com.spendroid.domain.Category
@@ -541,7 +542,10 @@ private fun HeroBudgetCard(budget: BudgetSnapshot) {
                     Spacer(Modifier.width(16.dp))
                     Column {
                         Text(
-                            "Available to spend",
+                            when (budget.budgetModel) {
+                                BudgetModel.ROLLOVER -> "Available to spend, balance carried over"
+                                else -> "Available to spend"
+                            },
                             style = MaterialTheme.typography.labelMedium,
                             color = Color.White.copy(alpha = 0.85f),
                         )
@@ -564,6 +568,32 @@ private fun HeroBudgetCard(budget: BudgetSnapshot) {
                 Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
                     HeroStat("Spent today", formatMoney(budget.spentToday, "GBP"))
                     HeroStat("This cycle", formatMoney(budget.spentThisCycle, "GBP"))
+                    // Deliberately beside the budget rather than folded into it: the two
+                    // answer different questions and the gap between them is the point.
+                    if (budget.budgetModel == BudgetModel.SHOW_BOTH) {
+                        budget.potBalanceMinor?.let { pot ->
+                            HeroStat("In the account", formatMoney(pot, "GBP"))
+                        }
+                    }
+                }
+                if (budget.budgetModel == BudgetModel.ROLLOVER) {
+                    budget.openingBalanceMinor?.let { opening ->
+                        Text(
+                            "Includes ${formatMoney(opening, "GBP")} carried in at the start of the cycle",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color.White.copy(alpha = 0.8f),
+                        )
+                    }
+                }
+                if (budget.designationLost) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "The income you picked to set the cycle is no longer being detected — " +
+                            "possibly renamed by your bank. Using the largest income instead; " +
+                            "pick it again under Recurring rules.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color.White,
+                    )
                 }
                 Spacer(Modifier.height(12.dp))
                 Text(

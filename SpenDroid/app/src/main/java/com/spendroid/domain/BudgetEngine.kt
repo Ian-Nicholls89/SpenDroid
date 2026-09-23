@@ -14,6 +14,9 @@ object BudgetEngine {
         rules: List<RecurringRule>,
         accounts: List<AccountEntity> = emptyList(),
         referenceTime: java.time.LocalDateTime = java.time.LocalDateTime.now(),
+        /** Key of the income the user chose to drive the cycle, if they chose one. */
+        primaryIncomeKey: String? = null,
+        budgetModel: BudgetModel = BudgetModel.FRESH_START,
     ): BudgetSnapshot {
         val creditCardAccountIds = accounts
             .filter { it.accountType == AccountType.CREDIT_CARD }
@@ -39,8 +42,13 @@ object BudgetEngine {
         val incomeRules = rules.filter { it.direction == Direction.IN }
         val fixedRules = rules.filter { it.direction == Direction.OUT }
 
-        // Identify primary income (largest regular income)
-        val primaryIncome = incomeRules.maxByOrNull { monthlyEquivalent(it) }
+        // The user's choice drives the cycle where they made one. Falling back to the
+        // largest income keeps the app working when a designated rule stops being detected -
+        // a new employer renames the payment and its key changes - and designationLost lets
+        // the screen say so rather than the cycle silently moving.
+        val designated = primaryIncomeKey?.let { key -> incomeRules.firstOrNull { it.key == key } }
+        val designationLost = primaryIncomeKey != null && designated == null
+        val primaryIncome = designated ?: incomeRules.maxByOrNull { monthlyEquivalent(it) }
 
         // Both are reported as positive magnitudes so the subtraction below is a subtraction:
         // OUT rules carry a negative amountMinor, and summing them signed would add the
@@ -105,7 +113,40 @@ object BudgetEngine {
         }
 
         val upcomingTotal = upcomingFixed.sumOf { it.amountMinor }
-        val availableToSpend = (variableBudget - spentThisCycle - upcomingTotal).coerceAtLeast(0L)
+
+        // The pot is the account the main income lands in, which makes designating the income
+        // designate the account too, with no second setting to keep in step.
+        val potAccount = primaryIncome?.let { income ->
+            val paidInto = transactions
+                .filter { it.amountMinor > 0 && RecurringAnalyzer.matches(income, it) }
+                .groupingBy { it.accountId }
+                .eachCount()
+                .maxByOrNull { it.value }
+                ?.key
+            accounts.firstOrNull { it.id == paidInto }
+        }
+        val potBalance = potAccount?.balanceMinor
+
+        // Rewind today's balance over everything booked since the cycle began to get what was
+        // there at the start. The balance is only as fresh as the last sync, so this is an
+        // estimate, and it is the honest one available without storing daily snapshots.
+        val openingBalance = potAccount?.let { account ->
+            val sinceStart = transactions
+                .filter { tx ->
+                    tx.accountId == account.id &&
+                        !tx.isPending &&
+                        (RecurringAnalyzer.parseBookingDate(tx.bookingDate)?.let { it >= cycleStart } == true)
+                }
+                .sumOf { it.amountMinor }
+            (account.balanceMinor ?: return@let null) - sinceStart
+        }
+
+        val freshStart = variableBudget - spentThisCycle - upcomingTotal
+        val availableToSpend = when (budgetModel) {
+            BudgetModel.FRESH_START, BudgetModel.SHOW_BOTH -> freshStart
+            // What was already there is spendable too, so it joins this cycle's budget.
+            BudgetModel.ROLLOVER -> freshStart + (openingBalance ?: 0L)
+        }.coerceAtLeast(0L)
 
         return BudgetSnapshot(
             averageMonthlyIncome = averageMonthlyIncome,
@@ -123,6 +164,12 @@ object BudgetEngine {
             primaryIncomeRule = primaryIncome,
             daysUntilNextIncome = daysUntilNextIncome,
             cardBills = cardAnalysis.bills,
+            budgetModel = budgetModel,
+            potAccountId = potAccount?.id,
+            openingBalanceMinor = openingBalance,
+            potBalanceMinor = potBalance,
+            primaryIncomeDesignated = designated != null,
+            designationLost = designationLost,
         )
     }
 

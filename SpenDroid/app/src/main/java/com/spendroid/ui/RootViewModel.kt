@@ -21,6 +21,7 @@ import com.spendroid.data.db.ManualRecurringRuleEntity
 import com.spendroid.data.db.TransactionEntity
 import com.spendroid.data.remote.InstitutionDto
 import com.spendroid.domain.BudgetEngine
+import com.spendroid.domain.BudgetModel
 import com.spendroid.domain.Category
 import com.spendroid.domain.BudgetSnapshot
 import com.spendroid.domain.RecurringAnalyzer
@@ -84,6 +85,8 @@ data class RootUiState(
     val categoryRules: List<CategoryRuleEntity> = emptyList(),
     val budgetGoals: List<BudgetGoalEntity> = emptyList(),
     val transactionQuery: String = "",
+    val primaryIncomeKey: String? = null,
+    val budgetModel: BudgetModel = BudgetModel.FRESH_START,
     /** Step-by-step status while linking a bank. Not a failure. */
     val linkProgress: String? = null,
     val versionName: String = "",
@@ -222,6 +225,21 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
 
     fun toggleRecurringOnly() {
         _state.update { it.copy(showRecurringOnly = !it.showRecurringOnly) }
+    }
+
+    /** Chooses which income sets the pay cycle; null returns to the largest-income guess. */
+    fun setPrimaryIncome(key: String?) {
+        viewModelScope.launch {
+            repo.savePrimaryIncomeKey(key)
+            loadLocal()
+        }
+    }
+
+    fun setBudgetModel(model: BudgetModel) {
+        viewModelScope.launch {
+            repo.saveBudgetModel(model.name)
+            loadLocal()
+        }
     }
 
     fun setTransactionQuery(query: String) {
@@ -457,6 +475,8 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
         val manualRules = repo.manualRules.first()
         val accounts = repo.accounts()
         val categoryRules = repo.categoryRules.first()
+        val primaryIncomeKey = repo.primaryIncomeKey.first()
+        val budgetModel = BudgetModel.from(repo.budgetModel.first())
         val budgetGoals = repo.budgetGoals.first()
         // Compile-time constants: no PackageManager lookup to fail and fall back to a fake
         // "1.0.0" / 0 that would then be compared against the latest release.
@@ -473,7 +493,15 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
                 ignoredRules = ignored,
                 categoryRules = categoryRules,
                 budgetGoals = budgetGoals,
-                budget = BudgetEngine.snapshot(all, allRules.filter { rule -> rule.key !in ignored }, accounts),
+                budget = BudgetEngine.snapshot(
+                    transactions = all,
+                    rules = allRules.filter { rule -> rule.key !in ignored },
+                    accounts = accounts,
+                    primaryIncomeKey = primaryIncomeKey,
+                    budgetModel = budgetModel,
+                ),
+                primaryIncomeKey = primaryIncomeKey,
+                budgetModel = budgetModel,
                 connections = repo.connections.first(),
                 versionName = versionName,
                 versionCode = versionCode,

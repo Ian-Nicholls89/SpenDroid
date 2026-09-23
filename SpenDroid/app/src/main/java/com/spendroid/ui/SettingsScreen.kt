@@ -3,6 +3,7 @@ package com.spendroid.ui
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -23,6 +24,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.Tab
@@ -38,12 +40,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import com.spendroid.domain.BudgetModel
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 
 private enum class SettingsTab(val label: String) {
     CREDENTIALS("Credentials"),
+    BUDGET("Budget"),
     UPDATES("Updates"),
     NOTIFICATIONS("Notifications"),
     DATA("Data"),
@@ -61,6 +65,7 @@ private fun parseNotificationTime(value: String): LocalTime =
 fun SettingsScreen(
     state: RootUiState,
     onSave: (String, String) -> Unit,
+    onSetBudgetModel: (BudgetModel) -> Unit,
     onExport: (Uri) -> Unit,
     onImport: (Uri) -> Unit,
     onClearData: () -> Unit,
@@ -111,6 +116,11 @@ fun SettingsScreen(
                         onSave(secretIdField.trim(), secretKeyField.trim())
                         saved = true
                     },
+                )
+
+                SettingsTab.BUDGET -> BudgetSection(
+                    current = state.budgetModel,
+                    onSelect = onSetBudgetModel,
                 )
 
                 SettingsTab.UPDATES -> UpdatesSection(
@@ -336,6 +346,50 @@ private fun NotificationsSection(
             Text("Change")
         }
     }
+}
+
+@Composable
+private fun BudgetSection(
+    current: BudgetModel,
+    onSelect: (BudgetModel) -> Unit,
+) {
+    Text("How the budget is worked out", style = MaterialTheme.typography.titleMedium)
+    Spacer(Modifier.height(4.dp))
+    Text(
+        "There is no single right answer, and it can reasonably change month to month.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    Spacer(Modifier.height(12.dp))
+
+    BudgetModel.entries.forEach { model ->
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { onSelect(model) }
+                .padding(vertical = 8.dp),
+            verticalAlignment = Alignment.Top,
+        ) {
+            RadioButton(selected = current == model, onClick = { onSelect(model) })
+            Spacer(Modifier.width(8.dp))
+            Column {
+                Text(model.label, style = MaterialTheme.typography.bodyLarge)
+                Text(
+                    model.explanation,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+
+    Spacer(Modifier.height(12.dp))
+    Text(
+        "Carrying the balance over and showing the balance both use the account your main " +
+            "income is paid into. Choose which income that is under Recurring rules.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
 }
 
 @Composable

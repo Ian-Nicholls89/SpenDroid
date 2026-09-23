@@ -66,6 +66,18 @@ data class BudgetSnapshot(
     val daysUntilNextIncome: Int?,
     /** Outstanding credit card balances, for showing the forecast bill as an estimate. */
     val cardBills: List<CreditCardEngine.CardBill> = emptyList(),
+    /** Which model produced [availableToSpend]. */
+    val budgetModel: BudgetModel = BudgetModel.FRESH_START,
+    /** The account the main income is paid into, and whose balance forms the pot. */
+    val potAccountId: String? = null,
+    /** What was in the pot when the cycle began, derived by rewinding today's balance. */
+    val openingBalanceMinor: Long? = null,
+    /** What is in the pot now. */
+    val potBalanceMinor: Long? = null,
+    /** True when the user picked the income that sets the cycle, rather than it being guessed. */
+    val primaryIncomeDesignated: Boolean = false,
+    /** True when a designated income no longer matches any rule and the guess took over. */
+    val designationLost: Boolean = false,
 )
 
 fun ManualRecurringRuleEntity.toRecurringRule(): RecurringRule? {
