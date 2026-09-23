@@ -53,6 +53,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.spendroid.data.Connection
 import com.spendroid.data.db.AccountEntity
+import com.spendroid.data.db.AccountType
 import com.spendroid.data.db.BudgetGoalEntity
 import com.spendroid.data.db.TransactionEntity
 import com.spendroid.domain.BudgetSnapshot
@@ -279,6 +280,76 @@ private fun CardBillCard(bill: CreditCardEngine.CardBill) {
     }
 }
 
+/**
+ * What is held against what is owed.
+ *
+ * Available-to-spend is a budget: a plan derived from recurring income. This is the other
+ * question - what actually exists right now - and the two are worth seeing side by side
+ * rather than blended into one number that answers neither cleanly.
+ */
+@Composable
+private fun NetPositionCard(accounts: List<AccountEntity>) {
+    val currency = accounts.firstOrNull()?.currency ?: "GBP"
+    val held = accounts
+        .filter { it.accountType != AccountType.CREDIT_CARD }
+        .sumOf { it.balanceMinor ?: 0L }
+    // A card balance is negative when money is owed on it; a card in credit owes nothing.
+    val owed = accounts
+        .filter { it.accountType == AccountType.CREDIT_CARD }
+        .sumOf { maxOf(0L, -(it.balanceMinor ?: 0L)) }
+
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(
+                "Where you stand",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(10.dp))
+            Row {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        "Held",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        formatMoney(held, currency),
+                        style = MaterialTheme.typography.titleMedium.copy(fontFeatureSettings = "tnum"),
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        "Owed",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        if (owed == 0L) formatMoney(0L, currency) else "−" + formatMoney(owed, currency),
+                        style = MaterialTheme.typography.titleMedium.copy(fontFeatureSettings = "tnum"),
+                        fontWeight = FontWeight.SemiBold,
+                        color = if (owed > 0L) OutColor else MaterialTheme.colorScheme.onSurface,
+                    )
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        "Net",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        formatMoney(held - owed, currency),
+                        style = MaterialTheme.typography.titleMedium.copy(fontFeatureSettings = "tnum"),
+                        fontWeight = FontWeight.Bold,
+                        color = if (held - owed < 0L) OutColor else MaterialTheme.colorScheme.onSurface,
+                    )
+                }
+            }
+        }
+    }
+}
+
 private data class MonthTotals(
     val inSum: Long,
     val outSum: Long,
@@ -311,6 +382,11 @@ fun HomeScreen(
         }
         state.budget?.let { budget ->
             HeroBudgetCard(budget)
+            Spacer(Modifier.height(16.dp))
+        }
+
+        if (state.accounts.isNotEmpty()) {
+            NetPositionCard(state.accounts)
             Spacer(Modifier.height(16.dp))
         }
 

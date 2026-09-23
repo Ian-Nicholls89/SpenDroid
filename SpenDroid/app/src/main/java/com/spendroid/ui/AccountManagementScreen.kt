@@ -1,45 +1,54 @@
 @file:OptIn(
     androidx.compose.foundation.layout.ExperimentalLayoutApi::class,
+    androidx.compose.material3.ExperimentalMaterial3Api::class,
 )
 
 package com.spendroid.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccountBalance
+import androidx.compose.material.icons.filled.CreditCard
+import androidx.compose.material.icons.filled.Group
+import androidx.compose.material.icons.filled.Savings
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
-import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.spendroid.data.Connection
 import com.spendroid.data.db.AccountEntity
 import com.spendroid.data.db.AccountType
@@ -58,32 +67,41 @@ fun AccountManagementScreen(
     onUpdateAccount: (AccountEntity) -> Unit,
 ) {
     var showLinkDialog by remember { mutableStateOf(false) }
+    var editing by remember { mutableStateOf<AccountEntity?>(null) }
 
-    Column(
+    LazyColumn(
         modifier = Modifier
             .fillMaxSize()
-            .padding(16.dp),
+            .padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Text("Your linked accounts", style = MaterialTheme.typography.titleMedium)
-        Spacer(Modifier.height(8.dp))
-        LazyColumn(
-            modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            items(state.accounts) { account ->
-                AccountManagementCard(
-                    account = account,
-                    connection = state.connections.find { it.accountIds.contains(account.id) },
-                    onRelink = { onRelink(it) },
-                    onUpdateAccount = onUpdateAccount,
-                    allAccounts = state.accounts,
-                )
+        items(state.accounts, key = { it.id }) { account ->
+            AccountWalletCard(
+                account = account,
+                connection = state.connections.find { it.accountIds.contains(account.id) },
+                onClick = { editing = account },
+                onRelink = onRelink,
+            )
+        }
+        item {
+            Spacer(Modifier.height(4.dp))
+            Button(onClick = { showLinkDialog = true }, modifier = Modifier.fillMaxWidth()) {
+                Text("Add another bank")
             }
+            Spacer(Modifier.height(24.dp))
         }
-        Spacer(Modifier.height(12.dp))
-        Button(onClick = { showLinkDialog = true }, modifier = Modifier.fillMaxWidth()) {
-            Text("Add another bank")
-        }
+    }
+
+    editing?.let { account ->
+        AccountDetailSheet(
+            account = account,
+            allAccounts = state.accounts,
+            onDismiss = { editing = null },
+            onSave = {
+                onUpdateAccount(it)
+                editing = null
+            },
+        )
     }
 
     if (showLinkDialog) {
@@ -98,214 +116,225 @@ fun AccountManagementScreen(
     }
 }
 
+/** Colour by what the account is, so a liability never looks like money in the bank. */
+private fun AccountType.gradient(): List<Color> = when (this) {
+    AccountType.CREDIT_CARD -> listOf(Color(0xFF8E2C2C), Color(0xFF5D1A1A))
+    AccountType.JOINT -> listOf(Color(0xFF00695C), Color(0xFF004D40))
+    AccountType.SAVINGS -> listOf(Color(0xFF1565C0), Color(0xFF0D47A1))
+    AccountType.OTHER -> listOf(Color(0xFF455A64), Color(0xFF263238))
+    AccountType.PERSONAL -> listOf(Color(0xFF2E7D32), Color(0xFF1B5E20))
+}
+
+private fun AccountType.icon() = when (this) {
+    AccountType.CREDIT_CARD -> Icons.Filled.CreditCard
+    AccountType.JOINT -> Icons.Filled.Group
+    AccountType.SAVINGS -> Icons.Filled.Savings
+    else -> Icons.Filled.AccountBalance
+}
+
 @Composable
-private fun AccountManagementCard(
+private fun AccountWalletCard(
     account: AccountEntity,
     connection: Connection?,
+    onClick: () -> Unit,
     onRelink: (Connection) -> Unit,
-    onUpdateAccount: (AccountEntity) -> Unit,
-    allAccounts: List<AccountEntity>,
 ) {
     val daysLeft = connection?.let { calculateDaysUntilExpiry(it) }
-    val isExpiringSoon = daysLeft != null && daysLeft <= 14
+    val isCard = account.accountType == AccountType.CREDIT_CARD
+    val balance = account.balanceMinor
+    val amount = balance?.let { formatMoney(it, account.currency) } ?: "—"
 
-    var selectedType by remember { mutableStateOf(account.accountType) }
-    var linkedCardId by remember { mutableStateOf(account.linkedCreditCardAccountId) }
-    var label by remember { mutableStateOf(account.label) }
-    var showEditLabel by remember { mutableStateOf(false) }
-
-    val personalAccounts = allAccounts.filter { it.accountType == AccountType.PERSONAL && it.id != account.id }
-    val creditCardAccounts = allAccounts.filter { it.accountType == AccountType.CREDIT_CARD }
-
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        elevation = CardDefaults.cardElevation(defaultElevation = if (isExpiringSoon) 4.dp else 1.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = if (isExpiringSoon) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.surface,
-        ),
-    ) {
-        Column(modifier = Modifier.padding(12.dp)) {
-            // Header with label (editable) and type badge
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    if (showEditLabel) {
-                        OutlinedTextField(
-                            value = label,
-                            onValueChange = { label = it },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                    } else {
-                        Text(
-                            label,
-                            style = MaterialTheme.typography.titleMedium,
-                            maxLines = 1,
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                    }
-                    Spacer(Modifier.height(2.dp))
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            "${account.institutionName} · ${account.currency} ${formatBalance(account.balanceMinor)}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        // Type badge
-                        Text(
-                            selectedType.displayName,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier
-                                .padding(horizontal = 6.dp, vertical = 2.dp)
-                                .background(MaterialTheme.colorScheme.primaryContainer, androidx.compose.foundation.shape.RoundedCornerShape(4.dp)),
-                        )
-                        if (isExpiringSoon) {
-                            Text(
-                                "⚠ $daysLeft days left",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.error,
-                                fontWeight = FontWeight.Bold,
-                            )
-                        }
-                    }
-                }
-                // Edit label button
-                TextButton(onClick = { showEditLabel = !showEditLabel }) {
-                    Text(if (showEditLabel) "✓" else "✎", fontSize = 14.sp)
-                }
-            }
-            Spacer(Modifier.height(8.dp))
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-            Spacer(Modifier.height(8.dp))
-
-            // Wraps rather than running off the edge. As a single Row, "Personal current
-            // account" and "Joint account" consumed the whole width of a phone and every
-            // type after them - Credit card included - was clipped out of reach.
-            Text(
-                "Type",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 48.dp)
+            .background(
+                Brush.linearGradient(account.accountType.gradient()),
+                RoundedCornerShape(16.dp),
             )
-            Spacer(Modifier.height(4.dp))
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                AccountType.entries.forEach { type ->
-                    FilterChip(
-                        selected = selectedType == type,
-                        onClick = { selectedType = type },
-                        label = { Text(type.shortName) },
-                    )
-                }
+            .clickable(onClick = onClick)
+            .padding(16.dp)
+            .semantics(mergeDescendants = true) {
+                contentDescription = "${account.label}, ${account.accountType.shortName}, " +
+                    if (isCard) "$amount owed" else amount
+            },
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                account.accountType.icon(),
+                contentDescription = null,
+                tint = Color.White.copy(alpha = 0.9f),
+                modifier = Modifier.size(18.dp),
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(
+                "${account.institutionName} · ${account.accountType.shortName}",
+                style = MaterialTheme.typography.labelMedium,
+                color = Color.White.copy(alpha = 0.85f),
+                maxLines = 1,
+            )
+        }
+        Spacer(Modifier.height(6.dp))
+        Text(
+            account.label,
+            style = MaterialTheme.typography.titleSmall,
+            color = Color.White.copy(alpha = 0.9f),
+            maxLines = 1,
+        )
+        Text(
+            amount,
+            style = MaterialTheme.typography.headlineSmall.copy(fontFeatureSettings = "tnum"),
+            fontWeight = FontWeight.Bold,
+            color = Color.White,
+        )
+        Row {
+            Text(
+                if (isCard) "owed · synced ${syncedAt(account.lastSynced)}"
+                else "synced ${syncedAt(account.lastSynced)}",
+                style = MaterialTheme.typography.labelSmall,
+                color = Color.White.copy(alpha = 0.75f),
+                modifier = Modifier.weight(1f),
+            )
+            if (daysLeft != null && daysLeft > 14) {
+                Text(
+                    "access $daysLeft days",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color.White.copy(alpha = 0.75f),
+                )
             }
-            Spacer(Modifier.height(6.dp))
-
-            // Linked accounts (credit card linking)
-            if (selectedType == AccountType.PERSONAL && creditCardAccounts.isNotEmpty()) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text("Linked cards:", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        creditCardAccounts.forEach { cc ->
-                            val isLinked = linkedCardId == cc.id
-                            TextButton(
-                                onClick = { linkedCardId = if (isLinked) null else cc.id },
-                                modifier = Modifier.padding(horizontal = 2.dp),
-                                colors = if (isLinked) ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primaryContainer) else ButtonDefaults.textButtonColors(),
-                            ) {
-                                Text(cc.label, fontSize = 11.sp, fontWeight = if (isLinked) FontWeight.Bold else FontWeight.Normal)
-                            }
-                        }
-                    }
-                }
-            } else if (selectedType == AccountType.CREDIT_CARD && personalAccounts.isNotEmpty()) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text("Paid from:", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        personalAccounts.forEach { pa ->
-                            val isLinked = linkedCardId == pa.id
-                            TextButton(
-                                onClick = { linkedCardId = if (isLinked) null else pa.id },
-                                modifier = Modifier.padding(horizontal = 2.dp),
-                                colors = if (isLinked) ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primaryContainer) else ButtonDefaults.textButtonColors(),
-                            ) {
-                                Text(pa.label, fontSize = 11.sp, fontWeight = if (isLinked) FontWeight.Bold else FontWeight.Normal)
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Reauthorisation warning
-            if (daysLeft != null && daysLeft <= 30) {
-                Spacer(Modifier.height(8.dp))
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                Spacer(Modifier.height(8.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                ) {
-                    Text(
-                        "Reauth needed by ${formatExpiryDate(connection!!.createdAt + 90 * 24 * 60 * 60 * 1000L)} ($daysLeft days)",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = if (daysLeft <= 7) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    if (daysLeft <= 30) {
-                        TextButton(
-                            onClick = { onRelink(connection!!) },
-                            colors = if (daysLeft <= 7) ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.errorContainer) else ButtonDefaults.textButtonColors(),
-                        ) {
-                            Text(if (daysLeft <= 7) "Reauthorise now" else "Reauthorise soon")
-                        }
-                    }
+        }
+        if (connection != null && daysLeft != null && daysLeft <= 14) {
+            Spacer(Modifier.height(8.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    if (daysLeft <= 0) "Access has expired" else "Access ends in $daysLeft days",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = Color.White,
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(onClick = { onRelink(connection) }) {
+                    Text("Reconnect", color = Color.White, fontWeight = FontWeight.SemiBold)
                 }
             }
         }
     }
+}
 
-    // Save changes
-    LaunchedEffect(selectedType, linkedCardId, label) {
-        if (selectedType != account.accountType || linkedCardId != account.linkedCreditCardAccountId || label != account.label) {
-            onUpdateAccount(account.copy(
-                accountType = selectedType,
-                linkedCreditCardAccountId = linkedCardId,
-                label = label,
-            ))
+/**
+ * Everything editable about an account, in the same bottom sheet pattern the transaction
+ * list uses. Keeping it off the card is what stops the list overflowing: a 23-character type
+ * name has room here and never had room in a chip beside a balance.
+ */
+@Composable
+private fun AccountDetailSheet(
+    account: AccountEntity,
+    allAccounts: List<AccountEntity>,
+    onDismiss: () -> Unit,
+    onSave: (AccountEntity) -> Unit,
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    var label by remember(account.id) { mutableStateOf(account.label) }
+    var type by remember(account.id) { mutableStateOf(account.accountType) }
+    var linkedId by remember(account.id) { mutableStateOf(account.linkedCreditCardAccountId) }
+
+    val counterparts = when (type) {
+        AccountType.CREDIT_CARD -> allAccounts.filter {
+            it.accountType != AccountType.CREDIT_CARD && it.id != account.id
+        }
+        else -> allAccounts.filter { it.accountType == AccountType.CREDIT_CARD && it.id != account.id }
+    }
+
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
+        Column(modifier = Modifier.padding(start = 20.dp, end = 20.dp, bottom = 28.dp)) {
+            Text(account.institutionName, style = MaterialTheme.typography.labelMedium)
+            Spacer(Modifier.height(10.dp))
+
+            OutlinedTextField(
+                value = label,
+                onValueChange = { label = it },
+                label = { Text("Name") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+
+            Spacer(Modifier.height(16.dp))
+            Text("Type", style = MaterialTheme.typography.labelLarge)
+            Spacer(Modifier.height(6.dp))
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                AccountType.entries.forEach { option ->
+                    FilterChip(
+                        selected = type == option,
+                        onClick = {
+                            type = option
+                            linkedId = null
+                        },
+                        label = { Text(option.shortName) },
+                    )
+                }
+            }
+            Text(
+                when (type) {
+                    AccountType.CREDIT_CARD ->
+                        "Spending on a card is left out of your budget; the bill that pays it is counted instead."
+                    else -> "Spending from this account counts towards your budget."
+                },
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+
+            if (counterparts.isNotEmpty()) {
+                Spacer(Modifier.height(16.dp))
+                Text(
+                    if (type == AccountType.CREDIT_CARD) "Paid from" else "Pays which card",
+                    style = MaterialTheme.typography.labelLarge,
+                )
+                Spacer(Modifier.height(6.dp))
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    counterparts.forEach { other ->
+                        FilterChip(
+                            selected = linkedId == other.id,
+                            onClick = { linkedId = if (linkedId == other.id) null else other.id },
+                            label = { Text(other.label, maxLines = 1) },
+                        )
+                    }
+                }
+                Text(
+                    "Linking the two lets the bill be matched to the card it pays.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+
+            Spacer(Modifier.height(20.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(onClick = onDismiss, modifier = Modifier.weight(1f)) { Text("Cancel") }
+                Button(
+                    onClick = {
+                        onSave(
+                            account.copy(
+                                label = label.trim().ifBlank { account.label },
+                                accountType = type,
+                                linkedCreditCardAccountId = linkedId,
+                            ),
+                        )
+                    },
+                    modifier = Modifier.weight(1f),
+                ) { Text("Save") }
+            }
         }
     }
 }
 
 private fun calculateDaysUntilExpiry(connection: Connection): Int {
     val expiryMs = connection.createdAt + 90L * 24 * 60 * 60 * 1000
-    val now = System.currentTimeMillis()
     val days = ChronoUnit.DAYS.between(
-        Instant.ofEpochMilli(now).atZone(ZoneId.systemDefault()).toLocalDate(),
+        Instant.ofEpochMilli(System.currentTimeMillis()).atZone(ZoneId.systemDefault()).toLocalDate(),
         Instant.ofEpochMilli(expiryMs).atZone(ZoneId.systemDefault()).toLocalDate(),
     )
     return days.toInt()
 }
 
-private fun formatExpiryDate(epochMillis: Long): String {
-    val formatter = DateTimeFormatter.ofPattern("d MMM yyyy", java.util.Locale.getDefault())
-    return Instant.ofEpochMilli(epochMillis).atZone(ZoneId.systemDefault()).format(formatter)
-}
-
-private fun formatBalance(balanceMinor: Long?): String {
-    val abs = balanceMinor?.let { abs(it) } ?: 0L
-    val pounds = abs / 100
-    val pence = abs % 100
-    val sign = if ((balanceMinor ?: 0L) < 0) "-" else ""
-    return "$sign$pounds.${"%02d".format(pence)}"
-}
+private fun syncedAt(epochMillis: Long): String =
+    Instant.ofEpochMilli(epochMillis)
+        .atZone(ZoneId.systemDefault())
+        .format(DateTimeFormatter.ofPattern("d MMM, HH:mm", java.util.Locale.getDefault()))
