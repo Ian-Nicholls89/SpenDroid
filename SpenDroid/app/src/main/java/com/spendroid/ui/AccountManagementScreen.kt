@@ -1,7 +1,13 @@
+@file:OptIn(
+    androidx.compose.foundation.layout.ExperimentalLayoutApi::class,
+)
+
 package com.spendroid.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -16,6 +22,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -178,20 +185,22 @@ private fun AccountManagementCard(
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             Spacer(Modifier.height(8.dp))
 
-            // Account type selector (compact)
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                Text("Type:", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                AccountType.values().forEach { type ->
-                    TextButton(
+            // Wraps rather than running off the edge. As a single Row, "Personal current
+            // account" and "Joint account" consumed the whole width of a phone and every
+            // type after them - Credit card included - was clipped out of reach.
+            Text(
+                "Type",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(4.dp))
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                AccountType.entries.forEach { type ->
+                    FilterChip(
+                        selected = selectedType == type,
                         onClick = { selectedType = type },
-                        modifier = Modifier.padding(horizontal = 2.dp),
-                        colors = if (selectedType == type) ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primaryContainer) else ButtonDefaults.textButtonColors(),
-                    ) {
-                        Text(type.displayName, fontSize = 11.sp, fontWeight = if (selectedType == type) FontWeight.Bold else FontWeight.Normal)
-                    }
+                        label = { Text(type.shortName) },
+                    )
                 }
             }
             Spacer(Modifier.height(6.dp))

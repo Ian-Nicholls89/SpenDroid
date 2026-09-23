@@ -4,12 +4,12 @@ import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
 
-enum class AccountType(val displayName: String) {
-    PERSONAL("Personal current account"),
-    JOINT("Joint account"),
-    CREDIT_CARD("Credit card"),
-    SAVINGS("Savings"),
-    OTHER("Other"),
+enum class AccountType(val displayName: String, val shortName: String) {
+    PERSONAL("Personal current account", "Personal"),
+    JOINT("Joint account", "Joint"),
+    CREDIT_CARD("Credit card", "Credit card"),
+    SAVINGS("Savings", "Savings"),
+    OTHER("Other", "Other"),
 }
 
 @Entity(tableName = "accounts")
