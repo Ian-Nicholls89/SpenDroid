@@ -39,6 +39,29 @@ import com.spendroid.domain.CategoryEngine
 import com.spendroid.domain.CategoryTotal
 import com.spendroid.domain.TrendSummary
 import com.spendroid.domain.TrendsEngine
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.Box
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.drawText
+import com.spendroid.domain.CategoryTrend
+import com.spendroid.domain.MonthSummary
+import java.time.YearMonth
+import java.time.format.DateTimeFormatter
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.FilterChip
+import com.spendroid.data.db.TransactionEntity
+import com.spendroid.domain.RecurringAnalyzer
+import java.time.LocalDate
 
 /**
  * Where spending is analysed, as opposed to the dashboard, which says where the cycle
@@ -52,15 +75,27 @@ fun InsightsScreen(
 ) {
     val cardPaymentKeys = state.budget?.cardPaymentKeys.orEmpty()
     val cardAccountIds = state.budget?.creditCardAccountIds.orEmpty()
-    val breakdown = remember(state.transactions, state.categoryRules, cardPaymentKeys) {
+    var period by rememberSaveable { mutableStateOf(SpendingPeriod.CYCLE) }
+    val windowed = remember(state.transactions, period, state.budget?.cycleStart) {
+        period.filter(state.transactions, state.budget?.cycleStart)
+    }
+    val breakdown = remember(windowed, state.categoryRules, cardPaymentKeys) {
         CategoryEngine.spendingBreakdown(
-            state.transactions,
+            windowed,
             state.categoryRules,
             cardPaymentKeys,
             cardAccountIds,
         )
     }
     val trends = remember(state.transactions) { TrendsEngine.analyze(state.transactions) }
+    val categoryTrends = remember(state.transactions, state.categoryRules, cardPaymentKeys) {
+        TrendsEngine.categoryTrends(
+            state.transactions,
+            state.categoryRules,
+            cardPaymentKeys,
+            cardAccountIds,
+        )
+    }
 
     Column(
         modifier = Modifier
@@ -78,6 +113,9 @@ fun InsightsScreen(
             return@Column
         }
 
+        PeriodSelector(period) { period = it }
+        Spacer(Modifier.height(12.dp))
+
         if (breakdown.isNotEmpty()) {
             CategoryBreakdownCard(
                 breakdown = breakdown,
@@ -88,8 +126,62 @@ fun InsightsScreen(
             Spacer(Modifier.height(16.dp))
         }
         if (trends.months.size >= 2) {
-            TrendsCard(trends)
+            TrendsCard(trends, categoryTrends)
         }
+    }
+}
+
+/**
+ * Which window the breakdown covers.
+ *
+ * Cycle is the default because every other figure in the app is measured that way. Week and
+ * month deliberately cut across pay cycles, so their totals will not match the home screen -
+ * which is why the control says which window is in view rather than leaving someone to find
+ * the discrepancy and distrust both numbers.
+ */
+private enum class SpendingPeriod(val label: String, val note: String) {
+    WEEK("Week", "The last 7 days"),
+    MONTH("Month", "This calendar month"),
+    CYCLE("This cycle", "Since your last income, as everywhere else"),
+    ALL("All time", "Everything held locally"),
+    ;
+
+    fun filter(
+        transactions: List<TransactionEntity>,
+        cycleStart: LocalDate?,
+        today: LocalDate = LocalDate.now(),
+    ): List<TransactionEntity> {
+        val from = when (this) {
+            WEEK -> today.minusDays(6)
+            MONTH -> today.withDayOfMonth(1)
+            CYCLE -> cycleStart ?: return transactions
+            ALL -> return transactions
+        }
+        return transactions.filter { tx ->
+            val date = RecurringAnalyzer.parseBookingDate(tx.bookingDate) ?: return@filter false
+            !date.isBefore(from)
+        }
+    }
+}
+
+@Composable
+private fun PeriodSelector(selected: SpendingPeriod, onSelect: (SpendingPeriod) -> Unit) {
+    Column {
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            items(SpendingPeriod.entries.toList(), key = { it.name }) { option ->
+                FilterChip(
+                    selected = selected == option,
+                    onClick = { onSelect(option) },
+                    label = { Text(option.label, maxLines = 1) },
+                )
+            }
+        }
+        Spacer(Modifier.height(4.dp))
+        Text(
+            selected.note,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 
@@ -246,94 +338,257 @@ private fun CategoryBreakdownCard(
 }
 
 @Composable
-private fun TrendsCard(trends: TrendSummary) {
+private fun TrendsCard(trends: TrendSummary, categoryTrends: List<CategoryTrend>) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text(
-                "Spending trends",
+                "Income and spending",
                 style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            Spacer(Modifier.height(4.dp))
+            Spacer(Modifier.height(2.dp))
             Text(
                 "Last ${trends.months.size} months",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            Spacer(Modifier.height(8.dp))
-            val maxIncome = trends.months.maxOfOrNull { it.income } ?: 1L
-            val maxSpending = trends.months.maxOfOrNull { it.spending } ?: 1L
-            val maxValue = maxOf(maxIncome, maxSpending)
-
-            trends.months.forEach { summary ->
-                Column(modifier = Modifier.padding(vertical = 4.dp)) {
-                    Text(
-                        summary.month.toString(),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            "Income",
-                            style = MaterialTheme.typography.labelSmall,
-                            modifier = Modifier.width(48.dp),
-                        )
-                        LinearProgressIndicator(
-                            progress = { if (maxValue > 0) summary.income.toFloat() / maxValue.toFloat() else 0f },
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(6.dp),
-                            color = InColor,
-                        )
-                        Spacer(Modifier.width(6.dp))
-                        Text(
-                            formatMoney(summary.income, summary.currency),
-                            style = MaterialTheme.typography.labelSmall,
-                            modifier = Modifier.width(70.dp),
-                        )
-                    }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            "Spend",
-                            style = MaterialTheme.typography.labelSmall,
-                            modifier = Modifier.width(48.dp),
-                        )
-                        LinearProgressIndicator(
-                            progress = { if (maxValue > 0) summary.spending.toFloat() / maxValue.toFloat() else 0f },
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(6.dp),
-                            color = OutColor,
-                        )
-                        Spacer(Modifier.width(6.dp))
-                        Text(
-                            formatMoney(summary.spending, summary.currency),
-                            style = MaterialTheme.typography.labelSmall,
-                            modifier = Modifier.width(70.dp),
-                        )
-                    }
-                }
+            Spacer(Modifier.height(12.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                LegendKey(SeriesIncome, "Income")
+                LegendKey(SeriesSpending, "Spending")
             }
-            Spacer(Modifier.height(8.dp))
-            val trendCurrency = trends.months.maxByOrNull { it.spending }?.currency ?: "GBP"
-            Column {
+            Spacer(Modifier.height(10.dp))
+            IncomeSpendingChart(trends.months)
+
+            if (categoryTrends.isNotEmpty()) {
+                Spacer(Modifier.height(22.dp))
                 Text(
-                    "Avg savings rate: ${(trends.avgSavingsRate * 100).toInt()}%",
-                    style = MaterialTheme.typography.bodySmall,
-                    fontWeight = FontWeight.SemiBold,
-                    color = if (trends.avgSavingsRate >= 0) InColor else OutColor,
+                    "What is moving",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                Spacer(Modifier.height(4.dp))
+                Spacer(Modifier.height(2.dp))
                 Text(
-                    "Avg income: ${formatMoney(trends.avgIncome, trendCurrency)}",
+                    "Biggest changes since ${categoryTrends.first().monthlyMinor.size} months ago",
                     style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    "Avg spend: ${formatMoney(trends.avgSpending, trendCurrency)}",
-                    style = MaterialTheme.typography.bodySmall,
-                )
+                Spacer(Modifier.height(10.dp))
+                categoryTrends.take(5).forEach { trend ->
+                    CategorySparkline(trend)
+                    Spacer(Modifier.height(12.dp))
+                }
             }
         }
     }
 }
+
+@Composable
+private fun LegendKey(color: Color, label: String) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(
+            modifier = Modifier
+                .size(10.dp)
+                .background(color, RoundedCornerShape(2.dp)),
+        )
+        Spacer(Modifier.width(6.dp))
+        Text(
+            label,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+/**
+ * Income and spending on one scale.
+ *
+ * Two measures in the same unit belong on the same axis: a second y-scale can be positioned
+ * to make any two lines tell whatever story is wanted, and the gap between these two is the
+ * whole point of drawing them together.
+ */
+@Composable
+private fun IncomeSpendingChart(months: List<MonthSummary>) {
+    if (months.size < 2) {
+        Text(
+            "Two months of history are needed before a trend means anything.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        return
+    }
+
+    val gridColor = MaterialTheme.colorScheme.outlineVariant
+    val axisText = MaterialTheme.colorScheme.onSurfaceVariant
+    val surface = MaterialTheme.colorScheme.surface
+    val currency = months.last().currency
+    val textMeasurer = rememberTextMeasurer()
+    val labelStyle = MaterialTheme.typography.labelSmall.copy(color = axisText)
+
+    val peak = months.maxOf { maxOf(it.income, it.spending) }.coerceAtLeast(1L)
+    // Round the top of the scale up to something a label can name honestly.
+    val step = niceStep(peak)
+    val top = ((peak + step - 1) / step) * step
+
+    Canvas(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(180.dp),
+    ) {
+        val left = 8.dp.toPx()
+        val right = size.width - 8.dp.toPx()
+        val bottom = size.height - 18.dp.toPx()
+        val chartTop = 10.dp.toPx()
+
+        fun x(i: Int) = left + i * (right - left) / (months.size - 1)
+        fun y(v: Long) = bottom - (v.toFloat() / top.toFloat()) * (bottom - chartTop)
+
+        var line = 0L
+        while (line <= top) {
+            drawLine(
+                color = gridColor,
+                start = Offset(left, y(line)),
+                end = Offset(right, y(line)),
+                strokeWidth = 1f,
+            )
+            line += step
+        }
+
+        listOf(SeriesSpending to months.map { it.spending }, SeriesIncome to months.map { it.income })
+            .forEach { (color, values) ->
+                val path = Path().apply {
+                    values.forEachIndexed { i, v ->
+                        if (i == 0) moveTo(x(i), y(v)) else lineTo(x(i), y(v))
+                    }
+                }
+                drawPath(path, color, style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round))
+                // The last point is the one being asked about, so it alone is marked.
+                val lastIndex = values.lastIndex
+                drawCircle(surface, radius = 5.dp.toPx(), center = Offset(x(lastIndex), y(values[lastIndex])))
+                drawCircle(color, radius = 3.5.dp.toPx(), center = Offset(x(lastIndex), y(values[lastIndex])))
+            }
+
+        val first = textMeasurer.measure(months.first().month.monthLabel(), labelStyle)
+        val last = textMeasurer.measure(months.last().month.monthLabel(), labelStyle)
+        drawText(first, topLeft = Offset(left, bottom + 4.dp.toPx()))
+        drawText(last, topLeft = Offset(right - last.size.width, bottom + 4.dp.toPx()))
+    }
+
+    Spacer(Modifier.height(8.dp))
+    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        Text(
+            "Income ${formatMoney(months.last().income, currency)}",
+            style = MaterialTheme.typography.labelLarge.copy(fontFeatureSettings = "tnum"),
+            color = SeriesIncome,
+        )
+        Text(
+            "Spending ${formatMoney(months.last().spending, currency)}",
+            style = MaterialTheme.typography.labelLarge.copy(fontFeatureSettings = "tnum"),
+            color = SeriesSpending,
+        )
+    }
+}
+
+/**
+ * One category's run of months, scaled to its own range.
+ *
+ * The shape is what is being read, not the height, so each is scaled to itself - the figures
+ * beside it carry the magnitude. Direction is written out as well as coloured, because a
+ * colour alone is not something everyone can read.
+ */
+@Composable
+private fun CategorySparkline(trend: CategoryTrend) {
+    val visual = trend.category.visual
+    val change = trend.change
+    val rising = change != null && change > 0.02f
+    val falling = change != null && change < -0.02f
+    val lineColor = when {
+        rising -> SeriesSpending
+        falling -> SeriesFalling
+        else -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .size(22.dp)
+                    .background(visual.color, CircleShape),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    visual.icon,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(13.dp),
+                )
+            }
+            Spacer(Modifier.width(8.dp))
+            Text(
+                trend.category.label,
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.weight(1f),
+                maxLines = 1,
+            )
+            Text(
+                when {
+                    change == null -> "new"
+                    rising -> "+${((change ?: 0f).let { kotlin.math.abs(it) } * 100).toInt()}%"
+                    falling -> "−${((change ?: 0f).let { kotlin.math.abs(it) } * 100).toInt()}%"
+                    else -> "steady"
+                },
+                style = MaterialTheme.typography.labelLarge.copy(fontFeatureSettings = "tnum"),
+                color = lineColor,
+            )
+        }
+        Spacer(Modifier.height(4.dp))
+        val values = trend.monthlyMinor
+        Canvas(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(28.dp),
+        ) {
+            if (values.size < 2) return@Canvas
+            val lo = values.min()
+            val hi = values.max()
+            val span = (hi - lo).coerceAtLeast(1L).toFloat()
+            val path = Path()
+            values.forEachIndexed { i, v ->
+                val px = i * size.width / (values.size - 1)
+                val py = size.height - 2.dp.toPx() -
+                    ((v - lo) / span) * (size.height - 4.dp.toPx())
+                if (i == 0) path.moveTo(px, py) else path.lineTo(px, py)
+            }
+            drawPath(path, lineColor, style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round))
+            val lastY = size.height - 2.dp.toPx() -
+                ((values.last() - lo) / span) * (size.height - 4.dp.toPx())
+            drawCircle(lineColor, radius = 3.dp.toPx(), center = Offset(size.width, lastY))
+        }
+        Spacer(Modifier.height(2.dp))
+        Text(
+            "${formatMoney(trend.firstMinor, trend.currency)} → ${formatMoney(trend.lastMinor, trend.currency)} a month",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+/** A grid step that divides the scale into three or four namable lines. */
+private fun niceStep(peak: Long): Long {
+    val rough = peak / 3L
+    val magnitude = generateSequence(1L) { it * 10L }.first { it * 10L > rough.coerceAtLeast(1L) }
+    return listOf(1L, 2L, 5L, 10L)
+        .map { it * magnitude }
+        .first { it >= rough }
+}
+
+private fun YearMonth.monthLabel(): String = format(monthLabelFormat)
+
+private val monthLabelFormat: DateTimeFormatter = DateTimeFormatter.ofPattern("MMM yy")
+
+// Blue against orange, not green against red: that pair separates by a Delta E of about 4
+// for the commonest colour blindness, against a floor of 8, so one reader in twelve would
+// see a single line. Both series are labelled in words as well.
+private val SeriesIncome = Color(0xFF2A78D6)
+private val SeriesSpending = Color(0xFFEB6834)
+private val SeriesFalling = Color(0xFF1BAF7A)

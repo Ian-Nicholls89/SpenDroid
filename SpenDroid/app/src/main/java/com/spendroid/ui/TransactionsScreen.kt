@@ -3,6 +3,8 @@ package com.spendroid.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -72,6 +74,7 @@ fun TransactionsScreen(
     onAlwaysCategorise: (TransactionEntity, Category) -> Unit,
     onMarkTransfer: (TransactionEntity, Boolean) -> Unit,
     onMarkCardPayment: (TransactionEntity, Boolean) -> Unit,
+    onCategoryFilter: (Category?) -> Unit,
 ) {
     var selected by remember { mutableStateOf<TransactionEntity?>(null) }
 
@@ -84,6 +87,7 @@ fun TransactionsScreen(
         state.transactionQuery,
         state.accountFilter,
         state.budget?.confirmedSettlementKeys,
+        state.categoryFilter,
     ) {
         val query = state.transactionQuery.tidyPayee().lowercase()
         val settlements = state.budget?.confirmedSettlementKeys.orEmpty()
@@ -105,6 +109,15 @@ fun TransactionsScreen(
 
                 !duplicateHalf &&
                     (state.accountFilter == null || tx.accountId == state.accountFilter) &&
+                    (
+                        state.categoryFilter == null ||
+                            CategoryEngine.classify(
+                                tx,
+                                state.categoryRules,
+                                state.budget?.cardPaymentKeys.orEmpty(),
+                                state.budget?.creditCardAccountIds.orEmpty(),
+                            ) == state.categoryFilter
+                        ) &&
                     (!state.showRecurringOnly || tx.isRecurring) &&
                     (state.showInternalTransfers || !tx.isInternalTransfer || realOutflow) &&
                     (
@@ -180,6 +193,45 @@ fun TransactionsScreen(
             }
 
             item {
+                // Categories that actually occur, commonest first, so the row is not a list
+                // of every category the app knows about.
+                val present = remember(state.transactions, state.categoryRules) {
+                    state.transactions
+                        .filter { it.amountMinor < 0 && !it.isPending }
+                        .groupingBy {
+                            CategoryEngine.classify(it, state.categoryRules)
+                        }
+                        .eachCount()
+                        .entries
+                        .sortedByDescending { it.value }
+                        .map { it.key }
+                }
+                LazyRow(
+                    contentPadding = PaddingValues(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    item {
+                        FilterChip(
+                            selected = state.categoryFilter == null,
+                            onClick = { onCategoryFilter(null) },
+                            label = { Text("All categories") },
+                        )
+                    }
+                    items(present, key = { it.name }) { category ->
+                        FilterChip(
+                            selected = state.categoryFilter == category,
+                            onClick = {
+                                onCategoryFilter(
+                                    if (state.categoryFilter == category) null else category,
+                                )
+                            },
+                            label = { Text(category.label, maxLines = 1) },
+                        )
+                    }
+                }
+            }
+
+            item {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -212,14 +264,37 @@ fun TransactionsScreen(
                     )
                 }
             } else {
-                if (state.transactions.size > DISPLAY_TRANSACTION_LIMIT) {
+                // A list you can narrow but not add up still leaves you doing the
+                // arithmetic, which is most of the reason to filter it in the first place.
+                val narrowed = state.categoryFilter != null || state.accountFilter != null
+                if (narrowed || state.transactions.size > DISPLAY_TRANSACTION_LIMIT) {
                     item {
-                        Text(
-                            "Showing the latest ${visible.size} of ${state.transactions.size} transactions.",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-                        )
+                        val spent = visible.filter { it.amountMinor < 0 }.sumOf { -it.amountMinor }
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                if (narrowed) {
+                                    "${visible.size} of ${state.transactions.size} transactions"
+                                } else {
+                                    "Showing the latest ${visible.size} of ${state.transactions.size} transactions."
+                                },
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.weight(1f),
+                            )
+                            if (narrowed && spent > 0L) {
+                                Text(
+                                    "−${formatMoney(spent, "GBP")}",
+                                    style = MaterialTheme.typography.labelLarge.copy(
+                                        fontFeatureSettings = "tnum",
+                                    ),
+                                )
+                            }
+                        }
                     }
                 }
 

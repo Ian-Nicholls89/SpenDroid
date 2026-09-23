@@ -97,6 +97,7 @@ data class RootUiState(
     val transactionQuery: String = "",
     /** Id of the only account being shown, or null for all of them. */
     val accountFilter: String? = null,
+    val categoryFilter: Category? = null,
     val primaryIncomeKey: String? = null,
     val budgetModel: BudgetModel = BudgetModel.FRESH_START,
     val ruleOverrides: Map<String, RuleOverrideEntity> = emptyMap(),
@@ -323,6 +324,10 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
             repo.saveBudgetModel(model.name)
             loadLocal()
         }
+    }
+
+    fun setCategoryFilter(category: Category?) {
+        _state.update { it.copy(categoryFilter = category) }
     }
 
     fun setAccountFilter(accountId: String?) {

@@ -168,6 +168,7 @@ class MainActivity : ComponentActivity() {
                                     onAlwaysCategorise = viewModel::alwaysCategorise,
                                     onMarkTransfer = viewModel::markAsTransfer,
                                     onMarkCardPayment = viewModel::markAsCardPayment,
+                                    onCategoryFilter = viewModel::setCategoryFilter,
                                     onSetBudgetGoal = viewModel::setBudgetGoal,
                                 )
 

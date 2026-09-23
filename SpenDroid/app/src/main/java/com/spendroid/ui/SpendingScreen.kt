@@ -40,6 +40,7 @@ fun SpendingScreen(
     onAlwaysCategorise: (TransactionEntity, Category) -> Unit,
     onMarkTransfer: (TransactionEntity, Boolean) -> Unit,
     onMarkCardPayment: (TransactionEntity, Boolean) -> Unit,
+    onCategoryFilter: (Category?) -> Unit,
     onSetBudgetGoal: (Category, Long) -> Unit,
 ) {
     var selected by rememberSaveable { mutableIntStateOf(0) }
@@ -66,6 +67,7 @@ fun SpendingScreen(
                 onAlwaysCategorise = onAlwaysCategorise,
                 onMarkTransfer = onMarkTransfer,
                 onMarkCardPayment = onMarkCardPayment,
+                onCategoryFilter = onCategoryFilter,
             )
             SpendingTab.INSIGHTS -> InsightsScreen(
                 state = state,
