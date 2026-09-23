@@ -99,6 +99,8 @@ data class RootUiState(
     val budgetModel: BudgetModel = BudgetModel.FRESH_START,
     val ruleOverrides: Map<String, RuleOverrideEntity> = emptyMap(),
     val bankHolidays: Set<java.time.LocalDate> = emptySet(),
+    /** Name of today's bank holiday, when today is one. */
+    val bankHolidayToday: String? = null,
     /** Step-by-step status while linking a bank. Not a failure. */
     val linkProgress: String? = null,
     val versionName: String = "",
@@ -298,9 +300,16 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** Corrects a detected rule's day, or how it moves off a weekend or bank holiday. */
-    fun setRuleOverride(ruleKey: String, anchorDay: Int?, shift: PaymentShift?) {
+    fun setRuleOverride(
+        ruleKey: String,
+        anchorDay: Int?,
+        shift: PaymentShift?,
+        decemberAnchorDay: Int? = null,
+    ) {
         viewModelScope.launch {
-            repo.saveRuleOverride(RuleOverrideEntity(ruleKey, anchorDay, shift?.name))
+            repo.saveRuleOverride(
+                RuleOverrideEntity(ruleKey, anchorDay, shift?.name, decemberAnchorDay),
+            )
             loadLocal()
         }
     }
@@ -552,7 +561,7 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
         val primaryIncomeKey = repo.primaryIncomeKey.first()
         val overrides = repo.ruleOverrides.first().associateBy { it.ruleKey }
         // Refreshes itself only when the stored run of holidays is nearly spent.
-        val holidays = runCatching { repo.bankHolidays() }.getOrDefault(emptySet())
+        val holidays = runCatching { repo.bankHolidays() }.getOrDefault(emptyMap())
         val budgetModel = BudgetModel.from(repo.budgetModel.first())
         val budgetGoals = repo.budgetGoals.first()
         // Compile-time constants: no PackageManager lookup to fail and fall back to a fake
@@ -576,11 +585,12 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
                     accounts = accounts,
                     primaryIncomeKey = primaryIncomeKey,
                     budgetModel = budgetModel,
-                    calendar = WorkingDayCalendar(holidays),
+                    calendar = WorkingDayCalendar(holidays.keys),
                     overrides = overrides,
                 ),
                 ruleOverrides = overrides,
-                bankHolidays = holidays,
+                bankHolidays = holidays.keys,
+                bankHolidayToday = holidays[java.time.LocalDate.now()],
                 primaryIncomeKey = primaryIncomeKey,
                 budgetModel = budgetModel,
                 connections = repo.connections.first(),

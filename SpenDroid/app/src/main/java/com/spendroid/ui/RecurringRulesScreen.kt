@@ -77,7 +77,7 @@ fun RecurringRulesScreen(
     onSetPrimaryIncome: (String?) -> Unit = {},
     budget: BudgetSnapshot? = null,
     overrides: Map<String, RuleOverrideEntity> = emptyMap(),
-    onSetOverride: (String, Int?, PaymentShift?) -> Unit = { _, _, _ -> },
+    onSetOverride: (String, Int?, PaymentShift?, Int?) -> Unit = { _, _, _, _ -> },
     holidays: Set<LocalDate> = emptySet(),
 ) {
     var editing by remember { mutableStateOf<RecurringRule?>(null) }
@@ -108,8 +108,8 @@ fun RecurringRulesScreen(
             override = overrides[rule.key],
             holidays = holidays,
             onDismiss = { editing = null },
-            onSave = { anchorDay, shift ->
-                onSetOverride(rule.key, anchorDay, shift)
+            onSave = { anchorDay, shift, decemberDay ->
+                onSetOverride(rule.key, anchorDay, shift, decemberDay)
                 editing = null
             },
         )
@@ -465,7 +465,7 @@ private fun RuleOverrideSheet(
     override: RuleOverrideEntity?,
     holidays: Set<LocalDate>,
     onDismiss: () -> Unit,
-    onSave: (Int?, PaymentShift?) -> Unit,
+    onSave: (Int?, PaymentShift?, Int?) -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var day by remember(rule.key) {
@@ -473,6 +473,9 @@ private fun RuleOverrideSheet(
     }
     var shift by remember(rule.key) {
         mutableStateOf(PaymentShift.from(override?.shift) ?: PaymentShift.defaultFor(rule.direction))
+    }
+    var decemberDay by remember(rule.key) {
+        mutableStateOf(override?.decemberAnchorDay?.toString() ?: "")
     }
 
     val calendar = WorkingDayCalendar(holidays)
@@ -483,6 +486,7 @@ private fun RuleOverrideSheet(
             calendar = calendar,
             shift = shift,
             anchorDayOverride = day.toIntOrNull(),
+            decemberAnchorDay = decemberDay.toIntOrNull(),
         )
     }.getOrNull()
 
@@ -533,6 +537,25 @@ private fun RuleOverrideSheet(
                 }
             }
 
+            if (rule.direction == Direction.IN) {
+                Spacer(Modifier.height(16.dp))
+                Text("December", style = MaterialTheme.typography.labelLarge)
+                Spacer(Modifier.height(4.dp))
+                OutlinedTextField(
+                    value = decemberDay,
+                    onValueChange = { decemberDay = it.filter(Char::isDigit).take(2) },
+                    label = { Text("Day paid in December") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                )
+                Text(
+                    "Many employers pay early before Christmas, and plenty do not. Leave this " +
+                        "empty and December is treated like any other month.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+
             preview?.let {
                 Spacer(Modifier.height(10.dp))
                 Text(
@@ -551,11 +574,11 @@ private fun RuleOverrideSheet(
 
             Spacer(Modifier.height(20.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TextButton(onClick = { onSave(null, null) }, modifier = Modifier.weight(1f)) {
+                TextButton(onClick = { onSave(null, null, null) }, modifier = Modifier.weight(1f)) {
                     Text("Use detected")
                 }
                 Button(
-                    onClick = { onSave(day.toIntOrNull(), shift) },
+                    onClick = { onSave(day.toIntOrNull(), shift, decemberDay.toIntOrNull()) },
                     modifier = Modifier.weight(1f),
                 ) { Text("Save") }
             }

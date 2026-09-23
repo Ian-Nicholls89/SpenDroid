@@ -3,6 +3,7 @@ package com.spendroid.domain
 import com.spendroid.data.db.TransactionEntity
 import java.time.DayOfWeek
 import java.time.LocalDate
+import java.time.Month
 import java.time.temporal.ChronoUnit
 import kotlin.math.roundToInt
 
@@ -71,7 +72,16 @@ object RecurringAnalyzer {
         calendar: WorkingDayCalendar,
         shift: PaymentShift,
         anchorDayOverride: Int?,
+        decemberAnchorDay: Int? = null,
     ): LocalDate {
+        // Applied to the nominal date before any working-day adjustment, so an early
+        // December pay day still moves off a weekend like any other.
+        fun shapeForMonth(date: LocalDate): LocalDate =
+            if (date.month == Month.DECEMBER && decemberAnchorDay != null && decemberAnchorDay in 1..31) {
+                date.withDayOfMonth(decemberAnchorDay.coerceAtMost(date.lengthOfMonth()))
+            } else {
+                date
+            }
         val effective = anchorDayOverride
             ?.takeIf { it in 1..31 }
             ?.let { rule.copy(anchorDay = it, lastOccurrence = alignTo(rule.lastOccurrence, it)) }
@@ -79,11 +89,11 @@ object RecurringAnalyzer {
 
         var nominal = nextFrom(effective, effective.lastOccurrence)
         var guard = 0
-        while (!calendar.adjust(nominal, shift).isAfter(after) && guard < MAX_CYCLES) {
+        while (!calendar.adjust(shapeForMonth(nominal), shift).isAfter(after) && guard < MAX_CYCLES) {
             nominal = nextFrom(effective, nominal)
             guard++
         }
-        return calendar.adjust(nominal, shift)
+        return calendar.adjust(shapeForMonth(nominal), shift)
     }
 
     /** Puts a remembered date onto the day the user says the payment really falls on. */

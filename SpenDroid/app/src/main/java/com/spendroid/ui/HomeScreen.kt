@@ -33,6 +33,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.CreditCard
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -351,6 +352,47 @@ private fun NetPositionCard(accounts: List<AccountEntity>) {
     }
 }
 
+/**
+ * Shown only on the day itself.
+ *
+ * Exactly when a delayed payment reappears is not worth predicting - it depends on the
+ * biller, and it will be somewhere in the couple of days around the closure. Saying so is
+ * more useful than a confident date that turns out wrong.
+ */
+@Composable
+private fun BankHolidayBanner(holidayName: String) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+        ),
+    ) {
+        Row(modifier = Modifier.padding(14.dp), verticalAlignment = Alignment.Top) {
+            Icon(
+                Icons.Filled.Info,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onTertiaryContainer,
+                modifier = Modifier.size(20.dp),
+            )
+            Spacer(Modifier.width(12.dp))
+            Column {
+                Text(
+                    "Today is $holidayName",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onTertiaryContainer,
+                )
+                Text(
+                    "Banks are closed, so anything due today will most likely leave your " +
+                        "account on the next working day. Today's spending figures may look " +
+                        "lower than they really are until it catches up.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onTertiaryContainer,
+                )
+            }
+        }
+    }
+}
+
 private data class MonthTotals(
     val inSum: Long,
     val outSum: Long,
@@ -377,6 +419,10 @@ fun HomeScreen(
             // which was sitting on top of the link status and error text.
             .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 88.dp),
     ) {
+        state.bankHolidayToday?.let { name ->
+            BankHolidayBanner(name)
+            Spacer(Modifier.height(16.dp))
+        }
         if (state.reauthNeeded.isNotEmpty()) {
             ReauthBanner(state.reauthNeeded, onRelink)
             Spacer(Modifier.height(16.dp))

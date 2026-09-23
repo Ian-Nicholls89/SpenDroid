@@ -106,4 +106,9 @@ data class RuleOverrideEntity(
     val anchorDay: Int? = null,
     /** Name of a PaymentShift: how the date moves when it lands on a non-working day. */
     val shift: String? = null,
+    /**
+     * Day of the month this is paid in December, where that differs. Many employers pay
+     * early before Christmas; plenty do not, so this is empty unless the user sets it.
+     */
+    val decemberAnchorDay: Int? = null,
 )

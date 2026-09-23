@@ -57,7 +57,7 @@ class GoCardlessRepository private constructor(
     val primaryIncomeKey: Flow<String?> = secrets.primaryIncomeKey
 
     suspend fun saveRuleOverride(override: RuleOverrideEntity) {
-        if (override.anchorDay == null && override.shift == null) {
+        if (override.anchorDay == null && override.shift == null && override.decemberAnchorDay == null) {
             dao.deleteRuleOverride(override.ruleKey)
         } else {
             dao.upsertRuleOverride(override)
@@ -65,10 +65,11 @@ class GoCardlessRepository private constructor(
     }
 
     /** Bank holidays for the calendar, refetching only when the stored run is nearly spent. */
+    /** Future bank holidays by date, with their names, for warning the user on the day. */
     suspend fun bankHolidays(
         division: String = BankHolidays.DEFAULT_DIVISION,
         today: LocalDate = LocalDate.now(),
-    ): Set<LocalDate> {
+    ): Map<LocalDate, String> {
         val stored = dao.countBankHolidaysFrom(division, today.toString())
         if (BankHolidays.needsRefresh(stored)) {
             runCatching { BankHolidays.fetch(today) }
@@ -81,8 +82,10 @@ class GoCardlessRepository private constructor(
                 }
         }
         return dao.bankHolidaysFrom(division, today.toString())
-            .mapNotNull { runCatching { LocalDate.parse(it.date) }.getOrNull() }
-            .toSet()
+            .mapNotNull { holiday ->
+                runCatching { LocalDate.parse(holiday.date) }.getOrNull()?.let { it to holiday.title }
+            }
+            .toMap()
     }
     val budgetModel: Flow<String?> = secrets.budgetModel
 

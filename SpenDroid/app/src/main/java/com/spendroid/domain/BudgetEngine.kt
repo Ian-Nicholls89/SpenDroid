@@ -29,6 +29,7 @@ object BudgetEngine {
                 calendar = calendar,
                 shift = PaymentShift.from(override?.shift) ?: PaymentShift.defaultFor(rule.direction),
                 anchorDayOverride = override?.anchorDay,
+                decemberAnchorDay = override?.decemberAnchorDay,
             )
         }
         val creditCardAccountIds = accounts
