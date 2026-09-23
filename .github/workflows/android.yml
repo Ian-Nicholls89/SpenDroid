@@ -3,6 +3,11 @@ name: Android CI/CD
 on:
   push:
     branches: [master]
+    # A README edit is not a release. Everything that can change what the app does lives
+    # under SpenDroid/, so a push touching nothing else has nothing to publish.
+    paths:
+      - 'SpenDroid/**'
+      - '.github/workflows/android.yml'
   pull_request:
     branches: [master]
 
@@ -144,6 +149,17 @@ jobs:
         with:
           name: app-release
           path: SpenDroid/app/build/outputs/apk/release/app-release.apk
+
+      # R8 renames everything it shrinks, so a crash report from a release build is
+      # unreadable without the mapping produced by that exact build. It is generated once
+      # and cannot be recreated afterwards, so it is kept with the build that made it.
+      - name: Upload R8 mapping
+        uses: actions/upload-artifact@v4
+        with:
+          name: mapping
+          path: SpenDroid/app/build/outputs/mapping/release/mapping.txt
+          if-no-files-found: error
+          retention-days: 90
 
   release:
     needs: build

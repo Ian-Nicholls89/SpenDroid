@@ -20,7 +20,7 @@ import kotlinx.coroutines.flow.Flow
         RuleOverrideEntity::class,
         CategoryRuleEntity::class,
     ],
-    version = 12,
+    version = 13,
     exportSchema = false,
 )
 abstract class BudgetDb : RoomDatabase() {
@@ -67,6 +67,13 @@ abstract class BudgetDb : RoomDatabase() {
          * Only the two types PayPal could have been auto-detected as are touched, so a type
          * the user chose deliberately is left alone.
          */
+        val MIGRATION_12_13 = object : Migration(12, 13) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "ALTER TABLE transactions ADD COLUMN transferOverridden INTEGER NOT NULL DEFAULT 0",
+                )
+            }
+        }
         val MIGRATION_11_12 = object : Migration(11, 12) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL(
@@ -183,10 +190,25 @@ interface BudgetDao {
     @Query("DELETE FROM transactions WHERE accountId = :accountId")
     suspend fun deleteTransactions(accountId: String)
 
-    @Query("UPDATE transactions SET isInternalTransfer = 1 WHERE accountId = :accountId AND transactionId = :transactionId")
+    @Query(
+        "UPDATE transactions SET isInternalTransfer = 1 " +
+            "WHERE accountId = :accountId AND transactionId = :transactionId " +
+            "AND transferOverridden = 0",
+    )
     suspend fun updateInternalTransfer(accountId: String, transactionId: String)
 
-    @Query("UPDATE transactions SET isInternalTransfer = :isTransfer WHERE accountId = :accountId AND transactionId = :transactionId")
+    /**
+     * Clears every automatically set transfer flag, so detection can be re-run from scratch
+     * and a pair it no longer believes in stops being one. Rows the user has decided for
+     * themselves are left alone.
+     */
+    @Query("UPDATE transactions SET isInternalTransfer = 0 WHERE transferOverridden = 0")
+    suspend fun clearDetectedTransfers()
+
+    @Query(
+        "UPDATE transactions SET isInternalTransfer = :isTransfer, transferOverridden = 1 " +
+            "WHERE accountId = :accountId AND transactionId = :transactionId",
+    )
     suspend fun setInternalTransfer(accountId: String, transactionId: String, isTransfer: Boolean)
 
     @Query("UPDATE transactions SET categoryOverride = :category WHERE accountId = :accountId AND transactionId = :transactionId")

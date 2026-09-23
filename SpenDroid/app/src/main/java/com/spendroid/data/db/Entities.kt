@@ -65,6 +65,12 @@ data class TransactionEntity(
      * from an account the app can see is matched to its other leg automatically.
      */
     val isCardPayment: Boolean = false,
+    /**
+     * True once the user has decided for themselves whether this is a transfer. Detection
+     * then leaves the row alone: it only ever set the flag and never cleared it, so an
+     * un-marked transfer came back on the next sync.
+     */
+    val transferOverridden: Boolean = false,
 )
 
 @Entity(tableName = "manual_recurring_rules")

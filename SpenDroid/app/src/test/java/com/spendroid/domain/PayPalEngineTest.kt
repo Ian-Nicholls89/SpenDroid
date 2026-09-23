@@ -361,4 +361,36 @@ class PayPalEngineTest {
 
         assertEquals("PAYPAL *SOMETHING", result.first { it.accountId == "bank" }.payee)
     }
+
+    /**
+     * Withdrawing a balance is the mirror of a purchase: money leaves PayPal and arrives in
+     * a real account. Counting the arrival as income and the departure as spending would
+     * invent money and then spend it.
+     */
+    @Test
+    fun `a withdrawal to the bank is both halves of one movement`() {
+        val transactions = listOf(
+            tx("pp", "2026-09-12", -5000, "Withdraw to bank"),
+            tx("bank", "2026-09-14", 5000, "PAYPAL TRANSFER"),
+        )
+
+        val result = PayPalEngine.reconcile(transactions, accounts)
+
+        assertTrue(result.first { it.accountId == "bank" }.isInternalTransfer)
+        assertTrue(result.on("pp", "Withdraw").isInternalTransfer)
+        assertEquals(0L, result.filter { !it.isInternalTransfer }.sumOf { it.amountMinor })
+    }
+
+    /** A credit that names nothing to do with PayPal is ordinary income and stays. */
+    @Test
+    fun `an unrelated credit is not swept up as a withdrawal`() {
+        val transactions = listOf(
+            tx("pp", "2026-09-12", -5000, "Withdraw to bank"),
+            tx("bank", "2026-09-14", 5000, "UKHSA SALARY"),
+        )
+
+        val result = PayPalEngine.reconcile(transactions, accounts)
+
+        assertFalse(result.first { it.accountId == "bank" }.isInternalTransfer)
+    }
 }

@@ -81,6 +81,7 @@ object BackupImporter {
                 isInternalTransfer = o.optBoolean("isInternalTransfer", false),
                 isRecurring = o.optBoolean("isRecurring", false),
                 isCardPayment = o.optBoolean("isCardPayment", false),
+                transferOverridden = o.optBoolean("transferOverridden", false),
             )
         }
 

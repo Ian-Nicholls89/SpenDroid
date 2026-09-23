@@ -82,6 +82,16 @@ object PayPalEngine {
             .filter { looksLikePayPal(it.tx) }
             .sortedBy { it.date }
 
+        // Withdrawing a balance to the bank is the mirror of a purchase: the money leaves
+        // PayPal and arrives in a real account. Both halves are the same movement, so both
+        // are transfers - counting the arrival as income and the departure as spending
+        // would invent money and then spend it.
+        val withdrawalLegs = dated
+            .filter { it.tx.accountId !in payPalAccountIds }
+            .filter { !it.tx.isPending && it.tx.amountMinor > 0L }
+            .filter { looksLikePayPal(it.tx) }
+            .sortedBy { it.date }
+
         val consumed = mutableSetOf<String>()
         val renamed = mutableMapOf<String, String>()
         val transfers = mutableSetOf<String>()
@@ -130,6 +140,14 @@ object PayPalEngine {
             // of the balance used is that PayPal spent more than the bank was asked for.
             val larger = onlyLargerCandidate(merchantDebits, leg, wanted, consumed) ?: continue
             consumed.add(key(larger.tx))
+            transfers.add(key(leg.tx))
+        }
+
+        for (leg in withdrawalLegs) {
+            val wanted = abs(leg.tx.amountMinor)
+            val out = nearest(merchantDebits, leg, wanted, consumed) ?: continue
+            consumed.add(key(out.tx))
+            transfers.add(key(out.tx))
             transfers.add(key(leg.tx))
         }
 

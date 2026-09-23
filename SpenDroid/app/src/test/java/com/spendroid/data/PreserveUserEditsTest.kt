@@ -19,6 +19,7 @@ class PreserveUserEditsTest {
         transfer: Boolean = false,
         recurring: Boolean = false,
         category: String? = null,
+        overridden: Boolean = false,
     ) = TransactionEntity(
         accountId = "acc-1",
         transactionId = id,
@@ -33,6 +34,7 @@ class PreserveUserEditsTest {
         isInternalTransfer = transfer,
         isRecurring = recurring,
         categoryOverride = category,
+        transferOverridden = overridden,
     )
 
     @Test
@@ -75,5 +77,21 @@ class PreserveUserEditsTest {
     fun `nothing stored means nothing to carry`() {
         val fetched = listOf(tx("tx-1"), tx("tx-2"))
         assertEquals(fetched, GoCardlessRepository.preserveUserEdits(fetched, emptyList()))
+    }
+
+    /**
+     * Detection only ever set the transfer flag and never cleared it, so un-marking a
+     * transfer lasted until the next sync put it back. The decision has to be recorded as
+     * the user's, not just as a value, or it cannot survive being recomputed.
+     */
+    @Test
+    fun `a transfer the user decided for themselves is marked as theirs`() {
+        val merged = GoCardlessRepository.preserveUserEdits(
+            fetched = listOf(tx("tx-1")),
+            existing = listOf(tx("tx-1", transfer = false, overridden = true)),
+        )
+
+        assertEquals(true, merged.single().transferOverridden)
+        assertEquals(false, merged.single().isInternalTransfer)
     }
 }

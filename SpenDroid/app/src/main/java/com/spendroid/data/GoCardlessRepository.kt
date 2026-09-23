@@ -364,6 +364,9 @@ class GoCardlessRepository private constructor(
         val internalPairs = detectInternalTransfers(allTx.filter { it.accountId !in payPalIds })
         val recurringFlags = RecurringAnalyzer.detectRecurring(allTx)
 
+        // Re-run from scratch rather than only adding: detection used to set the flag and
+        // never clear it, so a pair it stopped believing in stayed a transfer for good.
+        dao.clearDetectedTransfers()
         internalPairs.forEach { (tx1, tx2) ->
             dao.updateInternalTransfer(tx1.accountId, tx1.transactionId)
             dao.updateInternalTransfer(tx2.accountId, tx2.transactionId)
@@ -596,6 +599,7 @@ class GoCardlessRepository private constructor(
                     isRecurring = prior.isRecurring,
                     categoryOverride = prior.categoryOverride,
                     isCardPayment = prior.isCardPayment,
+                    transferOverridden = prior.transferOverridden,
                 )
             }
         }

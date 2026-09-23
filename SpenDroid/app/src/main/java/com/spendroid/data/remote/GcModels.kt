@@ -101,4 +101,24 @@ data class TransactionDto(
     val ultimateDebtorName: String? = null,
     val ultimateCreditorName: String? = null,
     val remittanceInformationUnstructured: Any? = null,
+    /**
+     * What the merchant actually charged, before the bank converted it. Present only on a
+     * foreign transaction, and only from banks that send it.
+     */
+    val instructedAmount: AmountDto? = null,
+    /**
+     * The conversion the bank applied, as PSD2 defines it. Stored rather than used for now:
+     * rawJson is a re-serialisation of this class, so a field the class does not declare is
+     * discarded before it is ever written, and capturing it has to come first.
+     */
+    val currencyExchange: List<CurrencyExchangeDto>? = null,
+)
+
+data class CurrencyExchangeDto(
+    val sourceCurrency: String? = null,
+    val targetCurrency: String? = null,
+    val unitCurrency: String? = null,
+    val exchangeRate: String? = null,
+    val quotationDate: String? = null,
+    val instructedAmount: AmountDto? = null,
 )
