@@ -18,7 +18,7 @@ import kotlinx.coroutines.flow.Flow
         BudgetGoalEntity::class,
         CategoryRuleEntity::class,
     ],
-    version = 5,
+    version = 6,
     exportSchema = false,
 )
 abstract class BudgetDb : RoomDatabase() {
@@ -52,6 +52,11 @@ abstract class BudgetDb : RoomDatabase() {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE accounts ADD COLUMN accountType TEXT NOT NULL DEFAULT 'PERSONAL'")
                 db.execSQL("ALTER TABLE accounts ADD COLUMN linkedCreditCardAccountId TEXT")
+            }
+        }
+        val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE transactions ADD COLUMN categoryOverride TEXT")
             }
         }
         val MIGRATION_4_5 = object : Migration(4, 5) {
@@ -110,6 +115,12 @@ interface BudgetDao {
 
     @Query("UPDATE transactions SET isInternalTransfer = 1 WHERE accountId = :accountId AND transactionId = :transactionId")
     suspend fun updateInternalTransfer(accountId: String, transactionId: String)
+
+    @Query("UPDATE transactions SET isInternalTransfer = :isTransfer WHERE accountId = :accountId AND transactionId = :transactionId")
+    suspend fun setInternalTransfer(accountId: String, transactionId: String, isTransfer: Boolean)
+
+    @Query("UPDATE transactions SET categoryOverride = :category WHERE accountId = :accountId AND transactionId = :transactionId")
+    suspend fun setCategoryOverride(accountId: String, transactionId: String, category: String?)
 
     @Query("UPDATE transactions SET isRecurring = 1 WHERE accountId = :accountId AND transactionId = :transactionId")
     suspend fun updateRecurring(accountId: String, transactionId: String)

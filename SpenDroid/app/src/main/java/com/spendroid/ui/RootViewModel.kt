@@ -15,10 +15,13 @@ import com.spendroid.data.Connection
 import com.spendroid.data.UpdateChecker
 import com.spendroid.data.GoCardlessRepository
 import com.spendroid.data.db.AccountEntity
+import com.spendroid.data.db.BudgetGoalEntity
+import com.spendroid.data.db.CategoryRuleEntity
 import com.spendroid.data.db.ManualRecurringRuleEntity
 import com.spendroid.data.db.TransactionEntity
 import com.spendroid.data.remote.InstitutionDto
 import com.spendroid.domain.BudgetEngine
+import com.spendroid.domain.Category
 import com.spendroid.domain.BudgetSnapshot
 import com.spendroid.domain.RecurringAnalyzer
 import com.spendroid.domain.RecurringRule
@@ -78,6 +81,9 @@ data class RootUiState(
     val updateCheckStatus: UpdateCheckStatus = UpdateCheckStatus.Idle,
     val exportStatus: ExportStatus = ExportStatus.Idle,
     val importStatus: ImportStatus = ImportStatus.Idle,
+    val categoryRules: List<CategoryRuleEntity> = emptyList(),
+    val budgetGoals: List<BudgetGoalEntity> = emptyList(),
+    val transactionQuery: String = "",
     val versionName: String = "",
     val versionCode: Int = 0,
 )
@@ -214,6 +220,46 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
 
     fun toggleRecurringOnly() {
         _state.update { it.copy(showRecurringOnly = !it.showRecurringOnly) }
+    }
+
+    fun setTransactionQuery(query: String) {
+        _state.update { it.copy(transactionQuery = query) }
+    }
+
+    /** A correction to one transaction, which every rule then defers to. */
+    fun overrideCategory(tx: TransactionEntity, category: Category?) {
+        viewModelScope.launch {
+            repo.setCategoryOverride(tx.accountId, tx.transactionId, category?.name)
+            loadLocal()
+        }
+    }
+
+    /**
+     * Turns a correction into a standing rule keyed on the payee, so the same merchant is
+     * classified the same way next time instead of being re-guessed on every sync.
+     */
+    fun alwaysCategorise(tx: TransactionEntity, category: Category) {
+        viewModelScope.launch {
+            val pattern = tx.payee.trim().lowercase().takeIf { it.isNotBlank() } ?: return@launch
+            repo.addCategoryRule(pattern, category.name)
+            // Clear any one-off override so the new rule is what applies.
+            repo.setCategoryOverride(tx.accountId, tx.transactionId, null)
+            loadLocal()
+        }
+    }
+
+    fun markAsTransfer(tx: TransactionEntity, isTransfer: Boolean) {
+        viewModelScope.launch {
+            repo.setInternalTransfer(tx.accountId, tx.transactionId, isTransfer)
+            loadLocal()
+        }
+    }
+
+    fun setBudgetGoal(category: Category, limitMinor: Long) {
+        viewModelScope.launch {
+            repo.setBudgetGoal(category.name, limitMinor)
+            loadLocal()
+        }
     }
 
     fun toggleInternalTransfers() {
@@ -398,6 +444,8 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
         val ignored = repo.ignoredRules.first()
         val manualRules = repo.manualRules.first()
         val accounts = repo.accounts()
+        val categoryRules = repo.categoryRules.first()
+        val budgetGoals = repo.budgetGoals.first()
         // Compile-time constants: no PackageManager lookup to fail and fall back to a fake
         // "1.0.0" / 0 that would then be compared against the latest release.
         val versionName = BuildConfig.VERSION_NAME
@@ -411,6 +459,8 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
                 rules = detectedRules,
                 manualRules = manualRules,
                 ignoredRules = ignored,
+                categoryRules = categoryRules,
+                budgetGoals = budgetGoals,
                 budget = BudgetEngine.snapshot(all, allRules.filter { rule -> rule.key !in ignored }, accounts),
                 connections = repo.connections.first(),
                 versionName = versionName,

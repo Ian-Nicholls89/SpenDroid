@@ -1,6 +1,7 @@
 package com.spendroid.ui
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -15,7 +16,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -23,13 +26,17 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.CreditCard
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -39,12 +46,15 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.spendroid.data.Connection
 import com.spendroid.data.db.AccountEntity
+import com.spendroid.data.db.BudgetGoalEntity
 import com.spendroid.data.db.TransactionEntity
 import com.spendroid.domain.BudgetSnapshot
 import com.spendroid.domain.CARD_BILL_KEY_PREFIX
+import com.spendroid.domain.Category
 import com.spendroid.domain.CategoryEngine
 import com.spendroid.domain.CreditCardEngine
 import com.spendroid.domain.CategoryTotal
@@ -267,6 +277,7 @@ fun HomeScreen(
     onRefresh: () -> Unit,
     onRelink: (Connection) -> Unit,
     onSeeAllTransactions: () -> Unit,
+    onSetBudgetGoal: (Category, Long) -> Unit,
     onLinkBank: () -> Unit,
 ) {
     Column(
@@ -293,11 +304,16 @@ fun HomeScreen(
 
         // Both engines walk the whole transaction history. Keyed on the list so they run when
         // the data changes rather than on every recomposition.
-        val breakdown = remember(state.transactions) {
-            CategoryEngine.spendingBreakdown(state.transactions)
+        val breakdown = remember(state.transactions, state.categoryRules) {
+            CategoryEngine.spendingBreakdown(state.transactions, state.categoryRules)
         }
         if (breakdown.isNotEmpty()) {
-            CategoryBreakdownCard(breakdown, state.budget?.variableMonthlyBudget)
+            CategoryBreakdownCard(
+                breakdown = breakdown,
+                variableBudget = state.budget?.variableMonthlyBudget,
+                goals = state.budgetGoals,
+                onSetGoal = onSetBudgetGoal,
+            )
             Spacer(Modifier.height(16.dp))
         }
 
@@ -523,13 +539,53 @@ private fun HeroStat(label: String, value: String) {
     }
 }
 
+@Composable
+private fun BudgetGoalDialog(
+    category: Category,
+    current: Long?,
+    onDismiss: () -> Unit,
+    onConfirm: (Long) -> Unit,
+) {
+    var text by remember { mutableStateOf(current?.let { (it / 100).toString() } ?: "") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Monthly cap for ${category.label}") },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = text,
+                    onValueChange = { text = it.filter(Char::isDigit) },
+                    label = { Text("Amount") },
+                    prefix = { Text("£") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                )
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "Leave empty to remove the cap.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        },
+        confirmButton = {
+            Button(onClick = { onConfirm((text.toLongOrNull() ?: 0L) * 100) }) { Text("Save") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
 private val dateFormat = DateTimeFormatter.ofPattern("d MMM")
 
 @Composable
 private fun CategoryBreakdownCard(
     breakdown: List<CategoryTotal>,
     variableBudget: Long?,
+    goals: List<BudgetGoalEntity>,
+    onSetGoal: (Category, Long) -> Unit,
 ) {
+    var editing by remember { mutableStateOf<Category?>(null) }
+    val goalFor = remember(goals) { goals.associateBy { it.category } }
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text(
@@ -544,7 +600,14 @@ private fun CategoryBreakdownCard(
                 val maxAmount = breakdown.firstOrNull()?.amountMinor ?: 1L
                 val fraction = if (maxAmount > 0) total.amountMinor.toFloat() / maxAmount.toFloat() else 0f
                 val visual = total.category.visual
-                Column(modifier = Modifier.padding(vertical = 5.dp)) {
+                val goal = goalFor[total.category.name]?.limitMinor
+                val overBudget = goal != null && total.amountMinor > goal
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { editing = total.category }
+                        .padding(vertical = 5.dp),
+                ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
                             visual.icon,
@@ -566,21 +629,53 @@ private fun CategoryBreakdownCard(
                         )
                         Spacer(Modifier.width(8.dp))
                         Text(
-                            formatMoney(total.amountMinor, total.currency),
+                            if (goal != null) {
+                                formatMoney(total.amountMinor, total.currency) + " / " +
+                                    formatMoney(goal, total.currency)
+                            } else {
+                                formatMoney(total.amountMinor, total.currency)
+                            },
                             style = MaterialTheme.typography.bodyMedium.copy(fontFeatureSettings = "tnum"),
                             fontWeight = FontWeight.SemiBold,
+                            color = if (overBudget) OutColor else MaterialTheme.colorScheme.onSurface,
                         )
                     }
                     Spacer(Modifier.height(4.dp))
                     LinearProgressIndicator(
-                        progress = { fraction },
+                        // Against the cap when one is set, otherwise against the largest
+                        // category - the bar answers a different question in each case.
+                        progress = {
+                            if (goal != null && goal > 0L) {
+                                (total.amountMinor.toFloat() / goal.toFloat()).coerceIn(0f, 1f)
+                            } else {
+                                fraction
+                            }
+                        },
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(8.dp),
-                        color = visual.color,
+                        color = if (overBudget) OutColor else visual.color,
                         trackColor = MaterialTheme.colorScheme.surfaceVariant,
                     )
+                    if (overBudget && goal != null) {
+                        Text(
+                            "${formatMoney(total.amountMinor - goal, total.currency)} over",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = OutColor,
+                        )
+                    }
                 }
+            }
+            editing?.let { category ->
+                BudgetGoalDialog(
+                    category = category,
+                    current = goalFor[category.name]?.limitMinor,
+                    onDismiss = { editing = null },
+                    onConfirm = { limit ->
+                        onSetGoal(category, limit)
+                        editing = null
+                    },
+                )
             }
             if (variableBudget != null && variableBudget > 0) {
                 Spacer(Modifier.height(8.dp))

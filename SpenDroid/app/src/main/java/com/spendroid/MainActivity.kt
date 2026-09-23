@@ -157,6 +157,7 @@ class MainActivity : ComponentActivity() {
                                     onRefresh = viewModel::refresh,
                                     onRelink = viewModel::relink,
                                     onSeeAllTransactions = { navigate(AppScreen.Activity) },
+                                    onSetBudgetGoal = viewModel::setBudgetGoal,
                                     onLinkBank = { showLinkDialog = true },
                                 )
 
@@ -165,6 +166,10 @@ class MainActivity : ComponentActivity() {
                                     onRefresh = viewModel::refresh,
                                     onToggleRecurring = viewModel::toggleRecurringOnly,
                                     onToggleInternal = viewModel::toggleInternalTransfers,
+                                    onQueryChange = viewModel::setTransactionQuery,
+                                    onOverrideCategory = viewModel::overrideCategory,
+                                    onAlwaysCategorise = viewModel::alwaysCategorise,
+                                    onMarkTransfer = viewModel::markAsTransfer,
                                 )
 
                                 AppScreen.Accounts -> AccountManagementScreen(

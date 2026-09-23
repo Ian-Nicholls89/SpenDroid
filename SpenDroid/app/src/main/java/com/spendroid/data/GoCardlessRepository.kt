@@ -4,6 +4,8 @@ import android.content.Context
 import com.spendroid.data.db.AccountEntity
 import com.spendroid.data.db.AccountType
 import com.spendroid.data.db.BudgetDao
+import com.spendroid.data.db.BudgetGoalEntity
+import com.spendroid.data.db.CategoryRuleEntity
 import com.spendroid.data.db.ManualRecurringRuleEntity
 import com.spendroid.data.db.TransactionEntity
 import com.spendroid.data.remote.AccountDetailsDto
@@ -47,6 +49,29 @@ class GoCardlessRepository private constructor(
     val manualRules: Flow<List<ManualRecurringRuleEntity>> = dao.activeManualRulesFlow()
     val notificationTime: Flow<String> = secrets.notificationTime
     val lastNotifiedVersionCode: Flow<Int> = secrets.lastNotifiedVersionCode
+    val categoryRules: Flow<List<CategoryRuleEntity>> = dao.categoryRulesFlow()
+    val budgetGoals: Flow<List<BudgetGoalEntity>> = dao.budgetGoalsFlow()
+
+    suspend fun setCategoryOverride(accountId: String, transactionId: String, category: String?) {
+        dao.setCategoryOverride(accountId, transactionId, category)
+    }
+
+    suspend fun setInternalTransfer(accountId: String, transactionId: String, isTransfer: Boolean) {
+        dao.setInternalTransfer(accountId, transactionId, isTransfer)
+    }
+
+    suspend fun addCategoryRule(pattern: String, category: String) {
+        dao.upsertCategoryRule(CategoryRuleEntity(pattern.trim().lowercase(), category))
+    }
+
+    suspend fun deleteCategoryRule(pattern: String) {
+        dao.deleteCategoryRule(pattern)
+    }
+
+    suspend fun setBudgetGoal(category: String, limitMinor: Long, currency: String = "GBP") {
+        if (limitMinor <= 0L) dao.deleteBudgetGoal(category)
+        else dao.upsertBudgetGoal(BudgetGoalEntity(category, limitMinor, currency))
+    }
 
     suspend fun saveLastNotifiedVersionCode(versionCode: Int) =
         secrets.saveLastNotifiedVersionCode(versionCode)

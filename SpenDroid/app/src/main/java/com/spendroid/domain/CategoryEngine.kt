@@ -1,5 +1,6 @@
 package com.spendroid.domain
 
+import com.spendroid.data.db.CategoryRuleEntity
 import com.spendroid.data.db.TransactionEntity
 
 enum class Category(val label: String) {
@@ -90,11 +91,31 @@ object CategoryEngine {
         ),
     )
 
-    fun classify(tx: TransactionEntity): Category {
-        if (tx.amountMinor >= 0) return Category.SALARY  // positive = income → salary
+    /**
+     * Precedence runs: this transaction's own override, then the user's own rules, then the
+     * built-in keyword list. A correction the user made by hand always wins - otherwise the
+     * next sync would quietly re-guess it.
+     */
+    fun classify(
+        tx: TransactionEntity,
+        userRules: List<CategoryRuleEntity> = emptyList(),
+    ): Category {
+        tx.categoryOverride
+            ?.let { name -> runCatching { Category.valueOf(name) }.getOrNull() }
+            ?.let { return it }
+
         val payee = tx.payee.lowercase()
         val desc = tx.description?.lowercase() ?: ""
         val combined = "$payee $desc"
+
+        // Longest pattern first, so a specific rule beats a broader one.
+        userRules
+            .sortedByDescending { it.pattern.length }
+            .firstOrNull { combined.contains(it.pattern.lowercase()) }
+            ?.let { rule -> runCatching { Category.valueOf(rule.category) }.getOrNull() }
+            ?.let { return it }
+
+        if (tx.amountMinor >= 0) return Category.SALARY  // positive = income → salary
 
         for ((category, keywords) in rules) {
             if (category == Category.SALARY) continue // handled above
@@ -105,9 +126,12 @@ object CategoryEngine {
         return Category.OTHER
     }
 
-    fun spendingBreakdown(transactions: List<TransactionEntity>): List<CategoryTotal> {
+    fun spendingBreakdown(
+        transactions: List<TransactionEntity>,
+        userRules: List<CategoryRuleEntity> = emptyList(),
+    ): List<CategoryTotal> {
         val debits = transactions.filter { it.amountMinor < 0 && !it.isPending }
-        val grouped = debits.groupBy { classify(it) }
+        val grouped = debits.groupBy { classify(it, userRules) }
         return grouped.map { (cat, txs) ->
             val dominant = txs.maxByOrNull { -it.amountMinor }?.currency ?: "GBP"
             CategoryTotal(

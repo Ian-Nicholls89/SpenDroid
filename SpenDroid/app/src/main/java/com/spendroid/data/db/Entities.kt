@@ -42,6 +42,8 @@ data class TransactionEntity(
     val rawJson: String?,
     val isInternalTransfer: Boolean = false,
     val isRecurring: Boolean = false,
+    /** A category the user set for this one transaction, overriding every rule. */
+    val categoryOverride: String? = null,
 )
 
 @Entity(tableName = "manual_recurring_rules")
