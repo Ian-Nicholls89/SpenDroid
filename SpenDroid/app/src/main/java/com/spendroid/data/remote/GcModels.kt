@@ -70,6 +70,14 @@ data class AccountInfoDto(
     val bban: String? = null,
     val sortCode: String? = null,
     val accountNumber: String? = null,
+    // The bank's own description of the account. Previously unmodelled, which left account
+    // type detection with nothing to read but a name most banks do not send.
+    val name: String? = null,
+    val product: String? = null,
+    /** ISO 20022 external code. "CARD" identifies a credit card outright. */
+    @SerializedName("cashAccountType") val cashAccountType: String? = null,
+    val usage: String? = null,
+    val details: String? = null,
 )
 
 data class TransactionsDto(

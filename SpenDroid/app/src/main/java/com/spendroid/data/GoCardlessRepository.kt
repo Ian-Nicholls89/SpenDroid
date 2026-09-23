@@ -191,14 +191,19 @@ class GoCardlessRepository private constructor(
 
         dao.upsertTransactions(rows)
 
+        // A sync refreshes the balance; it must not undo the user's own decisions. Rebuilding
+        // the row from scratch reset the type, regenerated the label over any rename, and
+        // dropped the card-to-account link entirely - every single day.
+        val existing = dao.accounts().firstOrNull { it.id == accountId }
         val entity = AccountEntity(
             id = accountId,
             institutionName = institutionName,
-            label = labelFor(metadata, info, accountId),
+            label = existing?.label ?: labelFor(metadata, info, accountId),
             currency = currency,
             balanceMinor = balanceMinor,
             lastSynced = System.currentTimeMillis(),
-            accountType = accountType,
+            accountType = existing?.accountType ?: accountType,
+            linkedCreditCardAccountId = existing?.linkedCreditCardAccountId,
         )
         dao.upsertAccount(entity)
 
@@ -369,30 +374,52 @@ class GoCardlessRepository private constructor(
         return if (parts.isEmpty()) accountId.substring(0, minOf(8, accountId.length)) else parts.joinToString(" ")
     }
 
-    private fun detectAccountType(metadata: AccountDetailsDto, info: AccountInfoDto): AccountType {
-        val name = (metadata.name ?: "").lowercase()
-        val combined = name
-        return when {
-            combined.contains("credit") || combined.contains("card") -> AccountType.CREDIT_CARD
-            combined.contains("joint") -> AccountType.JOINT
-            combined.contains("saving") -> AccountType.SAVINGS
-            else -> AccountType.PERSONAL
-        }
-    }
-
     /**
-     * Picks which of a bank's several balances to show.
+     * Works out what kind of account this is from everything the bank tells us.
      *
-     * For a current account the useful figure is what is available to spend. For a credit
-     * card it is the opposite: "available" means the unused part of the limit, so preferring
-     * it showed a card's headroom as though it were money. Banks differ in which types they
-     * return, which is why one card looked right and another did not - an issuer that omits
-     * interimAvailable fell through to the real balance by luck rather than by design.
+     * It used to read metadata.name alone, which many banks never send - so two credit cards
+     * were filed as current accounts, and with them went the card bill forecast, the
+     * exclusion of card spending from the budget, and the right choice of balance.
      */
+    private fun detectAccountType(metadata: AccountDetailsDto, info: AccountInfoDto): AccountType =
+        detectAccountTypeFor(metadata, info)
+
     private fun pickBalance(balances: BalancesDto, info: AccountInfoDto, accountType: AccountType = AccountType.PERSONAL): Pair<Long?, String> =
         selectBalance(balances, accountType) ?: (null to (info.currency ?: "GBP"))
 
     companion object {
+            internal fun detectAccountTypeFor(metadata: AccountDetailsDto, info: AccountInfoDto): AccountType {
+            // ISO 20022 cash account type: an outright answer where the bank sends one.
+            if (info.cashAccountType?.equals("CARD", ignoreCase = true) == true) {
+                return AccountType.CREDIT_CARD
+            }
+
+            val text = listOfNotNull(metadata.name, info.name, info.product, info.details)
+                .joinToString(" ")
+                .lowercase()
+
+            return when {
+                text.contains("credit card") || text.contains("creditcard") -> AccountType.CREDIT_CARD
+                text.contains("credit") && !text.contains("credit union") -> AccountType.CREDIT_CARD
+                text.contains("joint") -> AccountType.JOINT
+                text.contains("saving") || text.contains("isa ") || text.endsWith(" isa") ->
+                    AccountType.SAVINGS
+                // Weakest signal last, so "card" does not outrank an explicit "joint".
+                text.contains("card") -> AccountType.CREDIT_CARD
+                else -> AccountType.PERSONAL
+            }
+        }
+
+        /**
+         * Picks which of a bank's several balances to show.
+         *
+         * For a current account the useful figure is what is available to spend. For a credit
+         * card it is the opposite: "available" means the unused part of the limit, so preferring
+         * it showed a card's headroom as though it were money. Banks differ in which types they
+         * return, which is why one card looked right and another did not - an issuer that omits
+         * interimAvailable fell through to the real balance by luck rather than by design.
+         */
+
         /**
          * Picks which of a bank's several balances to show.
          *
