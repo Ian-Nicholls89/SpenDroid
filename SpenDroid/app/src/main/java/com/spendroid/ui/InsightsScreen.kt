@@ -369,7 +369,7 @@ private fun TrendsCard(trends: TrendSummary, categoryTrends: List<CategoryTrend>
                 )
                 Spacer(Modifier.height(2.dp))
                 Text(
-                    "Biggest changes since ${categoryTrends.first().monthlyMinor.size} months ago",
+                    "Each period is ${categoryTrends.first().windowDays} days, over the last ${categoryTrends.first().spanDays + categoryTrends.first().windowDays} days",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -542,7 +542,7 @@ private fun CategorySparkline(trend: CategoryTrend) {
             )
         }
         Spacer(Modifier.height(4.dp))
-        val values = trend.monthlyMinor
+        val values = trend.seriesMinor
         Canvas(
             modifier = Modifier
                 .fillMaxWidth()
@@ -566,7 +566,7 @@ private fun CategorySparkline(trend: CategoryTrend) {
         }
         Spacer(Modifier.height(2.dp))
         Text(
-            "${formatMoney(trend.firstMinor, trend.currency)} → ${formatMoney(trend.lastMinor, trend.currency)} a month",
+            "${formatMoney(trend.firstMinor, trend.currency)} → ${formatMoney(trend.lastMinor, trend.currency)} per ${trend.windowDays} days",
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

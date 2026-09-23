@@ -4,6 +4,7 @@ import com.spendroid.data.db.CategoryRuleEntity
 import com.spendroid.data.db.TransactionEntity
 import java.time.LocalDate
 import java.time.YearMonth
+import java.time.temporal.ChronoUnit
 import java.time.format.DateTimeFormatter
 
 data class MonthSummary(
@@ -16,22 +17,31 @@ data class MonthSummary(
 )
 
 /**
- * One category's run of monthly totals, and how far it has moved across them.
+ * One category's run of equal-length periods, and how far it has moved across them.
  *
- * A total going up says nothing about why. This is the answer to that: the same months,
- * split by where the money went.
+ * A total going up says nothing about why. This is the answer to that: the same stretch of
+ * time, split by where the money went.
  */
 data class CategoryTrend(
     val category: Category,
-    /** Oldest first, one entry per month in the window, zero where nothing was spent. */
-    val monthlyMinor: List<Long>,
+    /**
+     * Oldest first. Every entry covers the same number of days, which is the whole point:
+     * calendar months do not, so a flat category compared across a 5-day month and a 31-day
+     * one appears to have risen sixfold without anything having changed.
+     */
+    val seriesMinor: List<Long>,
+    /** How many days each entry covers. */
+    val windowDays: Int,
     val firstMinor: Long,
     val lastMinor: Long,
     val currency: String,
 ) {
-    /** Change from the first month to the last, as a fraction. Null when it started at zero. */
+    /** Change from the first period to the last, as a fraction. Null when it started at zero. */
     val change: Float?
         get() = if (firstMinor <= 0L) null else (lastMinor - firstMinor).toFloat() / firstMinor
+
+    /** How far back the comparison reaches. */
+    val spanDays: Int get() = windowDays * (seriesMinor.size - 1)
 }
 
 data class TrendSummary(
@@ -79,47 +89,69 @@ object TrendsEngine {
     }
 
     /**
-     * Each category's monthly run over the same window [analyze] uses, ranked by how much it
-     * has moved rather than by size - a large category that never changes is not news.
+     * Each category's spending over a run of equal-length periods, ranked by how much it has
+     * moved rather than by size - a large category that never changes is not news.
      *
-     * Months where a category was untouched are zeros rather than gaps, so every series has
-     * the same length and the same x positions.
+     * Deliberately not calendar months. The API returns ninety days, so the oldest month is
+     * a stub of a few days and the current one is however far through it happens to be;
+     * comparing across them made a flat category look like it had doubled. Rolling windows
+     * anchored on today are all the same length, so the only thing a change can mean is that
+     * spending changed.
+     *
+     * Only whole windows the data actually covers are used, so the first point is never a
+     * partial period pretending to be a full one.
      */
     fun categoryTrends(
         transactions: List<TransactionEntity>,
         userRules: List<CategoryRuleEntity> = emptyList(),
         cardPaymentKeys: Set<String> = emptySet(),
         creditCardAccountIds: Set<String> = emptySet(),
-        monthsToShow: Int = 6,
-        minimumMonthlyMinor: Long = 1000L,
+        windowDays: Int = 30,
+        maxWindows: Int = 6,
+        today: LocalDate = LocalDate.now(),
+        minimumMinor: Long = 1000L,
     ): List<CategoryTrend> {
         val dated = transactions
             .filter { !it.isPending && it.amountMinor < 0L && it.bookingDate.isNotBlank() }
             .mapNotNull { tx ->
-                runCatching { YearMonth.parse(tx.bookingDate.substring(0, 7), monthFormatter) }
-                    .getOrNull()
-                    ?.let { month -> Triple(month, tx, CategoryEngine.classify(tx, userRules, cardPaymentKeys, creditCardAccountIds)) }
+                RecurringAnalyzer.parseBookingDate(tx.bookingDate)?.let { date -> date to tx }
             }
+            .filter { !it.first.isAfter(today) }
         if (dated.isEmpty()) return emptyList()
 
-        val months = dated.map { it.first }.distinct().sorted().takeLast(monthsToShow)
-        if (months.size < 2) return emptyList()
+        val earliest = dated.minOf { it.first }
+        val daysHeld = ChronoUnit.DAYS.between(earliest, today).toInt() + 1
+        val windows = (daysHeld / windowDays).coerceAtMost(maxWindows)
+        // One window is a figure, not a trend, and half a window is a misleading one.
+        if (windows < 2) return emptyList()
 
-        val currency = dated.firstOrNull()?.second?.currency ?: "GBP"
+        // Window 0 is the oldest of those used; the newest always ends today.
+        val bounds = (0 until windows).map { index ->
+            val endOffset = (windows - 1 - index).toLong() * windowDays
+            val end = today.minusDays(endOffset)
+            val start = end.minusDays(windowDays - 1L)
+            start to end
+        }
+
+        val currency = dated.first().second.currency
 
         return dated
-            .filter { it.first in months }
-            .groupBy { it.third }
+            .filter { (date, _) -> !date.isBefore(bounds.first().first) }
+            .groupBy { (_, tx) ->
+                CategoryEngine.classify(tx, userRules, cardPaymentKeys, creditCardAccountIds)
+            }
             .mapNotNull { (category, rows) ->
-                val byMonth = rows.groupBy { it.first }
-                val series = months.map { month ->
-                    byMonth[month].orEmpty().sumOf { -it.second.amountMinor }
+                val series = bounds.map { (start, end) ->
+                    rows
+                        .filter { (date, _) -> !date.isBefore(start) && !date.isAfter(end) }
+                        .sumOf { (_, tx) -> -tx.amountMinor }
                 }
                 // A category that barely registers is noise, not a trend.
-                if (series.max() < minimumMonthlyMinor) return@mapNotNull null
+                if (series.max() < minimumMinor) return@mapNotNull null
                 CategoryTrend(
                     category = category,
-                    monthlyMinor = series,
+                    seriesMinor = series,
+                    windowDays = windowDays,
                     firstMinor = series.first(),
                     lastMinor = series.last(),
                     currency = currency,
