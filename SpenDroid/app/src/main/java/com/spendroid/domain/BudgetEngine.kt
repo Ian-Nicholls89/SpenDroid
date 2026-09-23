@@ -53,8 +53,23 @@ object BudgetEngine {
         }
 
         val booked = relevantTransactions.filter { !it.isPending }
-        val incomeRules = rules.filter { it.direction == Direction.IN }
-        val fixedRules = rules.filter { it.direction == Direction.OUT }
+
+        // A rule detected entirely on a credit card is not cash moving in or out of the
+        // current account, and counting it does real damage in both directions:
+        //
+        //  - Paying the bill posts a credit on the card. A bill paid at a steady amount
+        //    groups into a recurring IN rule and is added to income, inflating the budget.
+        //  - A subscription charged to the card groups into an OUT rule and is subtracted
+        //    as a fixed outgoing - while the same spending is also inside the card bill,
+        //    which is already deducted separately. The same money, taken twice.
+        //
+        // Manual rules carry no accounts and are always the user's own statement of a real
+        // commitment, so they are kept.
+        val cashRules = rules.filter { rule ->
+            rule.accountIds.isEmpty() || !rule.accountIds.all { it in creditCardAccountIds }
+        }
+        val incomeRules = cashRules.filter { it.direction == Direction.IN }
+        val fixedRules = cashRules.filter { it.direction == Direction.OUT }
 
         // The user's choice drives the cycle where they made one. Falling back to the
         // largest income keeps the app working when a designated rule stops being detected -
@@ -178,7 +193,9 @@ object BudgetEngine {
             primaryIncomeRule = primaryIncome,
             daysUntilNextIncome = daysUntilNextIncome,
             cardBills = cardAnalysis.bills,
-            cardPaymentKeys = cardAnalysis.cardPaymentKeys,
+            // Both sides, so the credit on the card reads as a bill settlement rather
+            // than as salary. The filter above deliberately uses the payer side only.
+            cardPaymentKeys = cardAnalysis.cardPaymentKeys + cardAnalysis.cardSettlementKeys,
             budgetModel = budgetModel,
             potAccountId = potAccount?.id,
             openingBalanceMinor = openingBalance,

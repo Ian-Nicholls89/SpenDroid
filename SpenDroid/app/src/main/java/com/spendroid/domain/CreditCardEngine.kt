@@ -87,6 +87,12 @@ object CreditCardEngine {
          * must stay counted as spending rather than being filtered out as internal transfers.
          */
         val cardPaymentKeys: Set<String>,
+        /**
+         * "accountId|transactionId" of the credits on the card that settle a bill. They are
+         * not spending and not income - the cash already left on the payer's side - but they
+         * are positive amounts, so without naming them they read as salary.
+         */
+        val cardSettlementKeys: Set<String>,
     )
 
     fun analyze(
@@ -95,11 +101,12 @@ object CreditCardEngine {
         today: LocalDate = LocalDate.now(),
     ): CardAnalysis {
         val cards = accounts.filter { it.accountType == AccountType.CREDIT_CARD }
-        if (cards.isEmpty()) return CardAnalysis(emptyList(), emptySet())
+        if (cards.isEmpty()) return CardAnalysis(emptyList(), emptySet(), emptySet())
 
         val byAccount = transactions.groupBy { it.accountId }
         val bills = mutableListOf<CardBill>()
         val paymentKeys = mutableSetOf<String>()
+        val settlementKeys = mutableSetOf<String>()
 
         for (card in cards) {
             val cardTxs = byAccount[card.id].orEmpty().filter { !it.isPending }
@@ -113,8 +120,9 @@ object CreditCardEngine {
                 .orEmpty()
 
             val payments = identifyPayments(cardTxs, payerTxs)
-            payments.forEach { (_, payerTx) ->
+            payments.forEach { (cardTx, payerTx) ->
                 payerTx?.let { paymentKeys.add("${it.accountId}|${it.transactionId}") }
+                settlementKeys.add("${cardTx.accountId}|${cardTx.transactionId}")
             }
             val paymentIds = payments.mapTo(mutableSetOf()) { (cardTx, _) -> cardTx.transactionId }
 
@@ -169,7 +177,7 @@ object CreditCardEngine {
             )
         }
 
-        return CardAnalysis(bills, paymentKeys)
+        return CardAnalysis(bills, paymentKeys, settlementKeys)
     }
 
     /** A candidate statement day and how well it reproduced the bills actually paid. */

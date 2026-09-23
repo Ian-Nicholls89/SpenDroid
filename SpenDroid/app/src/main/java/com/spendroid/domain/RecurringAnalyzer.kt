@@ -136,6 +136,10 @@ object RecurringAnalyzer {
         }
         if (dates.size < minOccurrences) return null
 
+        // Which accounts the occurrences came from, so the budget can tell a card
+        // subscription from one that really leaves the current account.
+        val accountIds = txs.mapTo(mutableSetOf()) { it.accountId }
+
         return when {
             sameWeekday && medianGap in 6..9 ->
                 build(key, txs.first().payee, amount, txs.first().currency, Cadence.WEEKLY, dates.first().dayOfWeek.value, dates, gapOk = gaps.all { it in 6..9 })
@@ -150,7 +154,7 @@ object RecurringAnalyzer {
                 build(key, txs.first().payee, amount, txs.first().currency, Cadence.ANNUAL, dates.first().dayOfMonth, dates, gapOk = gapFraction(gaps, 340..385) >= 0.5)
 
             else -> monthly(key, txs.first().payee, amount, txs.first().currency, dates)
-        }
+        }?.copy(accountIds = accountIds)
     }
 
     private fun monthly(key: String, payee: String, amount: Long, currency: String, dates: List<LocalDate>): RecurringRule? {

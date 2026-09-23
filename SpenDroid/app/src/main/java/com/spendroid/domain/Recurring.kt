@@ -38,6 +38,12 @@ data class RecurringRule(
     val lastOccurrence: LocalDate,
     val occurrences: Int,
     val score: Float,
+    /**
+     * The accounts the detected occurrences came from. Empty for a manual rule, which is not
+     * tied to one. Card spending is settled by the bill rather than leaving the current
+     * account, so the budget has to be able to tell where a rule came from.
+     */
+    val accountIds: Set<String> = emptySet(),
 ) {
     val isManual: Boolean get() = key.startsWith(MANUAL_KEY_PREFIX)
 }
