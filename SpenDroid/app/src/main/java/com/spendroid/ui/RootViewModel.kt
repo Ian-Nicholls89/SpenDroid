@@ -12,16 +12,20 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.spendroid.BudgetApplication
 import com.spendroid.BuildConfig
 import com.spendroid.data.Connection
+import com.spendroid.data.ApkInstaller
 import com.spendroid.data.UpdateChecker
 import com.spendroid.data.GoCardlessRepository
 import com.spendroid.data.db.AccountEntity
 import com.spendroid.data.db.BudgetGoalEntity
 import com.spendroid.data.db.CategoryRuleEntity
+import com.spendroid.data.db.RuleOverrideEntity
 import com.spendroid.data.db.ManualRecurringRuleEntity
 import com.spendroid.data.db.TransactionEntity
 import com.spendroid.data.remote.InstitutionDto
 import com.spendroid.domain.BudgetEngine
 import com.spendroid.domain.BudgetModel
+import com.spendroid.domain.PaymentShift
+import com.spendroid.domain.WorkingDayCalendar
 import com.spendroid.domain.Category
 import com.spendroid.domain.BudgetSnapshot
 import com.spendroid.domain.RecurringAnalyzer
@@ -60,6 +64,12 @@ sealed interface UpdateCheckStatus {
     data class Checking(val message: String) : UpdateCheckStatus
     data class Success(val message: String) : UpdateCheckStatus
     data class Error(val message: String) : UpdateCheckStatus
+    /** Downloading the release the user asked for, 0-100. */
+    data class Downloading(val percent: Int) : UpdateCheckStatus
+    /** Android has been handed the package and is asking the user to confirm. */
+    object Installing : UpdateCheckStatus
+    /** The app may not install packages yet; the settings page is the way through. */
+    object NeedsInstallPermission : UpdateCheckStatus
     object Idle : UpdateCheckStatus
 }
 
@@ -87,6 +97,8 @@ data class RootUiState(
     val transactionQuery: String = "",
     val primaryIncomeKey: String? = null,
     val budgetModel: BudgetModel = BudgetModel.FRESH_START,
+    val ruleOverrides: Map<String, RuleOverrideEntity> = emptyMap(),
+    val bankHolidays: Set<java.time.LocalDate> = emptySet(),
     /** Step-by-step status while linking a bank. Not a failure. */
     val linkProgress: String? = null,
     val versionName: String = "",
@@ -156,25 +168,75 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /**
+     * Checks, and when the user asked for it, goes through with the update.
+     *
+     * A check the user started is a request to update; the weekly background check only
+     * raises a notification and never downloads anything on its own.
+     */
     fun checkForUpdate() {
         viewModelScope.launch {
             _state.update { it.copy(updateCheckStatus = UpdateCheckStatus.Checking("Checking for updates…")) }
-            // Checks directly rather than enqueueing the worker as well - doing both fired two
-            // requests per tap and the two results could disagree.
-            val status = try {
-                val latest = UpdateChecker.latestRelease()
-                when {
-                    latest == null ->
-                        UpdateCheckStatus.Error("Unable to check for updates")
-                    UpdateChecker.isNewer(latest) ->
-                        UpdateCheckStatus.Success("Update found: v${latest.versionName} (build ${latest.versionCode})")
-                    else ->
-                        UpdateCheckStatus.Success("You're up to date (v${latest.versionName}, build ${BuildConfig.VERSION_CODE})")
-                }
+
+            val latest = try {
+                UpdateChecker.latestRelease()
             } catch (e: Exception) {
-                UpdateCheckStatus.Error("Error: ${e.message ?: e.javaClass.simpleName}")
+                _state.update {
+                    it.copy(
+                        updateCheckStatus = UpdateCheckStatus.Error(
+                            "Error: ${e.message ?: e.javaClass.simpleName}",
+                        ),
+                    )
+                }
+                return@launch
             }
-            _state.update { it.copy(updateCheckStatus = status) }
+
+            if (latest == null) {
+                _state.update {
+                    it.copy(updateCheckStatus = UpdateCheckStatus.Error("Unable to check for updates"))
+                }
+                return@launch
+            }
+            if (!UpdateChecker.isNewer(latest)) {
+                _state.update {
+                    it.copy(
+                        updateCheckStatus = UpdateCheckStatus.Success(
+                            "You're up to date (v${latest.versionName}, build ${BuildConfig.VERSION_CODE})",
+                        ),
+                    )
+                }
+                return@launch
+            }
+
+            val context = getApplication<Application>()
+            if (!ApkInstaller.canInstall(context)) {
+                _state.update { it.copy(updateCheckStatus = UpdateCheckStatus.NeedsInstallPermission) }
+                return@launch
+            }
+
+            _state.update { it.copy(updateCheckStatus = UpdateCheckStatus.Downloading(0)) }
+            val result = ApkInstaller.downloadAndInstall(context, latest) { percent ->
+                _state.update { it.copy(updateCheckStatus = UpdateCheckStatus.Downloading(percent)) }
+            }
+            _state.update {
+                it.copy(
+                    updateCheckStatus = when (result) {
+                        is ApkInstaller.Result.Started -> UpdateCheckStatus.Installing
+                        ApkInstaller.Result.NeedsPermission -> UpdateCheckStatus.NeedsInstallPermission
+                        is ApkInstaller.Result.Failed -> UpdateCheckStatus.Error(result.message)
+                    },
+                )
+            }
+        }
+    }
+
+    /** Opens the settings page where installing from this app is allowed. */
+    fun openInstallPermissionSettings() {
+        val context = getApplication<Application>()
+        runCatching {
+            context.startActivity(
+                ApkInstaller.permissionIntent(context).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
         }
     }
 
@@ -231,6 +293,14 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
     fun setPrimaryIncome(key: String?) {
         viewModelScope.launch {
             repo.savePrimaryIncomeKey(key)
+            loadLocal()
+        }
+    }
+
+    /** Corrects a detected rule's day, or how it moves off a weekend or bank holiday. */
+    fun setRuleOverride(ruleKey: String, anchorDay: Int?, shift: PaymentShift?) {
+        viewModelScope.launch {
+            repo.saveRuleOverride(RuleOverrideEntity(ruleKey, anchorDay, shift?.name))
             loadLocal()
         }
     }
@@ -480,6 +550,9 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
         val accounts = repo.accounts()
         val categoryRules = repo.categoryRules.first()
         val primaryIncomeKey = repo.primaryIncomeKey.first()
+        val overrides = repo.ruleOverrides.first().associateBy { it.ruleKey }
+        // Refreshes itself only when the stored run of holidays is nearly spent.
+        val holidays = runCatching { repo.bankHolidays() }.getOrDefault(emptySet())
         val budgetModel = BudgetModel.from(repo.budgetModel.first())
         val budgetGoals = repo.budgetGoals.first()
         // Compile-time constants: no PackageManager lookup to fail and fall back to a fake
@@ -503,7 +576,11 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
                     accounts = accounts,
                     primaryIncomeKey = primaryIncomeKey,
                     budgetModel = budgetModel,
+                    calendar = WorkingDayCalendar(holidays),
+                    overrides = overrides,
                 ),
+                ruleOverrides = overrides,
+                bankHolidays = holidays,
                 primaryIncomeKey = primaryIncomeKey,
                 budgetModel = budgetModel,
                 connections = repo.connections.first(),

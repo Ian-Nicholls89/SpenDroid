@@ -16,9 +16,11 @@ import kotlinx.coroutines.flow.Flow
         TransactionEntity::class,
         ManualRecurringRuleEntity::class,
         BudgetGoalEntity::class,
+        BankHolidayEntity::class,
+        RuleOverrideEntity::class,
         CategoryRuleEntity::class,
     ],
-    version = 7,
+    version = 8,
     exportSchema = false,
 )
 abstract class BudgetDb : RoomDatabase() {
@@ -52,6 +54,29 @@ abstract class BudgetDb : RoomDatabase() {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE accounts ADD COLUMN accountType TEXT NOT NULL DEFAULT 'PERSONAL'")
                 db.execSQL("ALTER TABLE accounts ADD COLUMN linkedCreditCardAccountId TEXT")
+            }
+        }
+        val MIGRATION_7_8 = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE bank_holidays (
+                        date TEXT NOT NULL,
+                        division TEXT NOT NULL,
+                        title TEXT NOT NULL,
+                        PRIMARY KEY (date, division)
+                    )
+                    """.trimIndent(),
+                )
+                db.execSQL(
+                    """
+                    CREATE TABLE rule_overrides (
+                        ruleKey TEXT PRIMARY KEY NOT NULL,
+                        anchorDay INTEGER,
+                        shift TEXT
+                    )
+                    """.trimIndent(),
+                )
             }
         }
         val MIGRATION_6_7 = object : Migration(6, 7) {
@@ -180,6 +205,30 @@ interface BudgetDao {
 
     @Query("DELETE FROM category_rules")
     suspend fun deleteAllCategoryRules()
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertBankHolidays(holidays: List<BankHolidayEntity>)
+
+    @Query("SELECT * FROM bank_holidays WHERE division = :division AND date >= :from ORDER BY date")
+    suspend fun bankHolidaysFrom(division: String, from: String): List<BankHolidayEntity>
+
+    @Query("SELECT COUNT(*) FROM bank_holidays WHERE division = :division AND date >= :from")
+    suspend fun countBankHolidaysFrom(division: String, from: String): Int
+
+    @Query("DELETE FROM bank_holidays WHERE date < :before")
+    suspend fun deleteBankHolidaysBefore(before: String)
+
+    @Query("SELECT * FROM rule_overrides")
+    suspend fun ruleOverrides(): List<RuleOverrideEntity>
+
+    @Query("SELECT * FROM rule_overrides")
+    fun ruleOverridesFlow(): Flow<List<RuleOverrideEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertRuleOverride(override: RuleOverrideEntity)
+
+    @Query("DELETE FROM rule_overrides WHERE ruleKey = :ruleKey")
+    suspend fun deleteRuleOverride(ruleKey: String)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertAccounts(accounts: List<AccountEntity>)

@@ -30,6 +30,23 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.spendroid.data.db.ManualRecurringRuleEntity
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.Button
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.text.input.KeyboardType
+import com.spendroid.data.db.RuleOverrideEntity
+import com.spendroid.domain.PaymentShift
+import com.spendroid.domain.RecurringAnalyzer
+import com.spendroid.domain.WorkingDayCalendar
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -59,7 +76,11 @@ fun RecurringRulesScreen(
     primaryIncomeKey: String? = null,
     onSetPrimaryIncome: (String?) -> Unit = {},
     budget: BudgetSnapshot? = null,
+    overrides: Map<String, RuleOverrideEntity> = emptyMap(),
+    onSetOverride: (String, Int?, PaymentShift?) -> Unit = { _, _, _ -> },
+    holidays: Set<LocalDate> = emptySet(),
 ) {
+    var editing by remember { mutableStateOf<RecurringRule?>(null) }
     val income = rules.filter { it.direction == Direction.IN }
     val fixed = rules.filter { it.direction == Direction.OUT }
     val manualIncome = manualRules.filter { it.direction == "IN" }
@@ -79,6 +100,19 @@ fun RecurringRulesScreen(
             }
         }
         return
+    }
+
+    editing?.let { rule ->
+        RuleOverrideSheet(
+            rule = rule,
+            override = overrides[rule.key],
+            holidays = holidays,
+            onDismiss = { editing = null },
+            onSave = { anchorDay, shift ->
+                onSetOverride(rule.key, anchorDay, shift)
+                editing = null
+            },
+        )
     }
 
     Column(
@@ -121,6 +155,8 @@ fun RecurringRulesScreen(
                         ignored = ignored.contains(rule.key),
                         isPrimaryIncome = rule.key == primaryIncomeKey,
                         canBePrimary = true,
+                        overridden = overrides.containsKey(rule.key),
+                        onEdit = { editing = rule },
                         onSetPrimary = {
                             onSetPrimaryIncome(if (rule.key == primaryIncomeKey) null else rule.key)
                         },
@@ -134,7 +170,12 @@ fun RecurringRulesScreen(
             if (fixed.isNotEmpty() || manualFixed.isNotEmpty()) {
                 item { Text("Fixed outgoings", style = MaterialTheme.typography.titleMedium) }
                 items(fixed, key = { it.key }) { rule ->
-                    RuleRow(rule, ignored.contains(rule.key)) { onToggle(rule.key, it) }
+                    RuleRow(
+                        rule = rule,
+                        ignored = ignored.contains(rule.key),
+                        overridden = overrides.containsKey(rule.key),
+                        onEdit = { editing = rule },
+                    ) { onToggle(rule.key, it) }
                 }
                 items(manualFixed, key = { it.id }) { rule ->
                     ManualRuleRow(rule)
@@ -189,6 +230,8 @@ private fun RuleRow(
     ignored: Boolean,
     isPrimaryIncome: Boolean = false,
     canBePrimary: Boolean = false,
+    overridden: Boolean = false,
+    onEdit: () -> Unit = {},
     onSetPrimary: () -> Unit = {},
     onToggle: (Boolean) -> Unit,
 ) {
@@ -196,6 +239,7 @@ private fun RuleRow(
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(min = 48.dp)
+            .clickable(onClick = onEdit)
             .padding(vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -234,6 +278,7 @@ private fun RuleRow(
                 buildList {
                     add(describeRule(rule))
                     if (isPrimaryIncome) add("sets the cycle")
+                    if (overridden) add("corrected")
                     if (ignored) add("excluded")
                 }.joinToString(" · "),
                 style = MaterialTheme.typography.labelSmall,
@@ -403,4 +448,117 @@ private fun dayName(value: Int): String = try {
     DayOfWeek.of(value).getDisplayName(TextStyle.SHORT, Locale.getDefault())
 } catch (e: Exception) {
     ""
+}
+
+
+/**
+ * Corrects a detected rule.
+ *
+ * Detection infers the day from what it has seen, and a salary paid on the 25th looks like
+ * the 24th if the 25th keeps landing on a weekend - the app sees the adjusted dates, not the
+ * nominal one. Stating the real day and how it moves fixes it for good.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun RuleOverrideSheet(
+    rule: RecurringRule,
+    override: RuleOverrideEntity?,
+    holidays: Set<LocalDate>,
+    onDismiss: () -> Unit,
+    onSave: (Int?, PaymentShift?) -> Unit,
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    var day by remember(rule.key) {
+        mutableStateOf(override?.anchorDay?.toString() ?: rule.anchorDay.toString())
+    }
+    var shift by remember(rule.key) {
+        mutableStateOf(PaymentShift.from(override?.shift) ?: PaymentShift.defaultFor(rule.direction))
+    }
+
+    val calendar = WorkingDayCalendar(holidays)
+    val preview = runCatching {
+        RecurringAnalyzer.nextOccurrence(
+            rule = rule,
+            after = LocalDate.now(),
+            calendar = calendar,
+            shift = shift,
+            anchorDayOverride = day.toIntOrNull(),
+        )
+    }.getOrNull()
+
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
+        Column(modifier = Modifier.padding(start = 20.dp, end = 20.dp, bottom = 28.dp)) {
+            Text(rule.payee.tidyPayee(), style = MaterialTheme.typography.titleMedium)
+            Text(
+                "Detected as ${describeRule(rule)}",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+
+            Spacer(Modifier.height(16.dp))
+            OutlinedTextField(
+                value = day,
+                onValueChange = { day = it.filter(Char::isDigit).take(2) },
+                label = { Text("Day of the month") },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            )
+            Text(
+                "The date it is really due, before any adjustment for weekends or holidays.",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+
+            Spacer(Modifier.height(16.dp))
+            Text("When that is not a working day", style = MaterialTheme.typography.labelLarge)
+            Spacer(Modifier.height(6.dp))
+            PaymentShift.entries.forEach { option ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { shift = option }
+                        .padding(vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    RadioButton(selected = shift == option, onClick = { shift = option })
+                    Spacer(Modifier.width(8.dp))
+                    Column {
+                        Text(option.label, style = MaterialTheme.typography.bodyMedium)
+                        Text(
+                            option.explanation,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+
+            preview?.let {
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    "Next expected: ${it.format(DateTimeFormatter.ofPattern("EEEE d MMMM"))}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+                if (holidays.isEmpty()) {
+                    Text(
+                        "Bank holidays have not been fetched yet, so only weekends are allowed for.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(20.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(onClick = { onSave(null, null) }, modifier = Modifier.weight(1f)) {
+                    Text("Use detected")
+                }
+                Button(
+                    onClick = { onSave(day.toIntOrNull(), shift) },
+                    modifier = Modifier.weight(1f),
+                ) { Text("Save") }
+            }
+        }
+    }
 }

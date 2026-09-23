@@ -21,6 +21,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -70,6 +71,7 @@ fun SettingsScreen(
     onImport: (Uri) -> Unit,
     onClearData: () -> Unit,
     onCheckUpdate: () -> Unit,
+    onOpenInstallSettings: () -> Unit,
     secretId: String,
     secretKey: String,
     notificationTime: String,
@@ -128,6 +130,7 @@ fun SettingsScreen(
                     versionName = state.versionName,
                     versionCode = state.versionCode,
                     onCheckUpdate = onCheckUpdate,
+                    onOpenInstallSettings = onOpenInstallSettings,
                 )
 
                 SettingsTab.NOTIFICATIONS -> NotificationsSection(
@@ -236,6 +239,7 @@ private fun UpdatesSection(
     versionName: String,
     versionCode: Int,
     onCheckUpdate: () -> Unit,
+    onOpenInstallSettings: () -> Unit,
 ) {
     Text("App updates", style = MaterialTheme.typography.titleMedium)
     Spacer(Modifier.height(4.dp))
@@ -292,6 +296,36 @@ private fun UpdatesSection(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.error,
             )
+        }
+        is UpdateCheckStatus.Downloading -> {
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "Downloading update… ${state.updateCheckStatus.percent}%",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            Spacer(Modifier.height(4.dp))
+            LinearProgressIndicator(
+                progress = { state.updateCheckStatus.percent / 100f },
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+        is UpdateCheckStatus.Installing -> {
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "Downloaded and verified. Android will ask you to confirm the install.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.primary,
+            )
+        }
+        is UpdateCheckStatus.NeedsInstallPermission -> {
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "SpenDroid needs your permission to install app updates.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+            )
+            TextButton(onClick = onOpenInstallSettings) { Text("Open settings") }
         }
         is UpdateCheckStatus.Idle -> {}
     }

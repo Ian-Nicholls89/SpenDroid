@@ -6,6 +6,7 @@ import com.spendroid.data.db.AccountType
 import com.spendroid.data.db.BudgetDao
 import com.spendroid.data.db.BudgetGoalEntity
 import com.spendroid.data.db.CategoryRuleEntity
+import com.spendroid.data.db.RuleOverrideEntity
 import com.spendroid.data.db.ManualRecurringRuleEntity
 import com.spendroid.data.db.TransactionEntity
 import com.spendroid.data.remote.AccountDetailsDto
@@ -52,7 +53,37 @@ class GoCardlessRepository private constructor(
     val lastNotifiedVersionCode: Flow<Int> = secrets.lastNotifiedVersionCode
     val categoryRules: Flow<List<CategoryRuleEntity>> = dao.categoryRulesFlow()
     val budgetGoals: Flow<List<BudgetGoalEntity>> = dao.budgetGoalsFlow()
+    val ruleOverrides: Flow<List<RuleOverrideEntity>> = dao.ruleOverridesFlow()
     val primaryIncomeKey: Flow<String?> = secrets.primaryIncomeKey
+
+    suspend fun saveRuleOverride(override: RuleOverrideEntity) {
+        if (override.anchorDay == null && override.shift == null) {
+            dao.deleteRuleOverride(override.ruleKey)
+        } else {
+            dao.upsertRuleOverride(override)
+        }
+    }
+
+    /** Bank holidays for the calendar, refetching only when the stored run is nearly spent. */
+    suspend fun bankHolidays(
+        division: String = BankHolidays.DEFAULT_DIVISION,
+        today: LocalDate = LocalDate.now(),
+    ): Set<LocalDate> {
+        val stored = dao.countBankHolidaysFrom(division, today.toString())
+        if (BankHolidays.needsRefresh(stored)) {
+            runCatching { BankHolidays.fetch(today) }
+                .getOrNull()
+                ?.takeIf { it.isNotEmpty() }
+                ?.let { fetched ->
+                    dao.upsertBankHolidays(fetched)
+                    // Dates that have passed are no longer of use to anything.
+                    dao.deleteBankHolidaysBefore(today.toString())
+                }
+        }
+        return dao.bankHolidaysFrom(division, today.toString())
+            .mapNotNull { runCatching { LocalDate.parse(it.date) }.getOrNull() }
+            .toSet()
+    }
     val budgetModel: Flow<String?> = secrets.budgetModel
 
     suspend fun savePrimaryIncomeKey(key: String?) = secrets.savePrimaryIncomeKey(key)

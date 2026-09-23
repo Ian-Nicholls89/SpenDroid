@@ -55,13 +55,42 @@ object RecurringAnalyzer {
             null
         }
 
-    fun nextOccurrence(rule: RecurringRule, after: LocalDate): LocalDate {
-        var date = nextFrom(rule, rule.lastOccurrence)
-        while (!date.isAfter(after)) {
-            date = nextFrom(rule, date)
+    fun nextOccurrence(rule: RecurringRule, after: LocalDate): LocalDate =
+        nextOccurrence(rule, after, WorkingDayCalendar(), PaymentShift.NONE, null)
+
+    /**
+     * The next time this payment is expected, moved onto a working day.
+     *
+     * The stepping is done on nominal dates and the adjustment applied only at the end. Were
+     * each step taken from an already-adjusted date, a salary nudged back to Friday would
+     * start counting months from the Friday and walk away from the real pay day.
+     */
+    fun nextOccurrence(
+        rule: RecurringRule,
+        after: LocalDate,
+        calendar: WorkingDayCalendar,
+        shift: PaymentShift,
+        anchorDayOverride: Int?,
+    ): LocalDate {
+        val effective = anchorDayOverride
+            ?.takeIf { it in 1..31 }
+            ?.let { rule.copy(anchorDay = it, lastOccurrence = alignTo(rule.lastOccurrence, it)) }
+            ?: rule
+
+        var nominal = nextFrom(effective, effective.lastOccurrence)
+        var guard = 0
+        while (!calendar.adjust(nominal, shift).isAfter(after) && guard < MAX_CYCLES) {
+            nominal = nextFrom(effective, nominal)
+            guard++
         }
-        return date
+        return calendar.adjust(nominal, shift)
     }
+
+    /** Puts a remembered date onto the day the user says the payment really falls on. */
+    private fun alignTo(date: LocalDate, day: Int): LocalDate =
+        date.withDayOfMonth(day.coerceAtMost(date.lengthOfMonth()))
+
+    private const val MAX_CYCLES = 400
 
     private fun nextFrom(rule: RecurringRule, reference: LocalDate): LocalDate = when (rule.cadence) {
         Cadence.WEEKLY -> reference.plusWeeks(1)

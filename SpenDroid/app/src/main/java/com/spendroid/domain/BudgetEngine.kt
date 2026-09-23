@@ -2,6 +2,7 @@ package com.spendroid.domain
 
 import com.spendroid.data.db.AccountEntity
 import com.spendroid.data.db.AccountType
+import com.spendroid.data.db.RuleOverrideEntity
 import com.spendroid.data.db.TransactionEntity
 import java.time.LocalDate
 import java.time.temporal.ChronoUnit
@@ -17,7 +18,19 @@ object BudgetEngine {
         /** Key of the income the user chose to drive the cycle, if they chose one. */
         primaryIncomeKey: String? = null,
         budgetModel: BudgetModel = BudgetModel.FRESH_START,
+        calendar: WorkingDayCalendar = WorkingDayCalendar(),
+        overrides: Map<String, RuleOverrideEntity> = emptyMap(),
     ): BudgetSnapshot {
+        fun nextFor(rule: RecurringRule, after: LocalDate): LocalDate {
+            val override = overrides[rule.key]
+            return RecurringAnalyzer.nextOccurrence(
+                rule = rule,
+                after = after,
+                calendar = calendar,
+                shift = PaymentShift.from(override?.shift) ?: PaymentShift.defaultFor(rule.direction),
+                anchorDayOverride = override?.anchorDay,
+            )
+        }
         val creditCardAccountIds = accounts
             .filter { it.accountType == AccountType.CREDIT_CARD }
             .map { it.id }
@@ -61,7 +74,7 @@ object BudgetEngine {
         val referenceDate = referenceTime.toLocalDate()
         val startOfWindow = referenceTime.minusHours(24).toLocalDate()
 
-        val nextIncomeDate = primaryIncome?.let { RecurringAnalyzer.nextOccurrence(it, today) }
+        val nextIncomeDate = primaryIncome?.let { nextFor(it, today) }
         val lastIncome = primaryIncome?.lastOccurrence?.takeIf { !it.isAfter(today) }
         val cycleStart = lastIncome?.takeIf { it.isAfter(today.minusDays(45)) } ?: today.minusDays(30)
         val cycleEnd = nextIncomeDate?.minusDays(1)
@@ -92,7 +105,7 @@ object BudgetEngine {
 
         val upcomingFixed = if (nextIncomeDate != null) {
             val fromRules = fixedRules.mapNotNull { rule ->
-                val due = RecurringAnalyzer.nextOccurrence(rule, today)
+                val due = nextFor(rule, today)
                 if (due.isAfter(today) && !due.isAfter(nextIncomeDate)) {
                     UpcomingPayment(rule, due, abs(rule.amountMinor))
                 } else {

@@ -195,6 +195,9 @@ class MainActivity : ComponentActivity() {
                                     primaryIncomeKey = state.primaryIncomeKey,
                                     onSetPrimaryIncome = viewModel::setPrimaryIncome,
                                     budget = state.budget,
+                                    overrides = state.ruleOverrides,
+                                    onSetOverride = viewModel::setRuleOverride,
+                                    holidays = state.bankHolidays,
                                 )
 
                                 AppScreen.Settings -> SettingsScreen(
@@ -205,6 +208,7 @@ class MainActivity : ComponentActivity() {
                                     onImport = viewModel::importFrom,
                                     onClearData = viewModel::clearData,
                                     onCheckUpdate = viewModel::checkForUpdate,
+                                    onOpenInstallSettings = viewModel::openInstallPermissionSettings,
                                     secretId = viewModel.secretIdValue.collectAsStateWithLifecycle().value,
                                     secretKey = viewModel.secretKeyValue.collectAsStateWithLifecycle().value,
                                     notificationTime = viewModel.notificationTime.collectAsStateWithLifecycle().value,

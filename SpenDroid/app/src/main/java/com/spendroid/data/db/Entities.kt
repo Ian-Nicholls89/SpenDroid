@@ -84,3 +84,26 @@ data class CategoryRuleEntity(
     val category: String,
     val createdAt: Long = System.currentTimeMillis(),
 )
+
+/** A UK bank holiday, as published by gov.uk. */
+@Entity(tableName = "bank_holidays", primaryKeys = ["date", "division"])
+data class BankHolidayEntity(
+    val date: String,
+    val division: String,
+    val title: String,
+)
+
+/**
+ * A user's correction to a detected rule.
+ *
+ * Detection infers the day from what it has seen, which lands close but not always right -
+ * a salary paid on the 25th can look like the 24th if the 25th kept falling on a weekend.
+ */
+@Entity(tableName = "rule_overrides")
+data class RuleOverrideEntity(
+    @PrimaryKey val ruleKey: String,
+    /** Day of the month the payment is really due, before any working-day adjustment. */
+    val anchorDay: Int? = null,
+    /** Name of a PaymentShift: how the date moves when it lands on a non-working day. */
+    val shift: String? = null,
+)
