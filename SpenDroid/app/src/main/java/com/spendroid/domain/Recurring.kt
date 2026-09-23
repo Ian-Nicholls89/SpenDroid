@@ -66,6 +66,8 @@ data class BudgetSnapshot(
     val daysUntilNextIncome: Int?,
     /** Outstanding credit card balances, for showing the forecast bill as an estimate. */
     val cardBills: List<CreditCardEngine.CardBill> = emptyList(),
+    /** "accountId|transactionId" of the debits that pay a card, for categorising them. */
+    val cardPaymentKeys: Set<String> = emptySet(),
     /** Which model produced [availableToSpend]. */
     val budgetModel: BudgetModel = BudgetModel.FRESH_START,
     /** The account the main income is paid into, and whose balance forms the pot. */

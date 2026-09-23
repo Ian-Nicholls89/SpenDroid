@@ -25,8 +25,9 @@ class CategoryEngineTest {
     @Test
     fun `a card payment is not entertainment`() {
         // "barclay" used to sit in the ENTERTAINMENT keyword list, so every Barclaycard
-        // payment was filed as a night out.
-        assertEquals(Category.OTHER, CategoryEngine.classify(tx("BARCLAYCARD VISA PAYMENT")))
+        // payment was filed as a night out. It now has a category of its own, which is
+        // what it always wanted - the bank itself is still nothing in particular.
+        assertEquals(Category.CARD_BILL, CategoryEngine.classify(tx("BARCLAYCARD VISA PAYMENT")))
         assertEquals(Category.OTHER, CategoryEngine.classify(tx("BARCLAYS BANK PLC")))
     }
 

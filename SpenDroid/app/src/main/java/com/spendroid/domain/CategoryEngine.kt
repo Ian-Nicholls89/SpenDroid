@@ -12,6 +12,7 @@ enum class Category(val label: String) {
     EATING_OUT("Eating out"),
     WORK_LUNCH("Work lunches"),
     CHARITY("Charity"),
+    CARD_BILL("Credit card bill"),
     SALARY("Salary"),
     TRANSFERS("Transfers"),
     SAVINGS("Savings"),
@@ -30,6 +31,12 @@ data class CategoryTotal(
 object CategoryEngine {
 
     private val rules: Map<Category, List<String>> = mapOf(
+        // First, because a card is named after its issuer: "TESCO BANK CREDIT CARD" hits
+        // the groceries list on "tesco", and a card bill is not a shop.
+        Category.CARD_BILL to listOf(
+            "credit card", "creditcard", "card payment", "card bill",
+            "cc payment", "barclaycard", "amex", "american express",
+        ),
         Category.GROCERIES to listOf(
             "tesco", "sainsbury", "asda", "morrisons", "aldi", "lidl",
             "waitrose", "coop", "co-op", "m&s", "marks and spencer",
@@ -151,10 +158,15 @@ object CategoryEngine {
     fun classify(
         tx: TransactionEntity,
         userRules: List<CategoryRuleEntity> = emptyList(),
+        cardPaymentKeys: Set<String> = emptySet(),
     ): Category {
         tx.categoryOverride
             ?.let { name -> runCatching { Category.valueOf(name) }.getOrNull() }
             ?.let { return it }
+
+        // Structure beats spelling. A payment matched to a card by CreditCardEngine is a
+        // card bill whatever the bank called it, and no keyword can be as sure.
+        if ("${tx.accountId}|${tx.transactionId}" in cardPaymentKeys) return Category.CARD_BILL
 
         val payee = tx.payee.lowercase()
         val desc = tx.description?.lowercase() ?: ""
@@ -181,9 +193,10 @@ object CategoryEngine {
     fun spendingBreakdown(
         transactions: List<TransactionEntity>,
         userRules: List<CategoryRuleEntity> = emptyList(),
+        cardPaymentKeys: Set<String> = emptySet(),
     ): List<CategoryTotal> {
         val debits = transactions.filter { it.amountMinor < 0 && !it.isPending }
-        val grouped = debits.groupBy { classify(it, userRules) }
+        val grouped = debits.groupBy { classify(it, userRules, cardPaymentKeys) }
         return grouped.map { (cat, txs) ->
             val dominant = txs.maxByOrNull { -it.amountMinor }?.currency ?: "GBP"
             CategoryTotal(

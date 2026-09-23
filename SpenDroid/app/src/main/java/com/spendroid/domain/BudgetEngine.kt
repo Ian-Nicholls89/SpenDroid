@@ -178,6 +178,7 @@ object BudgetEngine {
             primaryIncomeRule = primaryIncome,
             daysUntilNextIncome = daysUntilNextIncome,
             cardBills = cardAnalysis.bills,
+            cardPaymentKeys = cardAnalysis.cardPaymentKeys,
             budgetModel = budgetModel,
             potAccountId = potAccount?.id,
             openingBalanceMinor = openingBalance,

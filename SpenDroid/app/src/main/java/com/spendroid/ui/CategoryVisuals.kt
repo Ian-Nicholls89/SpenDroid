@@ -2,6 +2,7 @@ package com.spendroid.ui
 
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Category
+import androidx.compose.material.icons.filled.CreditCard
 import androidx.compose.material.icons.filled.DirectionsTransit
 import androidx.compose.material.icons.filled.LocalHospital
 import androidx.compose.material.icons.filled.Movie
@@ -38,6 +39,7 @@ private val visuals: Map<Category, CategoryVisual> = mapOf(
     Category.EATING_OUT to CategoryVisual(Icons.Filled.Restaurant, Color(0xFFD81B60)),
     Category.WORK_LUNCH to CategoryVisual(Icons.Filled.LunchDining, Color(0xFF827717)),
     Category.CHARITY to CategoryVisual(Icons.Filled.VolunteerActivism, Color(0xFF5E35B1)),
+    Category.CARD_BILL to CategoryVisual(Icons.Filled.CreditCard, Color(0xFF8E2C2C)),
     Category.SALARY to CategoryVisual(Icons.Filled.Payments, Color(0xFF00897B)),
     Category.TRANSFERS to CategoryVisual(Icons.Filled.SwapHoriz, Color(0xFF3949AB)),
     Category.SAVINGS to CategoryVisual(Icons.Filled.Savings, Color(0xFF00ACC1)),
