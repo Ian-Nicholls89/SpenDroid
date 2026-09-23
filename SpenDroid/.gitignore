@@ -22,6 +22,10 @@
 # Keystore
 *.keystore
 *.jks
+# The release signing identity. Never commit these - the .jks is the private key
+# and keystore.properties holds its password.
+/keystore/
+/keystore.properties
 # NB: the debug keystore is deliberately tracked. Release builds are signed
 # with it, so if CI regenerates it the signing key changes and users get
 # "App not installed" (signature mismatch) when updating over an existing install.

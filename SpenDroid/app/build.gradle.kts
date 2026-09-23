@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -9,6 +11,19 @@ android {
     namespace = "com.spendroid"
     compileSdk = 36
 
+    // Release signing comes from keystore.properties locally, or from the environment in
+    // CI. Neither the key nor its password is in the repository. If no release key is
+    // configured the build falls back to the debug key so `assembleRelease` still works for
+    // local testing - but an APK signed that way cannot update one signed with the real key.
+    val releaseKeystore = Properties().apply {
+        val file = rootProject.file("keystore.properties")
+        if (file.exists()) file.inputStream().use { load(it) }
+    }
+    val keystorePath = System.getenv("SPENDROID_KEYSTORE")
+        ?: releaseKeystore.getProperty("storeFile")
+    val keystoreFile = keystorePath?.let { rootProject.file(it) }?.takeIf { it.exists() }
+    val hasReleaseKey = keystoreFile != null
+
     signingConfigs {
         getByName("debug") {
             storeFile = file("debug.keystore")
@@ -17,11 +32,28 @@ android {
             keyPassword = "android"
         }
         create("release") {
-            storeFile = file("debug.keystore")
-            storePassword = "android"
-            keyAlias = "debug"
-            keyPassword = "android"
+            if (hasReleaseKey) {
+                storeFile = keystoreFile
+                storePassword = System.getenv("SPENDROID_KEYSTORE_PASSWORD")
+                    ?: releaseKeystore.getProperty("storePassword")
+                keyAlias = System.getenv("SPENDROID_KEY_ALIAS")
+                    ?: releaseKeystore.getProperty("keyAlias")
+                keyPassword = System.getenv("SPENDROID_KEY_PASSWORD")
+                    ?: releaseKeystore.getProperty("keyPassword")
+            } else {
+                storeFile = file("debug.keystore")
+                storePassword = "android"
+                keyAlias = "debug"
+                keyPassword = "android"
+            }
         }
+    }
+
+    if (!hasReleaseKey) {
+        logger.warn(
+            "No release keystore configured - release builds will be signed with the debug " +
+                "key and cannot update installs signed with the real one.",
+        )
     }
 
     defaultConfig {

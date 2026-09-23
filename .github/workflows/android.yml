@@ -40,14 +40,31 @@ jobs:
           echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
           echo "$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/ndk/27.0.12077973" >> $GITHUB_PATH
           
-      - name: Verify signing keystore
+      - name: Restore release signing key
+        env:
+          KEYSTORE_B64: ${{ secrets.RELEASE_KEYSTORE_B64 }}
+        run: |
+          if [ -z "$KEYSTORE_B64" ]; then
+            # A pull request only needs to prove the code builds, so it may fall back to the
+            # debug key. A push to master publishes, and must not.
+            if [ "${{ github.event_name }}" = "push" ]; then
+              echo "::error::RELEASE_KEYSTORE_B64 is not set. A published release would be"
+              echo "::error::signed with the debug key and could not update real installs."
+              exit 1
+            fi
+            echo "::warning::No release key available; this build uses the debug key."
+            exit 0
+          fi
+          mkdir -p keystore
+          echo "$KEYSTORE_B64" | base64 -d > keystore/spendroid-release.jks
+          keytool -list -keystore keystore/spendroid-release.jks \
+            -storepass "${{ secrets.RELEASE_KEYSTORE_PASSWORD }}" | grep -i "SHA-256" || true
+
+      - name: Verify debug keystore
         run: |
           if [ ! -f debug.keystore ]; then
-            echo "::warning::app/debug.keystore missing from the checkout - generating a new one."
-            echo "::warning::This changes the release signing key, so existing installs CANNOT update over it."
             keytool -genkeypair -alias debug -keystore debug.keystore -storepass android -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
           fi
-          keytool -list -keystore debug.keystore -storepass android | grep -i "SHA256:" || true
         working-directory: ${{ github.workspace }}/SpenDroid/app
           
       - name: Cache Gradle
@@ -64,8 +81,24 @@ jobs:
         run: ./gradlew assembleDebug
         
       - name: Build Release APK
+        env:
+          SPENDROID_KEYSTORE: keystore/spendroid-release.jks
+          SPENDROID_KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
+          SPENDROID_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          SPENDROID_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
         run: ./gradlew assembleRelease
         
+      - name: Confirm the release APK carries the release key
+        run: |
+          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner | sort | tail -1)
+          DN=$("$APKSIGNER" verify --print-certs app/build/outputs/apk/release/app-release.apk \
+            | grep -m1 "certificate DN")
+          echo "$DN"
+          if echo "$DN" | grep -q "Android Debug" && [ "${{ github.event_name }}" = "push" ]; then
+            echo "::error::Release APK is signed with the debug key - refusing to publish it."
+            exit 1
+          fi
+
       - name: Get version info
         id: version
         run: |
