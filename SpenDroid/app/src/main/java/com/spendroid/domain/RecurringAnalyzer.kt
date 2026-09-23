@@ -147,7 +147,9 @@ object RecurringAnalyzer {
     ): RecurringRule {
         val coverage = (dates.size.toFloat() / 12f).coerceIn(0.3f, 1f)
         val regularity = if (gapOk) 1f else 0.5f
-        val score = (coverage * 0.6f + regularity * 0.4f * 100f).roundToInt() / 100f
+        // The multiplication used to bind to the regularity term alone, so the whole score
+        // collapsed to 0.4 or 0.2 whatever the evidence - every rule read "40%".
+        val score = ((coverage * 0.6f + regularity * 0.4f) * 100f).roundToInt() / 100f
         return RecurringRule(
             key = key,
             payee = payee,
