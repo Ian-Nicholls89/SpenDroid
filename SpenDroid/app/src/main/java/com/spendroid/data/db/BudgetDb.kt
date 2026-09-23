@@ -20,7 +20,7 @@ import kotlinx.coroutines.flow.Flow
         RuleOverrideEntity::class,
         CategoryRuleEntity::class,
     ],
-    version = 10,
+    version = 11,
     exportSchema = false,
 )
 abstract class BudgetDb : RoomDatabase() {
@@ -54,6 +54,28 @@ abstract class BudgetDb : RoomDatabase() {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE accounts ADD COLUMN accountType TEXT NOT NULL DEFAULT 'PERSONAL'")
                 db.execSQL("ALTER TABLE accounts ADD COLUMN linkedCreditCardAccountId TEXT")
+            }
+        }
+        /**
+         * Types a PayPal account as one.
+         *
+         * A sync deliberately never overwrites the stored type, so an account linked before
+         * AccountType.PAYPAL existed keeps whatever was detected at the time and can never
+         * reach the new type on its own - leaving PayPal enrichment silently switched off
+         * for exactly the people who already had PayPal linked.
+         *
+         * Only the two types PayPal could have been auto-detected as are touched, so a type
+         * the user chose deliberately is left alone.
+         */
+        val MIGRATION_10_11 = object : Migration(10, 11) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    UPDATE accounts SET accountType = 'PAYPAL'
+                    WHERE accountType IN ('PERSONAL', 'OTHER')
+                      AND LOWER(institutionName) LIKE '%paypal%'
+                    """.trimIndent(),
+                )
             }
         }
         val MIGRATION_9_10 = object : Migration(9, 10) {

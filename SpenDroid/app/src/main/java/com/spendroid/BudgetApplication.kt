@@ -24,6 +24,7 @@ class BudgetApplication : Application() {
                 BudgetDb.MIGRATION_7_8,
                 BudgetDb.MIGRATION_8_9,
                 BudgetDb.MIGRATION_9_10,
+                BudgetDb.MIGRATION_10_11,
             )
             .build()
         repository = GoCardlessRepository.create(this, db.budgetDao())
