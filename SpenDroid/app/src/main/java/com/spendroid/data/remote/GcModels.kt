@@ -36,6 +36,11 @@ data class BalancesDto(
 data class BalanceDto(
     val balanceType: String? = null,
     val balanceAmount: AmountDto? = null,
+    /**
+     * Set by the bank when the figure has the credit limit folded into it. Such a balance
+     * describes headroom, never what is owed, so it is never the number to show.
+     */
+    @SerializedName("creditLimitIncluded") val creditLimitIncluded: Boolean? = null,
 )
 
 data class AmountDto(

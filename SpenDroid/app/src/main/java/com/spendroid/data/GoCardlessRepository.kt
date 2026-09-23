@@ -380,25 +380,53 @@ class GoCardlessRepository private constructor(
         }
     }
 
-    private fun pickBalance(balances: BalancesDto, info: AccountInfoDto, accountType: AccountType = AccountType.PERSONAL): Pair<Long?, String> {
-        val target = when (accountType) {
-            AccountType.CREDIT_CARD -> listOf("interimAvailable", "expected", "available", "closingBooked")
-            else -> listOf("interimAvailable", "expected", "closingBooked")
-        }
-        for (type in target) {
-            val balance = balances.balances.firstOrNull { it.balanceType == type && it.balanceAmount != null }
-                ?: continue
-            val amount = balance.balanceAmount ?: continue
-            return try {
-                BigDecimal(amount.amount).toMinorLong() to amount.currency
-            } catch (e: Exception) {
-                continue
-            }
-        }
-        return null to (info.currency ?: "GBP")
-    }
+    /**
+     * Picks which of a bank's several balances to show.
+     *
+     * For a current account the useful figure is what is available to spend. For a credit
+     * card it is the opposite: "available" means the unused part of the limit, so preferring
+     * it showed a card's headroom as though it were money. Banks differ in which types they
+     * return, which is why one card looked right and another did not - an issuer that omits
+     * interimAvailable fell through to the real balance by luck rather than by design.
+     */
+    private fun pickBalance(balances: BalancesDto, info: AccountInfoDto, accountType: AccountType = AccountType.PERSONAL): Pair<Long?, String> =
+        selectBalance(balances, accountType) ?: (null to (info.currency ?: "GBP"))
 
     companion object {
+        /**
+         * Picks which of a bank's several balances to show.
+         *
+         * For a current account the useful figure is what is available to spend. For a credit
+         * card it is the opposite: "available" means the unused part of the limit, so
+         * preferring it showed a card's headroom as though it were money. Banks differ in
+         * which types they return, which is why one card looked right and another did not -
+         * an issuer that omits interimAvailable fell through to the real balance by luck.
+         */
+        fun selectBalance(balances: BalancesDto, accountType: AccountType): Pair<Long, String>? {
+            val preference = when (accountType) {
+                // Owed first, and never an "available" type, which is unused credit.
+                AccountType.CREDIT_CARD ->
+                    listOf("closingBooked", "interimBooked", "expected", "openingBooked")
+                else -> listOf("interimAvailable", "expected", "closingBooked")
+            }
+            for (type in preference) {
+                val balance = balances.balances.firstOrNull {
+                    it.balanceType == type &&
+                        it.balanceAmount != null &&
+                        // Whatever it is called, a figure carrying the credit limit is
+                        // headroom rather than a balance.
+                        it.creditLimitIncluded != true
+                } ?: continue
+                val amount = balance.balanceAmount ?: continue
+                return try {
+                    BigDecimal(amount.amount).toMinorLong() to amount.currency
+                } catch (e: Exception) {
+                    continue
+                }
+            }
+            return null
+        }
+
         private const val BASE_URL = "https://bankaccountdata.gocardless.com/api/v2/"
         // A custom scheme MainActivity registers, so the bank hands control back to the
         // app. This used to be http://localhost:8080, which nothing serves - the browser
