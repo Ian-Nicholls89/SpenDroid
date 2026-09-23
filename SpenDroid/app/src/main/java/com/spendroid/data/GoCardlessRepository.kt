@@ -116,15 +116,30 @@ class GoCardlessRepository private constructor(
      */
     suspend fun updateAccount(account: AccountEntity) {
         val previous = dao.accounts().firstOrNull { it.id == account.id }
-        val repicked = if (previous != null && previous.accountType != account.accountType) {
-            account.rawBalancesJson
-                ?.let { runCatching { GSON.fromJson(it, BalancesDto::class.java) }.getOrNull() }
-                ?.let { selectBalance(it, account.accountType) }
-                ?.let { (minor, currency) -> account.copy(balanceMinor = minor, currency = currency) }
-                ?: account
-        } else {
-            account
+        if (previous == null || previous.accountType == account.accountType) {
+            dao.updateAccount(account)
+            return
         }
+
+        // The stored payload only arrives with a sync, so an account that has not synced
+        // since this was introduced has none - which is every existing account the first
+        // time. Fetch the balances rather than leaving the old figure in place until the
+        // next sync, which made changing the type look like it did nothing at all.
+        val parsed = account.rawBalancesJson
+            ?.let { runCatching { GSON.fromJson(it, BalancesDto::class.java) }.getOrNull() }
+            ?: runCatching { dataApi.accountBalances(account.id) }.getOrNull()
+
+        val repicked = parsed
+            ?.let { balances ->
+                val chosen = selectBalance(balances, account.accountType)
+                account.copy(
+                    balanceMinor = chosen?.first ?: account.balanceMinor,
+                    currency = chosen?.second ?: account.currency,
+                    rawBalancesJson = GSON.toJson(balances),
+                )
+            }
+            ?: account
+
         dao.updateAccount(repicked)
     }
 
@@ -493,6 +508,23 @@ class GoCardlessRepository private constructor(
                 } catch (e: Exception) {
                     continue
                 }
+            }
+
+            // Nothing preferred was on offer. For a card, any figure the bank has not flagged
+            // as containing the limit beats showing the headroom as though it were a debt.
+            if (accountType == AccountType.CREDIT_CARD) {
+                balances.balances
+                    .firstOrNull {
+                        it.balanceAmount != null &&
+                            it.creditLimitIncluded != true &&
+                            it.balanceType?.contains("available", ignoreCase = true) != true
+                    }
+                    ?.balanceAmount
+                    ?.let { amount ->
+                        return runCatching {
+                            BigDecimal(amount.amount).toMinorLong() to amount.currency
+                        }.getOrNull()
+                    }
             }
             return null
         }

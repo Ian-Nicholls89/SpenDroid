@@ -64,7 +64,20 @@ class BalanceSelectionTest {
     }
 
     @Test
-    fun `no usable balance yields null rather than a wrong number`() {
+    fun `a card falls back to any figure that is not the headroom`() {
+        // A bank sending none of the preferred types still must not show the limit.
+        val owed = pick(
+            listOf(
+                bal("interimAvailable", "7190.54", creditLimitIncluded = true),
+                bal("nonInvoiced", "-42.00"),
+            ),
+            AccountType.CREDIT_CARD,
+        )
+        assertEquals(-4200L, owed)
+    }
+
+    @Test
+    fun `only available balances yields null rather than a wrong number`() {
         assertEquals(null, pick(listOf(bal("forwardAvailable", "99.99")), AccountType.CREDIT_CARD))
     }
 }
