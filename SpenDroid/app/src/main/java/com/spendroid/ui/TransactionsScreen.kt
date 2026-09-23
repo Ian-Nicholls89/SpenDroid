@@ -195,20 +195,33 @@ fun TransactionsScreen(
             item {
                 // Categories that actually occur, commonest first, so the row is not a list
                 // of every category the app knows about.
-                val present = remember(state.transactions, state.categoryRules) {
+                // Classified exactly as the filter classifies, or a chip could be missing
+                // for a category the filter would match - card bills in particular, which
+                // only look like one once the payment keys are taken into account.
+                val present = remember(
+                    state.transactions,
+                    state.categoryRules,
+                    state.budget?.cardPaymentKeys,
+                ) {
                     state.transactions
                         .filter { it.amountMinor < 0 && !it.isPending }
                         .groupingBy {
-                            CategoryEngine.classify(it, state.categoryRules)
+                            CategoryEngine.classify(
+                                it,
+                                state.categoryRules,
+                                state.budget?.cardPaymentKeys.orEmpty(),
+                                state.budget?.creditCardAccountIds.orEmpty(),
+                            )
                         }
                         .eachCount()
                         .entries
                         .sortedByDescending { it.value }
                         .map { it.key }
                 }
+                // Matched to the account row above, so the two read as one control.
                 LazyRow(
-                    contentPadding = PaddingValues(horizontal = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     item {
                         FilterChip(
