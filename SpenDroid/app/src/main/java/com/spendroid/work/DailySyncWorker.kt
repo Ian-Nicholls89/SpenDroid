@@ -4,6 +4,8 @@ import android.content.Context
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.spendroid.BudgetApplication
+import com.spendroid.widget.refreshCardWidgets
+import com.spendroid.widget.refreshWidgets
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.flow.first
 
@@ -41,6 +43,13 @@ class DailySyncWorker(
                 runCatching { repo.importAccount(connection.institutionName, accountId) }
                     .onFailure { failures++ }
             }
+        }
+
+        // The figures only move when a sync lands, so this is the moment a widget is stale.
+        // Refreshing here beats the 30-minute poll on both freshness and battery.
+        if (attempted > 0) {
+            refreshWidgets(applicationContext)
+            refreshCardWidgets(applicationContext)
         }
 
         if (failures == 0) return Result.success()

@@ -61,6 +61,8 @@ object BackupImporter {
                 accountType = runCatching { AccountType.valueOf(o.optString("accountType")) }
                     .getOrDefault(AccountType.PERSONAL),
                 linkedCreditCardAccountId = o.nullableString("linkedCreditCardAccountId"),
+                statementDayOfMonth = o.nullableInt("statementDayOfMonth"),
+                paymentDayOfMonth = o.nullableInt("paymentDayOfMonth"),
             )
         }
 
@@ -132,4 +134,7 @@ object BackupImporter {
 
     private fun JSONObject.nullableString(key: String): String? =
         if (isNull(key)) null else optString(key).takeIf { it.isNotEmpty() }
+
+    private fun JSONObject.nullableInt(key: String): Int? =
+        if (isNull(key)) null else optInt(key).takeIf { has(key) }
 }

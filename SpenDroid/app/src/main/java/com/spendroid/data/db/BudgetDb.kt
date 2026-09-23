@@ -20,7 +20,7 @@ import kotlinx.coroutines.flow.Flow
         RuleOverrideEntity::class,
         CategoryRuleEntity::class,
     ],
-    version = 9,
+    version = 10,
     exportSchema = false,
 )
 abstract class BudgetDb : RoomDatabase() {
@@ -54,6 +54,12 @@ abstract class BudgetDb : RoomDatabase() {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE accounts ADD COLUMN accountType TEXT NOT NULL DEFAULT 'PERSONAL'")
                 db.execSQL("ALTER TABLE accounts ADD COLUMN linkedCreditCardAccountId TEXT")
+            }
+        }
+        val MIGRATION_9_10 = object : Migration(9, 10) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE accounts ADD COLUMN statementDayOfMonth INTEGER")
+                db.execSQL("ALTER TABLE accounts ADD COLUMN paymentDayOfMonth INTEGER")
             }
         }
         val MIGRATION_8_9 = object : Migration(8, 9) {

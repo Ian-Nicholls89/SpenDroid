@@ -8,14 +8,11 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.spendroid.BudgetApplication
-import com.spendroid.domain.BudgetEngine
 import com.spendroid.domain.CARD_BILL_KEY_PREFIX
 import com.spendroid.domain.RecurringAnalyzer
-import com.spendroid.domain.toRecurringRule
 import com.spendroid.ui.formatMoney
 import java.time.LocalDate
 import kotlin.math.abs
-import kotlinx.coroutines.flow.first
 
 /**
  * Notices the handful of things worth interrupting someone for.
@@ -33,11 +30,7 @@ class AlertsWorker(
         val transactions = repo.transactions()
         if (transactions.isEmpty()) return Result.success()
 
-        val ignored = repo.ignoredRules.first()
-        val manual = repo.manualRules.first().mapNotNull { it.toRecurringRule() }
-        val rules = (RecurringAnalyzer.analyze(transactions) + manual)
-            .filter { it.key !in ignored }
-        val snapshot = BudgetEngine.snapshot(transactions, rules, repo.accounts())
+        val snapshot = repo.budgetSnapshot() ?: return Result.success()
 
         val alerts = buildList {
             billsDueTomorrow(snapshot)?.let(::add)

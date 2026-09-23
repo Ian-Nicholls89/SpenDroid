@@ -52,6 +52,14 @@ object BackupExporter {
                             .put(
                                 "linkedCreditCardAccountId",
                                 account.linkedCreditCardAccountId ?: JSONObject.NULL,
+                            )
+                            .put(
+                                "statementDayOfMonth",
+                                account.statementDayOfMonth ?: JSONObject.NULL,
+                            )
+                            .put(
+                                "paymentDayOfMonth",
+                                account.paymentDayOfMonth ?: JSONObject.NULL,
                             ),
                     )
                 }

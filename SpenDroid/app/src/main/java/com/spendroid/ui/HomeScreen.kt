@@ -62,6 +62,7 @@ import com.spendroid.domain.BudgetSnapshot
 import com.spendroid.domain.CARD_BILL_KEY_PREFIX
 import com.spendroid.domain.Category
 import com.spendroid.domain.CategoryEngine
+import com.spendroid.domain.BudgetPace
 import com.spendroid.domain.CreditCardEngine
 import com.spendroid.domain.CategoryTotal
 import com.spendroid.domain.TrendSummary
@@ -81,20 +82,11 @@ internal val OutColor = Color(0xFFC62828)
  * How much of the variable budget is gone, as a fraction. Null when there is no budget to
  * measure against.
  */
-private fun budgetUsedFraction(budget: BudgetSnapshot): Float? {
-    if (budget.variableMonthlyBudget <= 0L) return null
-    return (budget.spentThisCycle.toFloat() / budget.variableMonthlyBudget.toFloat())
-        .coerceIn(0f, 1f)
-}
+private fun budgetUsedFraction(budget: BudgetSnapshot): Float? = BudgetPace.usedFraction(budget)
 
 /** How far through the pay cycle today is, as a fraction. */
-private fun cycleElapsedFraction(budget: BudgetSnapshot): Float? {
-    val end = budget.cycleEnd ?: return null
-    val total = ChronoUnit.DAYS.between(budget.cycleStart, end).toFloat()
-    if (total <= 0f) return null
-    val gone = ChronoUnit.DAYS.between(budget.cycleStart, LocalDate.now()).toFloat()
-    return (gone / total).coerceIn(0f, 1f)
-}
+private fun cycleElapsedFraction(budget: BudgetSnapshot): Float? =
+    BudgetPace.elapsedFraction(budget)
 
 /**
  * "£742 left" reads very differently with 8 days to go than with 24, so say which it is:
@@ -124,20 +116,12 @@ private fun paceCaption(budget: BudgetSnapshot): String? {
  * Tolerances are fractions of the budget rather than fixed amounts, so the same thresholds
  * suit any income.
  */
-private fun heroGradient(budget: BudgetSnapshot): List<Color> {
-    val used = budgetUsedFraction(budget)
-    val elapsed = cycleElapsedFraction(budget)
-    if (used == null || elapsed == null) return listOf(HeroGreenStart, HeroGreenEnd)
-
-    val overspendFraction = used - elapsed
-    return when {
-        // Nothing left is worth saying loudly whatever the date.
-        budget.availableToSpend <= 0L -> listOf(HeroRedStart, HeroRedEnd)
-        overspendFraction > 0.15f -> listOf(HeroRedStart, HeroRedEnd)
-        overspendFraction > 0.05f -> listOf(HeroAmberStart, HeroAmberEnd)
-        else -> listOf(HeroGreenStart, HeroGreenEnd)
+private fun heroGradient(budget: BudgetSnapshot): List<Color> =
+    when (BudgetPace.of(budget)) {
+        BudgetPace.Pace.OVER -> listOf(HeroRedStart, HeroRedEnd)
+        BudgetPace.Pace.TIGHT -> listOf(HeroAmberStart, HeroAmberEnd)
+        BudgetPace.Pace.ON_TRACK -> listOf(HeroGreenStart, HeroGreenEnd)
     }
-}
 
 private val HeroGreenStart = Color(0xFF2E7D32)
 private val HeroGreenEnd = Color(0xFF1B5E20)
@@ -299,16 +283,25 @@ private fun CardBillCard(bill: CreditCardEngine.CardBill) {
                     )
                 }
             }
-            bill.dueDate?.let { due ->
-                Spacer(Modifier.height(10.dp))
-                Text(
-                    // Inferred from payment history, and direct debits shift around weekends
-                    // and bank holidays, so the date is approximate on purpose.
-                    "Estimated · due ~${due.format(dateFormat)}",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
+            Spacer(Modifier.height(10.dp))
+            Text(
+                buildString {
+                    // The total is the bank's own figure, so it is exact. The split across
+                    // the statement boundary is only as good as the cycle behind it, which
+                    // is why an assumed cycle says so rather than looking authoritative.
+                    bill.statementClose?.let { append("Statement closed ${it.format(dateFormat)}") }
+                    bill.dueDate?.let { due ->
+                        if (isNotEmpty()) append(" · ")
+                        append("due ~${due.format(dateFormat)}")
+                    }
+                    if (bill.cycleSource == CreditCardEngine.CycleSource.ASSUMED) {
+                        if (isNotEmpty()) append(" · ")
+                        append("cycle estimated")
+                    }
+                },
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }

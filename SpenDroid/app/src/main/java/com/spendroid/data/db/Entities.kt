@@ -9,6 +9,7 @@ enum class AccountType(val displayName: String, val shortName: String) {
     JOINT("Joint account", "Joint"),
     CREDIT_CARD("Credit card", "Credit card"),
     SAVINGS("Savings", "Savings"),
+    PAYPAL("PayPal", "PayPal"),
     OTHER("Other", "Other"),
 }
 
@@ -28,6 +29,14 @@ data class AccountEntity(
      * means the choice can be redone immediately instead of waiting for the next sync.
      */
     val rawBalancesJson: String? = null,
+    /**
+     * For a credit card: the day of the month its statement closes. Solved from past bills
+     * where possible, but a card that has never been cleared in full leaves nothing to solve
+     * against, so the user can set it. A stored day outlives the API's 90-day window.
+     */
+    val statementDayOfMonth: Int? = null,
+    /** For a credit card: the day of the month the bill is taken, when the user set it. */
+    val paymentDayOfMonth: Int? = null,
 )
 
 @Entity(

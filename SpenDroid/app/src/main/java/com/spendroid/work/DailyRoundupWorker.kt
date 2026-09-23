@@ -8,11 +8,8 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.spendroid.BudgetApplication
-import com.spendroid.domain.BudgetEngine
-import com.spendroid.domain.RecurringAnalyzer
 import com.spendroid.ui.formatMoney
 import java.time.format.DateTimeFormatter
-import kotlinx.coroutines.flow.first
 
 class DailyRoundupWorker(
     app: Context,
@@ -25,13 +22,11 @@ class DailyRoundupWorker(
         // Reads whatever DailySyncWorker last stored. Syncing here as well meant a failure to
         // reach the API was swallowed silently, and tied the data refresh to the user's
         // chosen notification time.
-        val transactions = app.repository.transactions()
-        if (transactions.isEmpty()) return Result.success()
-
-        val rules = RecurringAnalyzer.analyze(transactions)
-        val ignored = app.repository.ignoredRules.first()
-        val notificationTime = java.time.LocalDateTime.now()
-        val snapshot = BudgetEngine.snapshot(transactions, rules.filter { it.key !in ignored }, referenceTime = notificationTime)
+        // The shared builder. Assembling this here left out accounts entirely, so the
+        // notification counted card spending the home screen excludes and quietly reported
+        // a different figure from the one in the app.
+        val snapshot = app.repository.budgetSnapshot(java.time.LocalDateTime.now())
+            ?: return Result.success()
 
         val dateFormat = DateTimeFormatter.ofPattern("d MMM")
         val body = buildString {

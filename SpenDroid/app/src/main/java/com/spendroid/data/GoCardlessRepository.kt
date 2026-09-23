@@ -22,7 +22,13 @@ import com.spendroid.data.remote.RequisitionRequestDto
 import com.spendroid.data.remote.TokenManager
 import com.spendroid.data.remote.TransactionDto
 import com.spendroid.data.remote.TransactionsDto
+import com.spendroid.domain.PayPalEngine
+import com.spendroid.domain.BudgetEngine
+import com.spendroid.domain.BudgetModel
+import com.spendroid.domain.BudgetSnapshot
 import com.spendroid.domain.RecurringAnalyzer
+import com.spendroid.domain.WorkingDayCalendar
+import com.spendroid.domain.toRecurringRule
 import com.google.gson.Gson
 import java.io.IOException
 import java.math.BigDecimal
@@ -280,7 +286,11 @@ class GoCardlessRepository private constructor(
             page = page.next?.let { dataApi.transactionsPage(it) }
         }
 
-        dao.upsertTransactions(rows)
+        // The same rule as the account row below, and for the same reason: a sync must not
+        // undo the user's own decisions. REPLACE deletes the old row before inserting, so
+        // every category set by hand and every transfer flagged was being wiped nightly for
+        // the whole 90-day window.
+        dao.upsertTransactions(preserveUserEdits(rows, dao.transactionsFor(accountId)))
 
         // A sync refreshes the balance; it must not undo the user's own decisions. Rebuilding
         // the row from scratch reset the type, regenerated the label over any rename, and
@@ -303,10 +313,51 @@ class GoCardlessRepository private constructor(
         return entity
     }
 
+    /**
+     * The budget as the app understands it, assembled from every setting that shapes it.
+     *
+     * There is one of these because there was nearly not: the widget, the alert worker and
+     * the daily roundup each built their own, and each quietly left something out - the
+     * roundup omitted accounts entirely, so it counted card spending the home screen
+     * excludes. A screen and a notification disagreeing about the same money is the kind of
+     * bug nobody reports, because both look plausible on their own.
+     */
+    suspend fun budgetSnapshot(
+        referenceTime: java.time.LocalDateTime = java.time.LocalDateTime.now(),
+    ): BudgetSnapshot? {
+        val all = transactions()
+        if (all.isEmpty()) return null
+
+        val ignored = ignoredRules.first()
+        val manual = manualRules.first().mapNotNull { it.toRecurringRule() }
+        val rules = (RecurringAnalyzer.analyze(all) + manual).filter { it.key !in ignored }
+        val holidays = runCatching { bankHolidays() }.getOrDefault(emptyMap())
+
+        return BudgetEngine.snapshot(
+            transactions = all,
+            rules = rules,
+            accounts = accounts(),
+            referenceTime = referenceTime,
+            primaryIncomeKey = primaryIncomeKey.first(),
+            budgetModel = BudgetModel.from(budgetModel.first()),
+            calendar = WorkingDayCalendar(holidays.keys),
+            overrides = ruleOverrides.first().associateBy { it.ruleKey },
+        )
+    }
+
     private suspend fun analyzeTransactions() {
         val allAccounts = dao.accounts()
         val allTx = allAccounts.flatMap { dao.transactionsFor(it.id) }
-        val internalPairs = detectInternalTransfers(allTx)
+
+        // PayPal is left out of generic transfer detection because PayPalEngine already owns
+        // that relationship, and two systems writing the same flag disagree: a top-up paired
+        // here would be stored as a transfer, and with PayPal's own rows suppressed the
+        // purchase would vanish from spending entirely.
+        val payPalIds = allAccounts
+            .filter { it.accountType == AccountType.PAYPAL }
+            .map { it.id }
+            .toSet()
+        val internalPairs = detectInternalTransfers(allTx.filter { it.accountId !in payPalIds })
         val recurringFlags = RecurringAnalyzer.detectRecurring(allTx)
 
         internalPairs.forEach { (tx1, tx2) ->
@@ -402,9 +453,19 @@ class GoCardlessRepository private constructor(
         return restored
     }
 
-    suspend fun transactions(): List<TransactionEntity> = dao.accounts()
-        .flatMap { dao.transactionsFor(it.id) }
-        .sortedByDescending { it.bookingDate }
+    /**
+     * Every stored transaction, with PayPal payments resolved to their merchant.
+     *
+     * Enriching on read rather than on sync keeps it self-correcting: a PayPal row that
+     * arrives days after the bank debit still finds its partner, and nothing has to be
+     * rewritten in the database to make that happen.
+     */
+    suspend fun transactions(): List<TransactionEntity> {
+        val stored = dao.accounts()
+            .flatMap { dao.transactionsFor(it.id) }
+            .sortedByDescending { it.bookingDate }
+        return PayPalEngine.reconcile(stored, dao.accounts())
+    }
 
     private fun toEntity(accountId: String, tx: TransactionDto, pending: Boolean): TransactionEntity? {
         val amount: AmountDto = tx.transactionAmount ?: return null
@@ -487,6 +548,29 @@ class GoCardlessRepository private constructor(
         selectBalance(balances, accountType) ?: (null to (info.currency ?: "GBP"))
 
     companion object {
+
+        /**
+         * Carries the user's own edits across a re-sync.
+         *
+         * The bank is the authority on what a transaction is - its amount, date and payee -
+         * but not on what the user decided about it. Those decisions exist nowhere else and
+         * cannot be re-derived, so they win over the freshly built row.
+         */
+        internal fun preserveUserEdits(
+            fetched: List<TransactionEntity>,
+            existing: List<TransactionEntity>,
+        ): List<TransactionEntity> {
+            if (existing.isEmpty()) return fetched
+            val byId = existing.associateBy { it.transactionId }
+            return fetched.map { row ->
+                val prior = byId[row.transactionId] ?: return@map row
+                row.copy(
+                    isInternalTransfer = prior.isInternalTransfer,
+                    isRecurring = prior.isRecurring,
+                    categoryOverride = prior.categoryOverride,
+                )
+            }
+        }
             internal fun detectAccountTypeFor(metadata: AccountDetailsDto, info: AccountInfoDto): AccountType {
             // ISO 20022 cash account type: an outright answer where the bank sends one.
             if (info.cashAccountType?.equals("CARD", ignoreCase = true) == true) {
@@ -498,6 +582,9 @@ class GoCardlessRepository private constructor(
                 .lowercase()
 
             return when {
+                // Before the card rules: PayPal calls its product a "card" often enough to
+                // be mistaken for one, and it behaves nothing like a credit card here.
+                text.contains("paypal") -> AccountType.PAYPAL
                 text.contains("credit card") || text.contains("creditcard") -> AccountType.CREDIT_CARD
                 text.contains("credit") && !text.contains("credit union") -> AccountType.CREDIT_CARD
                 text.contains("joint") -> AccountType.JOINT
