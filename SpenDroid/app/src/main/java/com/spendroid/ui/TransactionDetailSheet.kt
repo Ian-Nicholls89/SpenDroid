@@ -53,6 +53,8 @@ fun TransactionDetailSheet(
     creditCardAccountIds: Set<String> = emptySet(),
     /** How many stored transactions share this one's payee and amount, this one included. */
     similarCount: Int = 1,
+    /** The app's best alternatives to the category shown, best first - what a swipe offers. */
+    suggestions: List<Category> = emptyList(),
     groupMarkedAsTransfer: Boolean = false,
     onMarkTransferGroup: (TransactionEntity, Boolean) -> Unit = { _, _ -> },
 ) {
@@ -109,6 +111,29 @@ fun TransactionDetailSheet(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Text(description, style = MaterialTheme.typography.bodySmall)
+            }
+
+            // The same two a swipe offers, so the tap and the swipe agree about what is likely.
+            if (suggestions.isNotEmpty()) {
+                Spacer(Modifier.height(18.dp))
+                Text("Suggested", style = MaterialTheme.typography.labelLarge)
+                Spacer(Modifier.height(6.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    suggestions.forEach { category ->
+                        AssistChip(
+                            onClick = { onOverrideCategory(transaction, category) },
+                            label = { Text(category.label) },
+                            leadingIcon = {
+                                Icon(
+                                    category.visual.icon,
+                                    contentDescription = null,
+                                    tint = category.visual.color,
+                                    modifier = Modifier.size(18.dp),
+                                )
+                            },
+                        )
+                    }
+                }
             }
 
             Spacer(Modifier.height(18.dp))

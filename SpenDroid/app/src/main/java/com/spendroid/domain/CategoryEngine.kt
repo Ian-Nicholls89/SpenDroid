@@ -208,6 +208,82 @@ object CategoryEngine {
         return Category.OTHER
     }
 
+    /** A payee reduced to what stays the same from one month's statement to the next. */
+    fun payeeKey(tx: TransactionEntity): String = tx.payee.lowercase().trim().replace(Regex("\\s+"), " ")
+
+    /**
+     * How the user has filed each payee by hand, as payee key to category counts. Built from
+     * per-transaction corrections, which are the strongest evidence there is: the user has
+     * already looked at this merchant and said what it is.
+     */
+    fun history(transactions: List<TransactionEntity>): Map<String, Map<Category, Int>> =
+        transactions
+            .mapNotNull { tx ->
+                val category = tx.categoryOverride?.let { name -> runCatching { Category.valueOf(name) }.getOrNull() }
+                category?.let { payeeKey(tx) to it }
+            }
+            .groupBy({ it.first }, { it.second })
+            .mapValues { (_, categories) -> categories.groupingBy { it }.eachCount() }
+
+    /**
+     * The categories this transaction most likely belongs in, best first, leaving out the one
+     * it is already shown under - that is the app's first guess already, and a suggestion is
+     * only useful as an alternative to it. Always at least two, so both swipe directions mean
+     * something.
+     *
+     * Evidence in order of strength: how the user filed this payee before; their own rules
+     * that match; every built-in keyword that matches, not just the first; then, for money in,
+     * the two things money in usually is; and last, the categories spending most often lands in.
+     */
+    fun suggest(
+        tx: TransactionEntity,
+        userRules: List<CategoryRuleEntity> = emptyList(),
+        history: Map<String, Map<Category, Int>> = emptyMap(),
+        cardPaymentKeys: Set<String> = emptySet(),
+        creditCardAccountIds: Set<String> = emptySet(),
+    ): List<Category> {
+        val current = classify(tx, userRules, cardPaymentKeys, creditCardAccountIds)
+        val moneyIn = tx.amountMinor > 0 && tx.accountId !in creditCardAccountIds
+        val ranked = LinkedHashSet<Category>()
+
+        history[payeeKey(tx)]
+            ?.entries
+            ?.sortedByDescending { it.value }
+            ?.forEach { ranked += it.key }
+
+        val combined = "${tx.payee.lowercase()} ${tx.description?.lowercase().orEmpty()}"
+        userRules
+            .sortedByDescending { it.pattern.length }
+            .filter { combined.contains(it.pattern.lowercase()) }
+            .mapNotNull { runCatching { Category.valueOf(it.category) }.getOrNull() }
+            .forEach { ranked += it }
+
+        compiledRules
+            .filter { (category, patterns) ->
+                category != Category.SALARY && patterns.any { it.containsMatchIn(combined) }
+            }
+            .forEach { ranked += it.first }
+
+        ranked += if (moneyIn) MONEY_IN_FALLBACK else SPENDING_FALLBACK
+
+        return ranked
+            .filter { it != current }
+            // Money in is not spending, and spending is not a salary.
+            .filter { if (moneyIn) it in MONEY_IN_CATEGORIES else it != Category.SALARY }
+    }
+
+    private val MONEY_IN_FALLBACK = listOf(Category.TRANSFERS, Category.SALARY, Category.SAVINGS, Category.OTHER)
+    private val MONEY_IN_CATEGORIES = MONEY_IN_FALLBACK.toSet()
+    private val SPENDING_FALLBACK = listOf(
+        Category.GROCERIES,
+        Category.EATING_OUT,
+        Category.SHOPPING,
+        Category.TRANSPORT,
+        Category.BILLS,
+        Category.ENTERTAINMENT,
+        Category.OTHER,
+    )
+
     fun spendingBreakdown(
         transactions: List<TransactionEntity>,
         userRules: List<CategoryRuleEntity> = emptyList(),

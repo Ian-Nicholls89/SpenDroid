@@ -2,6 +2,22 @@ package com.spendroid.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Surface
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxValue
+import androidx.compose.material3.rememberSwipeToDismissBoxState
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import kotlinx.coroutines.launch
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.graphics.Color
@@ -81,10 +97,23 @@ fun TransactionsScreen(
     onAlwaysCategorise: (TransactionEntity, Category) -> Unit,
     onMarkTransfer: (TransactionEntity, Boolean) -> Unit,
     onMarkTransferGroup: (TransactionEntity, Boolean) -> Unit = { _, _ -> },
+    onRestoreCategory: (TransactionEntity, String?) -> Unit = { _, _ -> },
     onMarkCardPayment: (TransactionEntity, Boolean) -> Unit,
     onCategoryFilter: (Category?) -> Unit,
 ) {
     var selected by remember { mutableStateOf<TransactionEntity?>(null) }
+    // The last swipe, kept long enough to undo it or make it stick for the payee.
+    var sorted by remember { mutableStateOf<SortedNote?>(null) }
+    LaunchedEffect(sorted) {
+        if (sorted != null) {
+            delay(6_000)
+            sorted = null
+        }
+    }
+    val cardPaymentKeys = state.budget?.cardPaymentKeys.orEmpty()
+    val cardAccountIds = state.budget?.creditCardAccountIds.orEmpty()
+    fun suggestionsFor(tx: TransactionEntity) =
+        CategoryEngine.suggest(tx, state.categoryRules, state.categoryHistory, cardPaymentKeys, cardAccountIds)
 
     val accountNames = remember(state.accounts) { state.accounts.associate { it.id to it.label } }
 
@@ -324,21 +353,31 @@ fun TransactionsScreen(
                                 .animateItem()
                                 .entrance(if (arrived) null else arrivalOrder[rowKey]),
                         ) {
-                            TransactionRow(
-                                tx = tx,
-                                userRules = state.categoryRules,
-                                // Redundant once the list is filtered to a single account.
-                                accountName = if (state.accountFilter == null) {
-                                    accountNames[tx.accountId]
-                                } else {
-                                    null
+                            SwipeToSort(
+                                suggestions = remember(tx, state.categoryRules, state.categoryHistory) {
+                                    suggestionsFor(tx).take(2)
                                 },
-                                cardPaymentKeys = state.budget?.cardPaymentKeys.orEmpty(),
-                                creditCardAccountIds =
-                                    state.budget?.creditCardAccountIds.orEmpty(),
-                                onClick = { selected = tx },
-                                isNew = rowKey in state.newTransactionKeys,
-                            )
+                                onSort = { category ->
+                                    sorted = SortedNote(tx, tx.categoryOverride, category)
+                                    onOverrideCategory(tx, category)
+                                },
+                            ) {
+                                TransactionRow(
+                                    tx = tx,
+                                    userRules = state.categoryRules,
+                                    // Redundant once the list is filtered to a single account.
+                                    accountName = if (state.accountFilter == null) {
+                                        accountNames[tx.accountId]
+                                    } else {
+                                        null
+                                    },
+                                    cardPaymentKeys = state.budget?.cardPaymentKeys.orEmpty(),
+                                    creditCardAccountIds =
+                                        state.budget?.creditCardAccountIds.orEmpty(),
+                                    onClick = { selected = tx },
+                                    isNew = rowKey in state.newTransactionKeys,
+                                )
+                            }
                             HorizontalDivider(
                                 modifier = Modifier.padding(start = 64.dp),
                                 color = MaterialTheme.colorScheme.outlineVariant,
@@ -359,6 +398,29 @@ fun TransactionsScreen(
                 }
             }
         }
+
+        // Undo, or make it stick: a swipe changes only the one transaction.
+        AnimatedVisibility(
+            visible = sorted != null,
+            enter = slideInVertically(Motion.arrive()) { it } + fadeIn(Motion.arrive()),
+            exit = slideOutVertically(Motion.change(Motion.SHORT)) { it } + fadeOut(Motion.change(Motion.SHORT)),
+            modifier = Modifier.align(Alignment.BottomCenter).padding(12.dp),
+        ) {
+            val note = sorted
+            if (note != null) {
+                SortedBar(
+                    note = note,
+                    onUndo = {
+                        onRestoreCategory(note.tx, note.previousOverride)
+                        sorted = null
+                    },
+                    onAlways = {
+                        onAlwaysCategorise(note.tx, note.category)
+                        sorted = null
+                    },
+                )
+            }
+        }
     }
 
     selected?.let { tx ->
@@ -376,6 +438,7 @@ fun TransactionsScreen(
             onAlwaysCategorise = { t, c -> onAlwaysCategorise(t, c); selected = null },
             onMarkTransfer = { t, v -> onMarkTransfer(t, v); selected = null },
             similarCount = similar,
+            suggestions = remember(tx) { suggestionsFor(tx).take(2) },
             groupMarkedAsTransfer = group in state.transferGroups,
             onMarkTransferGroup = { t, v -> onMarkTransferGroup(t, v); selected = null },
             onMarkCardPayment = { t, v -> onMarkCardPayment(t, v); selected = null },
@@ -586,5 +649,120 @@ internal fun visibleTransactions(
                     tx.payee.tidyPayee().lowercase().contains(query) ||
                     tx.description?.tidyPayee()?.lowercase()?.contains(query) == true
                 )
+    }
+}
+
+/** What the last swipe did, so it can be taken back or made to stick. */
+private data class SortedNote(
+    val tx: TransactionEntity,
+    /** The per-transaction category it had before - usually none - so undo restores exactly that. */
+    val previousOverride: String?,
+    val category: Category,
+)
+
+/**
+ * Swipe right to file a transaction under the app's best alternative for it, left for the
+ * second best. The category shows under the row as you drag, with a tick and a light buzz
+ * once letting go will act; short of that the row springs back. Either way the row returns
+ * to its place, re-filed, because a swipe here sorts rather than removes.
+ */
+@Composable
+private fun SwipeToSort(
+    suggestions: List<Category>,
+    onSort: (Category) -> Unit,
+    content: @Composable () -> Unit,
+) {
+    val right = suggestions.getOrNull(0)
+    val left = suggestions.getOrNull(1)
+    val state = rememberSwipeToDismissBoxState()
+    val scope = rememberCoroutineScope()
+    val haptics = LocalHapticFeedback.current
+    val armed = state.targetValue != SwipeToDismissBoxValue.Settled
+    LaunchedEffect(armed) {
+        if (armed) haptics.performHapticFeedback(HapticFeedbackType.SegmentTick)
+    }
+
+    SwipeToDismissBox(
+        state = state,
+        enableDismissFromStartToEnd = right != null,
+        enableDismissFromEndToStart = left != null,
+        onDismiss = { value ->
+            val chosen = if (value == SwipeToDismissBoxValue.StartToEnd) right else left
+            chosen?.let(onSort)
+            scope.launch { state.reset() }
+        },
+        backgroundContent = {
+            val towards = when (state.dismissDirection) {
+                SwipeToDismissBoxValue.StartToEnd -> right
+                SwipeToDismissBoxValue.EndToStart -> left
+                else -> null
+            }
+            if (towards != null) {
+                val visual = towards.visual
+                val fromStart = state.dismissDirection == SwipeToDismissBoxValue.StartToEnd
+                Row(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(visual.color.copy(alpha = if (armed) 0.9f else 0.55f))
+                        .padding(horizontal = 20.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = if (fromStart) Arrangement.Start else Arrangement.End,
+                ) {
+                    Icon(visual.icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        (if (armed) "✓ " else "") + towards.label,
+                        color = Color.White,
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+            }
+        },
+    ) {
+        // A swipe is out of reach with a screen reader, so the same two choices are offered
+        // as actions on the row.
+        Box(
+            modifier = Modifier
+                .background(MaterialTheme.colorScheme.surface)
+                .semantics {
+                    customActions = listOfNotNull(right, left).map { category ->
+                        CustomAccessibilityAction("File under ${category.label}") {
+                            onSort(category)
+                            true
+                        }
+                    }
+                },
+        ) { content() }
+    }
+}
+
+@Composable
+private fun SortedBar(note: SortedNote, onUndo: () -> Unit, onAlways: () -> Unit) {
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.inverseSurface,
+        contentColor = MaterialTheme.colorScheme.inverseOnSurface,
+        shadowElevation = 6.dp,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(modifier = Modifier.padding(start = 16.dp, end = 8.dp, top = 10.dp, bottom = 4.dp)) {
+            Text(
+                "Filed under ${note.category.label}",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                TextButton(onClick = onUndo) {
+                    Text("Undo", color = MaterialTheme.colorScheme.inversePrimary)
+                }
+                TextButton(onClick = onAlways) {
+                    Text(
+                        "Always for ${note.tx.payee.tidyPayee().take(18)}",
+                        color = MaterialTheme.colorScheme.inversePrimary,
+                        maxLines = 1,
+                    )
+                }
+            }
+        }
     }
 }

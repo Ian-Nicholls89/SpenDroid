@@ -40,6 +40,7 @@ fun SpendingScreen(
     onAlwaysCategorise: (TransactionEntity, Category) -> Unit,
     onMarkTransfer: (TransactionEntity, Boolean) -> Unit,
     onMarkTransferGroup: (TransactionEntity, Boolean) -> Unit = { _, _ -> },
+    onRestoreCategory: (TransactionEntity, String?) -> Unit = { _, _ -> },
     onMarkCardPayment: (TransactionEntity, Boolean) -> Unit,
     onCategoryFilter: (Category?) -> Unit,
     onSetBudgetGoal: (Category, Long) -> Unit,
@@ -68,6 +69,7 @@ fun SpendingScreen(
                 onAlwaysCategorise = onAlwaysCategorise,
                 onMarkTransfer = onMarkTransfer,
                 onMarkTransferGroup = onMarkTransferGroup,
+                onRestoreCategory = onRestoreCategory,
                 onMarkCardPayment = onMarkCardPayment,
                 onCategoryFilter = onCategoryFilter,
             )

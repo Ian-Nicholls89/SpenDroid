@@ -19,6 +19,13 @@ import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.rememberTextMeasurer
 import com.spendroid.ui.theme.rememberReveal
 import com.spendroid.ui.theme.revealWhenSeen
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.ui.draw.drawWithContent
+import kotlinx.coroutines.delay
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
@@ -671,88 +678,95 @@ fun HomeScreen(
     onSetBudgetGoal: (Category, Long) -> Unit,
     onLinkBank: () -> Unit,
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 24.dp),
+    // Pull down to sync, from where the figures are rather than from a button elsewhere.
+    PullToRefreshBox(
+        isRefreshing = state.syncing,
+        onRefresh = onRefresh,
+        modifier = Modifier.fillMaxSize(),
     ) {
-        state.bankHolidayToday?.let { name ->
-            BankHolidayBanner(name)
-            Spacer(Modifier.height(16.dp))
-        }
-        state.budget?.unconvertedCurrencies?.takeIf { it.isNotEmpty() }?.let { currencies ->
-            ForeignCurrencyBanner(currencies)
-            Spacer(Modifier.height(16.dp))
-        }
-        if (state.reauthNeeded.isNotEmpty()) {
-            ReauthBanner(state.reauthNeeded, onRelink)
-            Spacer(Modifier.height(16.dp))
-        }
-        state.budget?.let { budget ->
-            HeroBudgetCard(budget)
-            Spacer(Modifier.height(16.dp))
-        }
-
-        if (state.accounts.isNotEmpty()) {
-            NetPositionCard(state.accounts)
-            Spacer(Modifier.height(16.dp))
-        }
-
-        state.budget?.cardBills.orEmpty()
-            .filter { it.outstandingMinor > 0L }
-            .forEach { bill ->
-                CardBillCard(bill)
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 24.dp),
+        ) {
+            state.bankHolidayToday?.let { name ->
+                BankHolidayBanner(name)
+                Spacer(Modifier.height(16.dp))
+            }
+            state.budget?.unconvertedCurrencies?.takeIf { it.isNotEmpty() }?.let { currencies ->
+                ForeignCurrencyBanner(currencies)
+                Spacer(Modifier.height(16.dp))
+            }
+            if (state.reauthNeeded.isNotEmpty()) {
+                ReauthBanner(state.reauthNeeded, onRelink)
+                Spacer(Modifier.height(16.dp))
+            }
+            state.budget?.let { budget ->
+                HeroBudgetCard(budget, syncing = state.syncing)
                 Spacer(Modifier.height(16.dp))
             }
 
-        // Category breakdown and trends live on Spending → Insights. The dashboard reports
-        // the state of the cycle; analysing it is a different job and a different screen.
+            if (state.accounts.isNotEmpty()) {
+                NetPositionCard(state.accounts)
+                Spacer(Modifier.height(16.dp))
+            }
 
-        // The list of accounts belongs to the Accounts tab; this is only the way in on the
-        // first run, when there is nothing else on the screen to act on.
-        if (state.accounts.isEmpty()) {
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text("No accounts linked yet.", style = MaterialTheme.typography.bodyMedium)
-                    Text(
-                        "Link a bank and SpenDroid will work out your pay cycle from what it finds.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Spacer(Modifier.height(12.dp))
-                    Button(onClick = onLinkBank) { Text("Link a bank") }
+            state.budget?.cardBills.orEmpty()
+                .filter { it.outstandingMinor > 0L }
+                .forEach { bill ->
+                    CardBillCard(bill)
+                    Spacer(Modifier.height(16.dp))
                 }
+
+            // Category breakdown and trends live on Spending → Insights. The dashboard reports
+            // the state of the cycle; analysing it is a different job and a different screen.
+
+            // The list of accounts belongs to the Accounts tab; this is only the way in on the
+            // first run, when there is nothing else on the screen to act on.
+            if (state.accounts.isEmpty()) {
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text("No accounts linked yet.", style = MaterialTheme.typography.bodyMedium)
+                        Text(
+                            "Link a bank and SpenDroid will work out your pay cycle from what it finds.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Spacer(Modifier.height(12.dp))
+                        Button(onClick = onLinkBank) { Text("Link a bank") }
+                    }
+                }
+                Spacer(Modifier.height(16.dp))
             }
             Spacer(Modifier.height(16.dp))
-        }
-        Spacer(Modifier.height(16.dp))
 
-        // The list lives on its own destination now; the dashboard keeps a way in.
-        TextButton(
-            onClick = onSeeAllTransactions,
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Text("See all transactions")
-            Spacer(Modifier.width(6.dp))
-            Icon(
-                Icons.AutoMirrored.Filled.ArrowForward,
-                contentDescription = null,
-                modifier = Modifier.size(18.dp),
-            )
-        }
-
-        state.linkProgress?.let { progress ->
-            Spacer(Modifier.height(12.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
-                Spacer(Modifier.width(10.dp))
-                Text(progress, style = MaterialTheme.typography.bodySmall)
+            // The list lives on its own destination now; the dashboard keeps a way in.
+            TextButton(
+                onClick = onSeeAllTransactions,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("See all transactions")
+                Spacer(Modifier.width(6.dp))
+                Icon(
+                    Icons.AutoMirrored.Filled.ArrowForward,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                )
             }
-        }
-        state.error?.let { error ->
-            Spacer(Modifier.height(12.dp))
-            Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+
+            state.linkProgress?.let { progress ->
+                Spacer(Modifier.height(12.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                    Spacer(Modifier.width(10.dp))
+                    Text(progress, style = MaterialTheme.typography.bodySmall)
+                }
+            }
+            state.error?.let { error ->
+                Spacer(Modifier.height(12.dp))
+                Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+            }
         }
     }
 }
@@ -797,7 +811,7 @@ private fun ReauthBanner(
 }
 
 @Composable
-private fun HeroBudgetCard(budget: BudgetSnapshot) {
+private fun HeroBudgetCard(budget: BudgetSnapshot, syncing: Boolean = false) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.large,
@@ -810,11 +824,15 @@ private fun HeroBudgetCard(budget: BudgetSnapshot) {
                 .padding(20.dp),
         ) {
             Column {
-                Text(
-                    "Budget until next income",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = Color.White.copy(alpha = 0.85f),
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        "Budget until next income",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = Color.White.copy(alpha = 0.85f),
+                        modifier = Modifier.weight(1f),
+                    )
+                    SyncedTick(syncing)
+                }
                 budget.nextIncomeDate?.let { next ->
                     val days = max(0L, ChronoUnit.DAYS.between(LocalDate.now(), next))
                     Text(
@@ -837,6 +855,7 @@ private fun HeroBudgetCard(budget: BudgetSnapshot) {
                             color = Color.White.copy(alpha = 0.85f),
                         )
                         RollingAmount(
+                            modifier = Modifier.shimmer(syncing),
                             minor = budget.availableToSpend,
                             currency = budget.baseCurrency,
                             style = MaterialTheme.typography.headlineLarge,
@@ -992,3 +1011,68 @@ private fun syncTime(epochMillis: Long): String =
     Instant.ofEpochMilli(epochMillis)
         .atZone(ZoneId.systemDefault())
         .format(DateTimeFormatter.ofPattern("d MMM, HH:mm", Locale.getDefault()))
+
+/**
+ * A soft light passing across a figure while a sync is running: the number on show is the
+ * last one known, and this says a newer one is on its way without hiding it.
+ */
+@Composable
+private fun Modifier.shimmer(active: Boolean): Modifier {
+    if (!active) return this
+    val sweep = rememberInfiniteTransition(label = "sync shimmer")
+    val at by sweep.animateFloat(
+        initialValue = -0.6f,
+        targetValue = 1.6f,
+        animationSpec = infiniteRepeatable(tween(1100, easing = LinearEasing)),
+        label = "shimmer position",
+    )
+    return drawWithContent {
+        drawContent()
+        drawRect(
+            Brush.linearGradient(
+                listOf(Color.Transparent, Color.White.copy(alpha = 0.35f), Color.Transparent),
+                start = Offset(size.width * (at - 0.4f), 0f),
+                end = Offset(size.width * at, size.height),
+            ),
+        )
+    }
+}
+
+/**
+ * A tick that draws itself when a sync finishes, then fades: a sync that landed looks
+ * different from a pull that did nothing, and the figures rolling below say what it changed.
+ */
+@Composable
+private fun SyncedTick(syncing: Boolean) {
+    var wasSyncing by remember { mutableStateOf(syncing) }
+    val drawn = remember { Animatable(0f) }
+    val shown = remember { Animatable(0f) }
+    LaunchedEffect(syncing) {
+        if (wasSyncing && !syncing) {
+            shown.snapTo(1f)
+            drawn.snapTo(0f)
+            drawn.animateTo(1f, Motion.arrive(400))
+            delay(1_600)
+            shown.animateTo(0f, Motion.change())
+        }
+        wasSyncing = syncing
+    }
+    if (shown.value <= 0f) return
+    Canvas(
+        modifier = Modifier
+            .size(18.dp)
+            .graphicsLayer { alpha = shown.value }
+            .semantics { contentDescription = "Synced" },
+    ) {
+        val path = Path().apply {
+            moveTo(size.width * 0.18f, size.height * 0.52f)
+            lineTo(size.width * 0.42f, size.height * 0.76f)
+            lineTo(size.width * 0.84f, size.height * 0.28f)
+        }
+        val measure = PathMeasure().apply { setPath(path, false) }
+        val part = Path()
+        measure.getSegment(0f, measure.length * drawn.value, part, true)
+        drawPath(part, Color.White, style = Stroke(width = 2.5.dp.toPx(), cap = StrokeCap.Round))
+    }
+}
+

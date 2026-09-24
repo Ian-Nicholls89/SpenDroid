@@ -28,6 +28,7 @@ import com.spendroid.domain.CardTiming
 import com.spendroid.domain.PaymentShift
 import com.spendroid.domain.WorkingDayCalendar
 import com.spendroid.domain.Category
+import com.spendroid.domain.CategoryEngine
 import com.spendroid.domain.BudgetSnapshot
 import com.spendroid.domain.RecurringAnalyzer
 import com.spendroid.domain.RecurringRule
@@ -108,6 +109,8 @@ data class RootUiState(
     val transferGroups: Set<String> = emptySet(),
     /** "accountId|transactionId" of rows that arrived with the latest load, for a brief highlight. */
     val newTransactionKeys: Set<String> = emptySet(),
+    /** How each payee has been filed by hand, for suggesting where a transaction belongs. */
+    val categoryHistory: Map<String, Map<Category, Int>> = emptyMap(),
     val ruleOverrides: Map<String, RuleOverrideEntity> = emptyMap(),
     val bankHolidays: Set<java.time.LocalDate> = emptySet(),
     /** Name of today's bank holiday, when today is one. */
@@ -360,6 +363,14 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
     fun overrideCategory(tx: TransactionEntity, category: Category?) {
         viewModelScope.launch {
             repo.setCategoryOverride(tx.accountId, tx.transactionId, category?.name)
+            loadLocal()
+        }
+    }
+
+    /** Puts a transaction's category back exactly as it was before a swipe, override or none. */
+    fun restoreCategory(tx: TransactionEntity, previousOverride: String?) {
+        viewModelScope.launch {
+            repo.setCategoryOverride(tx.accountId, tx.transactionId, previousOverride)
             loadLocal()
         }
     }
@@ -701,6 +712,7 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
                 cardTiming = cardTiming,
                 transferGroups = repo.transferGroups.first(),
                 newTransactionKeys = newKeys,
+                categoryHistory = CategoryEngine.history(all),
                 connections = repo.connections.first(),
                 versionName = versionName,
                 versionCode = versionCode,
