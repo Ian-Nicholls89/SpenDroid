@@ -155,7 +155,9 @@ internal suspend fun CoroutineWorker.daily(
     } catch (e: Exception) {
         ListenableWorker.Result.failure()
     }
-    if (result !is ListenableWorker.Result.Retry) {
+    // Compared by value: the Retry class itself is internal to WorkManager, but every retry
+    // result equals every other.
+    if (result != ListenableWorker.Result.retry()) {
         runCatching { DailyRoundupScheduler.bookNext(applicationContext, job) }
     }
     return result
