@@ -29,7 +29,9 @@ class AlertsWorker(
     parameters: WorkerParameters,
 ) : CoroutineWorker(app, parameters) {
 
-    override suspend fun doWork(): Result {
+    override suspend fun doWork(): Result = daily(DailyRoundupScheduler.Daily.ALERTS) { runDay() }
+
+    private suspend fun runDay(): Result {
         val repo = (applicationContext as BudgetApplication).repository
         val transactions = repo.transactions()
         if (transactions.isEmpty()) return Result.success()

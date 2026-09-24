@@ -16,7 +16,9 @@ class ReauthNotificationWorker(
     parameters: WorkerParameters,
 ) : CoroutineWorker(app, parameters) {
 
-    override suspend fun doWork(): Result {
+    override suspend fun doWork(): Result = daily(DailyRoundupScheduler.Daily.REAUTH) { runDay() }
+
+    private suspend fun runDay(): Result {
         val repo = (applicationContext as BudgetApplication).repository
         // Connections saved before the grant date was kept have none; the requisition knows.
         runCatching { repo.backfillConnectionDates() }

@@ -24,7 +24,9 @@ class DailySyncWorker(
     parameters: WorkerParameters,
 ) : CoroutineWorker(app, parameters) {
 
-    override suspend fun doWork(): Result {
+    override suspend fun doWork(): Result = daily(DailyRoundupScheduler.Daily.SYNC) { runDay() }
+
+    private suspend fun runDay(): Result {
         val repo = (applicationContext as BudgetApplication).repository
 
         // Skip anything already pulled recently, so a manual refresh earlier in the day and a

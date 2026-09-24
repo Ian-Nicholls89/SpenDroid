@@ -179,7 +179,8 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
     fun saveNotificationTime(time: String) {
         viewModelScope.launch {
             repo.saveNotificationTime(time)
-            DailyRoundupScheduler.schedule(getApplication())
+            // The time has changed, so every booking made for the old one is redone.
+            DailyRoundupScheduler.schedule(getApplication(), reschedule = true)
         }
     }
 

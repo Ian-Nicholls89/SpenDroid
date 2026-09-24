@@ -16,7 +16,9 @@ class DailyRoundupWorker(
     parameters: WorkerParameters,
 ) : CoroutineWorker(app, parameters) {
 
-    override suspend fun doWork(): Result {
+    override suspend fun doWork(): Result = daily(DailyRoundupScheduler.Daily.ROUNDUP) { runDay() }
+
+    private suspend fun runDay(): Result {
         val app = applicationContext as BudgetApplication
 
         // Reads whatever DailySyncWorker last stored. Syncing here as well meant a failure to
