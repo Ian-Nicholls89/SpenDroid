@@ -97,13 +97,43 @@ class InternalTransferIncomeTest {
     }
 
     /**
+     * A joint account is a shared pot, so nothing it receives is income and nothing it
+     * spends is this budget's outgoing - which holds whether or not the transfer into it
+     * was ever recognised as one. The two fixes are independent on purpose: the transfer
+     * rule filter catches transfers between any two accounts, and this catches the shared
+     * pot even when the pairing fails.
+     */
+    @Test
+    fun `a shared pot is excluded whether or not the transfer was recognised`() {
+        val unflagged = snapshot(history(transfersFlagged = false))
+        val flagged = snapshot(history(transfersFlagged = true))
+
+        assertEquals(183669L, unflagged.averageMonthlyIncome)
+        assertEquals(183669L, flagged.averageMonthlyIncome)
+    }
+
+    /**
+     * The transfer rule filter itself, on two accounts neither of which is a shared pot.
      * Both legs cancelled in the variable budget, which is why this hid for so long: the
      * headline income and fixed figures were both £500 out, and their difference was right.
      */
     @Test
-    fun `the reported income is wrong even when the variable budget survives`() {
-        val unflagged = snapshot(history(transfersFlagged = false))
-        val flagged = snapshot(history(transfersFlagged = true))
+    fun `a transfer between two ordinary accounts is wrong in the headline figures only`() {
+        val ordinary = accounts.map {
+            if (it.id == "joint") it.copy(accountType = AccountType.SAVINGS) else it
+        }
+        val unflagged = BudgetEngine.snapshot(
+            transactions = history(transfersFlagged = false),
+            rules = RecurringAnalyzer.analyze(history(transfersFlagged = false)),
+            accounts = ordinary,
+            referenceTime = now,
+        )
+        val flagged = BudgetEngine.snapshot(
+            transactions = history(transfersFlagged = true),
+            rules = RecurringAnalyzer.analyze(history(transfersFlagged = true)),
+            accounts = ordinary,
+            referenceTime = now,
+        )
 
         assertEquals(233669L, unflagged.averageMonthlyIncome)
         assertEquals(50000L, unflagged.fixedMonthlyOutgoings)

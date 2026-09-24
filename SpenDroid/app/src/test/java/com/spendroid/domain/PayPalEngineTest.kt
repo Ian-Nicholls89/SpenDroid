@@ -393,4 +393,23 @@ class PayPalEngineTest {
 
         assertFalse(result.first { it.accountId == "bank" }.isInternalTransfer)
     }
+
+    /**
+     * Pending counts towards spending now, so a purchase still awaiting settlement has to
+     * be paired like any other - otherwise both legs count until the bank books it, and the
+     * total is wrong for exactly as long as the transaction is interesting.
+     */
+    @Test
+    fun `a purchase still pending is paired rather than counted twice`() {
+        val transactions = listOf(
+            tx("pp", "2026-09-12", -2499, "Steam Games").copy(isPending = true),
+            tx("bank", "2026-09-14", -2499, "PAYPAL *4KDJ2").copy(isPending = true),
+        )
+
+        val result = PayPalEngine.reconcile(transactions, accounts)
+
+        assertEquals("Steam Games", result.first { it.accountId == "bank" }.payee)
+        assertTrue(result.on("pp", "Steam").isInternalTransfer)
+        assertEquals(-2499L, result.filter { !it.isInternalTransfer }.sumOf { it.amountMinor })
+    }
 }

@@ -204,7 +204,7 @@ fun TransactionsScreen(
                     state.budget?.cardPaymentKeys,
                 ) {
                     state.transactions
-                        .filter { it.amountMinor < 0 && !it.isPending }
+                        .filter { it.amountMinor < 0 }
                         .groupingBy {
                             CategoryEngine.classify(
                                 it,
@@ -431,6 +431,8 @@ private fun TransactionRow(
     onClick: () -> Unit,
 ) {
     val category = CategoryEngine.classify(tx, userRules, cardPaymentKeys, creditCardAccountIds)
+    // Counted like any other, but it can still change or vanish, so it says so.
+    val pendingNote = if (tx.isPending) "Pending" else null
     val visual = category.visual
     val amount = formatMoney(tx.amountMinor, tx.currency)
     val name = tx.payee.tidyPayee().ifBlank { tx.description?.tidyPayee()?.ifBlank { "Unknown" } ?: "Unknown" }
@@ -466,6 +468,7 @@ private fun TransactionRow(
             Text(name, style = MaterialTheme.typography.bodyMedium, maxLines = 1)
             Text(
                 buildList {
+                    pendingNote?.let(::add)
                     add(category.label)
                     accountName?.let(::add)
                     tx.bookingDate.takeIf { it.isNotBlank() }?.let(::add)

@@ -31,6 +31,7 @@ class SecretsStore(private val context: Context) {
         val SECRET_KEY = stringPreferencesKey("secret_key")
         val CONNECTIONS = stringPreferencesKey("connections")
         val IGNORED_RULES = stringPreferencesKey("ignored_rules")
+        val NOTIFIED_GOAL_WARNINGS = stringPreferencesKey("notified_goal_warnings")
         val REFRESH_TOKEN = stringPreferencesKey("refresh_token")
         val NOTIFICATION_TIME = stringPreferencesKey("notification_time")
         val LAST_NOTIFIED_VERSION = intPreferencesKey("last_notified_version_code")
@@ -59,6 +60,16 @@ class SecretsStore(private val context: Context) {
     val ignoredRules: Flow<Set<String>> = context.dataStore.data
         .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
         .map { prefs -> parseStringSet(prefs[Keys.IGNORED_RULES]) }
+
+    /**
+     * Budget-cap warnings already sent, as "category|threshold|cycleStart".
+     *
+     * A cap that has been passed stays passed for the rest of the cycle, so without a record
+     * of what has been said the same warning would arrive every day until payday.
+     */
+    val notifiedGoalWarnings: Flow<Set<String>> = context.dataStore.data
+        .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
+        .map { prefs -> parseStringSet(prefs[Keys.NOTIFIED_GOAL_WARNINGS]) }
 
     val connections: Flow<List<Connection>> = context.dataStore.data
         .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
@@ -109,6 +120,13 @@ class SecretsStore(private val context: Context) {
         current.addAll(keys)
         context.dataStore.edit { prefs ->
             prefs[Keys.IGNORED_RULES] = JSONArray(current.toList()).toString()
+        }
+    }
+
+    /** Replaces the record wholesale, so keys from finished cycles fall away with it. */
+    suspend fun saveNotifiedGoalWarnings(keys: Set<String>) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.NOTIFIED_GOAL_WARNINGS] = JSONArray(keys.toList()).toString()
         }
     }
 

@@ -13,6 +13,10 @@ import com.spendroid.domain.RecurringAnalyzer
 import com.spendroid.ui.formatMoney
 import java.time.LocalDate
 import kotlin.math.abs
+import com.spendroid.data.db.TransactionEntity
+import com.spendroid.domain.Category
+import com.spendroid.domain.CategoryEngine
+import kotlinx.coroutines.flow.first
 
 /**
  * Notices the handful of things worth interrupting someone for.
@@ -32,14 +36,84 @@ class AlertsWorker(
 
         val snapshot = repo.budgetSnapshot() ?: return Result.success()
 
+        val goals = goalWarnings(repo, snapshot, transactions)
+
         val alerts = buildList {
             billsDueTomorrow(snapshot)?.let(::add)
             unusuallyLargeTransaction(transactions)?.let(::add)
+            addAll(goals.messages)
         }
         if (alerts.isEmpty()) return Result.success()
 
+        // Recorded before the notification goes out, so a failure to post cannot turn into
+        // the same warning arriving every day for the rest of the cycle.
+        if (goals.messages.isNotEmpty()) repo.saveNotifiedGoalWarnings(goals.keys)
+
         notify(alerts)
         return Result.success()
+    }
+
+    private data class GoalWarnings(val messages: List<String>, val keys: Set<String>)
+
+    /**
+     * Caps that have just been passed, or are close enough to be worth saying so.
+     *
+     * A cap once passed stays passed, so each warning is remembered against the cycle it
+     * belongs to and said once. The record is rewritten rather than added to, so keys from
+     * finished cycles drop out on their own.
+     */
+    private suspend fun goalWarnings(
+        repo: com.spendroid.data.GoCardlessRepository,
+        snapshot: com.spendroid.domain.BudgetSnapshot,
+        transactions: List<TransactionEntity>,
+    ): GoalWarnings {
+        val goals = repo.budgetGoals.first().filter { it.limitMinor > 0L }
+        if (goals.isEmpty()) return GoalWarnings(emptyList(), emptySet())
+
+        val thisCycle = transactions.filter { tx ->
+            val date = RecurringAnalyzer.parseBookingDate(tx.bookingDate) ?: return@filter false
+            tx.amountMinor < 0L && !date.isBefore(snapshot.cycleStart)
+        }
+        val spentByCategory = CategoryEngine
+            .spendingBreakdown(
+                thisCycle,
+                repo.categoryRules.first(),
+                snapshot.cardPaymentKeys,
+                snapshot.creditCardAccountIds,
+            )
+            .associate { it.category to it.amountMinor }
+
+        val alreadySent = repo.notifiedGoalWarnings.first()
+        val cycle = snapshot.cycleStart.toString()
+        val messages = mutableListOf<String>()
+        val keys = mutableSetOf<String>()
+
+        for (goal in goals) {
+            val category = runCatching { Category.valueOf(goal.category) }.getOrNull() ?: continue
+            val spent = spentByCategory[category] ?: 0L
+            val share = spent.toFloat() / goal.limitMinor.toFloat()
+            val threshold = THRESHOLDS.lastOrNull { share >= it } ?: continue
+
+            val key = "${category.name}|${threshold}|${cycle}"
+            keys.add(key)
+            if (key in alreadySent) continue
+
+            val remaining = (goal.limitMinor - spent).coerceAtLeast(0L)
+            val cap = formatMoney(goal.limitMinor, "GBP")
+            val left = formatMoney(remaining, "GBP")
+            val runway = snapshot.daysUntilNextIncome
+                ?.let { days -> " with " + days + " day" + (if (days == 1) "" else "s") + " to go" }
+                .orEmpty()
+
+            messages += if (share >= 1f) {
+                "${category.label} is over its $cap, at ${formatMoney(spent, "GBP")}."
+            } else {
+                "${category.label} is at ${(share * 100).toInt()}% of its $cap, $left still to go$runway."
+            }
+        }
+        // Everything still standing is carried forward; anything no longer true can be said
+        // again if it comes back.
+        return GoalWarnings(messages, keys + alreadySent.filter { it.endsWith("|" + cycle) })
     }
 
     private fun billsDueTomorrow(snapshot: com.spendroid.domain.BudgetSnapshot): String? {
@@ -63,7 +137,7 @@ class AlertsWorker(
         transactions: List<com.spendroid.data.db.TransactionEntity>,
     ): String? {
         val yesterday = LocalDate.now().minusDays(1)
-        val debits = transactions.filter { !it.isPending && !it.isInternalTransfer && it.amountMinor < 0 }
+        val debits = transactions.filter { !it.isInternalTransfer && it.amountMinor < 0 }
         if (debits.size < MIN_HISTORY_FOR_COMPARISON) return null
 
         val amounts = debits.map { abs(it.amountMinor) }.sorted()
@@ -106,5 +180,8 @@ class AlertsWorker(
         private const val NOTIFICATION_ID = 4001
         private const val MIN_HISTORY_FOR_COMPARISON = 20
         private const val LARGE_MULTIPLE = 5
+
+        /** Worth a word approaching a cap, and again on passing it. Not more often. */
+        private val THRESHOLDS = listOf(0.8f, 1.0f)
     }
 }

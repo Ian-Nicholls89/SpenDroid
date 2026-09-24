@@ -190,6 +190,23 @@ interface BudgetDao {
     @Query("DELETE FROM transactions WHERE accountId = :accountId")
     suspend fun deleteTransactions(accountId: String)
 
+    /**
+     * Drops pending rows this account no longer reports.
+     *
+     * A pending transaction is replaced by a booked one, and some banks issue a fresh id
+     * when they do. Nothing else in the sync ever deletes, so the abandoned pending row
+     * would sit there for good alongside its booked twin - harmless while pending was
+     * counted by nothing, and a double count the moment it was.
+     */
+    @Query(
+        "DELETE FROM transactions WHERE accountId = :accountId AND isPending = 1 " +
+            "AND transactionId NOT IN (:stillPending)",
+    )
+    suspend fun expirePending(accountId: String, stillPending: List<String>)
+
+    @Query("DELETE FROM transactions WHERE accountId = :accountId AND isPending = 1")
+    suspend fun expireAllPending(accountId: String)
+
     @Query(
         "UPDATE transactions SET isInternalTransfer = 1 " +
             "WHERE accountId = :accountId AND transactionId = :transactionId " +

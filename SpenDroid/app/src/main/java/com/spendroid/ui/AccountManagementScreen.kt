@@ -304,6 +304,9 @@ private fun AccountDetailSheet(
                 when (type) {
                     AccountType.CREDIT_CARD ->
                         "Spending on a card is left out of your budget; the bill that pays it is counted instead."
+                    AccountType.JOINT ->
+                        "A shared pot: what it spends is left out of your budget, and the " +
+                            "money you pay into it is counted instead."
                     AccountType.PAYPAL ->
                         "PayPal payments are matched to the bank debit that funded them, so the " +
                             "merchant's name replaces the bank's reference and neither is counted twice."

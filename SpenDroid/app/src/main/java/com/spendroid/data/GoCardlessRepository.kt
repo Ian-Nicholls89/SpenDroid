@@ -54,6 +54,7 @@ class GoCardlessRepository private constructor(
     val secretKey: Flow<String?> = secrets.secretKey
     val connections: Flow<List<Connection>> = secrets.connections
     val ignoredRules: Flow<Set<String>> = secrets.ignoredRules
+    val notifiedGoalWarnings: Flow<Set<String>> = secrets.notifiedGoalWarnings
     val manualRules: Flow<List<ManualRecurringRuleEntity>> = dao.activeManualRulesFlow()
     val notificationTime: Flow<String> = secrets.notificationTime
     val lastNotifiedVersionCode: Flow<Int> = secrets.lastNotifiedVersionCode
@@ -126,6 +127,9 @@ class GoCardlessRepository private constructor(
 
     suspend fun saveLastNotifiedVersionCode(versionCode: Int) =
         secrets.saveLastNotifiedVersionCode(versionCode)
+
+    suspend fun saveNotifiedGoalWarnings(keys: Set<String>) =
+        secrets.saveNotifiedGoalWarnings(keys)
 
     suspend fun setRuleIgnored(key: String, ignored: Boolean) {
         secrets.setRuleIgnored(key, ignored)
@@ -296,6 +300,16 @@ class GoCardlessRepository private constructor(
         // the whole 90-day window.
         dao.upsertTransactions(preserveUserEdits(rows, dao.transactionsFor(accountId)))
 
+        // Anything still marked pending that the bank has stopped sending has either been
+        // booked under a new id or withdrawn. Either way the row is stale, and now that
+        // pending counts towards spending a stale one is a phantom that never clears.
+        val stillPending = rows.filter { it.isPending }.map { it.transactionId }
+        if (stillPending.isEmpty()) {
+            dao.expireAllPending(accountId)
+        } else {
+            dao.expirePending(accountId, stillPending)
+        }
+
         // A sync refreshes the balance; it must not undo the user's own decisions. Rebuilding
         // the row from scratch reset the type, regenerated the label over any rename, and
         // dropped the card-to-account link entirely - every single day.
@@ -357,11 +371,17 @@ class GoCardlessRepository private constructor(
         // that relationship, and two systems writing the same flag disagree: a top-up paired
         // here would be stored as a transfer, and with PayPal's own rows suppressed the
         // purchase would vanish from spending entirely.
-        val payPalIds = allAccounts
-            .filter { it.accountType == AccountType.PAYPAL }
+        //
+        // Joint accounts are left out for a different reason: paying into a shared pot is
+        // the expense, in the same way a card bill is. Flagging it as a transfer would
+        // remove the only part of the arrangement that is actually the user's own money.
+        val excluded = allAccounts
+            .filter {
+                it.accountType == AccountType.PAYPAL || it.accountType == AccountType.JOINT
+            }
             .map { it.id }
             .toSet()
-        val internalPairs = detectInternalTransfers(allTx.filter { it.accountId !in payPalIds })
+        val internalPairs = detectInternalTransfers(allTx.filter { it.accountId !in excluded })
         val recurringFlags = RecurringAnalyzer.detectRecurring(allTx)
 
         // Re-run from scratch rather than only adding: detection used to set the flag and

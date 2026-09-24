@@ -12,6 +12,8 @@ enum class Category(val label: String) {
     EATING_OUT("Eating out"),
     WORK_LUNCH("Work lunches"),
     CHARITY("Charity"),
+    FAMILY("Family"),
+    LIFE_EVENTS("Life events"),
     CARD_BILL("Credit card bill"),
     SALARY("Salary"),
     TRANSFERS("Transfers"),
@@ -36,6 +38,12 @@ object CategoryEngine {
         Category.CARD_BILL to listOf(
             "credit card", "creditcard", "card payment", "card bill",
             "cc payment", "barclaycard", "amex", "american express",
+        ),
+        // Money put aside for someone else is gone in a way savings are not: the balance
+        // is not the user's to spend, and in these cases not visible to the app at all.
+        Category.FAMILY to listOf(
+            "beanstalk", "junior isa", "jisa", "child trust", "nursery", "childcare",
+            "school fees", "tumbletots", "playgroup", "childminder",
         ),
         Category.GROCERIES to listOf(
             "tesco", "sainsbury", "asda", "morrisons", "aldi", "lidl",
@@ -143,6 +151,11 @@ object CategoryEngine {
     }
 
     /*
+     * LIFE_EVENTS has none either, for the opposite reason: a wedding venue or a removals
+     * firm is named after itself and shares nothing with the next one. It is set by hand,
+     * and kept out of the trends ranking - a one-off would head a list of what is moving
+     * every time and drown the habits that list exists to surface.
+     *
      * WORK_LUNCH deliberately has no keyword list. The merchants are the same ones as
      * EATING_OUT - a sandwich shop cannot be told apart from a dinner out by its name, and
      * booking dates carry no time of day, so "weekday lunchtime" is not available either.
@@ -201,7 +214,9 @@ object CategoryEngine {
         cardPaymentKeys: Set<String> = emptySet(),
         creditCardAccountIds: Set<String> = emptySet(),
     ): List<CategoryTotal> {
-        val debits = transactions.filter { it.amountMinor < 0 && !it.isPending }
+        // Pending counts here too, or the breakdown would not add up to the total the
+        // home screen reports from the same transactions.
+        val debits = transactions.filter { it.amountMinor < 0 }
         val grouped = debits.groupBy {
             classify(it, userRules, cardPaymentKeys, creditCardAccountIds)
         }

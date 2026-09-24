@@ -68,7 +68,7 @@ data class TrendSummary(
 object TrendsEngine {
 
     fun analyze(transactions: List<TransactionEntity>): TrendSummary {
-        val booked = transactions.filter { !it.isPending && it.bookingDate.isNotBlank() }
+        val booked = transactions.filter { it.bookingDate.isNotBlank() }
 
         // Pair each transaction with its month first, so rows with an unparseable date drop
         // out before grouping and the map never has a nullable key to cast away.
@@ -131,9 +131,16 @@ object TrendsEngine {
         maxPeriods: Int = 6,
         today: LocalDate = LocalDate.now(),
         minimumMinor: Long = 1000L,
+        /**
+         * Kept out of the ranking, not out of the budget. A wedding is real money and
+         * counts where money is counted - but it goes from nothing to thousands and back,
+         * so it would head a list of what is moving every time and drown the habits that
+         * list exists to surface.
+         */
+        exceptional: Set<Category> = setOf(Category.LIFE_EVENTS),
     ): List<CategoryTrend> {
         val dated = transactions
-            .filter { !it.isPending && it.amountMinor < 0L && it.bookingDate.isNotBlank() }
+            .filter { it.amountMinor < 0L && it.bookingDate.isNotBlank() }
             .mapNotNull { tx ->
                 RecurringAnalyzer.parseBookingDate(tx.bookingDate)?.let { date -> date to tx }
             }
@@ -157,6 +164,7 @@ object TrendsEngine {
             .groupBy { (_, tx) ->
                 CategoryEngine.classify(tx, userRules, cardPaymentKeys, creditCardAccountIds)
             }
+            .filterKeys { it !in exceptional }
             .mapNotNull { (category, rows) ->
                 val series = periods.map { (from, to) ->
                     rows

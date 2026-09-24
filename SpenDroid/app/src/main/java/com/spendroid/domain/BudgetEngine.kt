@@ -37,6 +37,21 @@ object BudgetEngine {
             .map { it.id }
             .toSet()
 
+        /**
+         * A joint account is a shared pot, and what it spends is not one person's budget.
+         * The same shape as a credit card: the itemised spending is somebody else's problem
+         * and the settlement - here, the standing order that funds it - is the real expense.
+         *
+         * Without this the arrangement was counted twice over and credited once: every penny
+         * the pot spent came off this budget, while the money paid into it was written off
+         * as a transfer between accounts.
+         */
+        val sharedAccountIds = accounts
+            .filter { it.accountType == AccountType.JOINT }
+            .map { it.id }
+            .toSet()
+        val notSpendableFrom = creditCardAccountIds + sharedAccountIds
+
         val cardAnalysis = CreditCardEngine.analyze(transactions, accounts, referenceTime.toLocalDate())
 
         // Whatever most accounts are denominated in; everything on screen is shown in it.
@@ -51,18 +66,20 @@ object BudgetEngine {
         // under this model, so it is kept in.
         val relevantTransactions = transactions.filter { tx ->
             val isCardPayment = "${tx.accountId}|${tx.transactionId}" in cardAnalysis.cardPaymentKeys
-            !tx.isPending &&
             (!tx.isInternalTransfer || isCardPayment) &&
             tx.bookingDate.isNotBlank() &&
             tx.amountMinor != 0L &&
-            !creditCardAccountIds.contains(tx.accountId) &&
+            !notSpendableFrom.contains(tx.accountId) &&
             // A foreign amount is not a sterling one. Adding 29.85 dollars to a pound total
             // as though the minor units were pence is simply wrong, and wrong quietly - so
             // it is left out and reported instead of being folded in.
             tx.currency == baseCurrency
         }
 
-        val booked = relevantTransactions.filter { !it.isPending }
+        // Pending included. The money is committed - the card has been presented and the
+        // funds are held - so leaving it out understated spending until the bank got round
+        // to booking it, which is exactly when knowing would have been useful.
+        val booked = relevantTransactions
 
         // A rule detected entirely on a credit card is not cash moving in or out of the
         // current account, and counting it does real damage in both directions:
@@ -81,7 +98,7 @@ object BudgetEngine {
             // the rule built from them still reached income and fixed outgoings, so a
             // standing order into a joint account was counted as a salary.
             if (rule.internalTransfer) return@filter false
-            rule.accountIds.isEmpty() || !rule.accountIds.all { it in creditCardAccountIds }
+            rule.accountIds.isEmpty() || !rule.accountIds.all { it in notSpendableFrom }
         }
         val incomeRules = cashRules.filter { it.direction == Direction.IN }
         val fixedRules = cashRules.filter { it.direction == Direction.OUT }
@@ -178,7 +195,6 @@ object BudgetEngine {
             val sinceStart = transactions
                 .filter { tx ->
                     tx.accountId == account.id &&
-                        !tx.isPending &&
                         (RecurringAnalyzer.parseBookingDate(tx.bookingDate)?.let { it >= cycleStart } == true)
                 }
                 .sumOf { it.amountMinor }
@@ -214,7 +230,7 @@ object BudgetEngine {
             baseCurrency = baseCurrency,
             unconvertedCurrencies = transactions
                 .asSequence()
-                .filter { !it.isPending && !it.isInternalTransfer && it.amountMinor != 0L }
+                .filter { !it.isInternalTransfer && it.amountMinor != 0L }
                 .filter { it.accountId !in creditCardAccountIds }
                 .map { it.currency }
                 .filter { it != baseCurrency }

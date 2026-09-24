@@ -68,7 +68,9 @@ object PayPalEngine {
         val dated = transactions.mapNotNull { tx ->
             RecurringAnalyzer.parseBookingDate(tx.bookingDate)?.let { Dated(it, tx) }
         }
-        val payPalRows = dated.filter { it.tx.accountId in payPalAccountIds && !it.tx.isPending }
+        // Pending included, because pending now counts towards spending: leaving these
+        // unmatched would let a purchase be counted on both legs until the bank booked it.
+        val payPalRows = dated.filter { it.tx.accountId in payPalAccountIds }
         if (payPalRows.isEmpty()) return transactions
 
         val merchantDebits = payPalRows.filter { it.tx.amountMinor < 0L }
@@ -78,7 +80,7 @@ object PayPalEngine {
         // earlier PayPal payment rather than whichever happened to be listed first.
         val bankLegs = dated
             .filter { it.tx.accountId !in payPalAccountIds }
-            .filter { !it.tx.isPending && it.tx.amountMinor < 0L }
+            .filter { it.tx.amountMinor < 0L }
             .filter { looksLikePayPal(it.tx) }
             .sortedBy { it.date }
 
@@ -88,7 +90,7 @@ object PayPalEngine {
         // would invent money and then spend it.
         val withdrawalLegs = dated
             .filter { it.tx.accountId !in payPalAccountIds }
-            .filter { !it.tx.isPending && it.tx.amountMinor > 0L }
+            .filter { it.tx.amountMinor > 0L }
             .filter { looksLikePayPal(it.tx) }
             .sortedBy { it.date }
 
