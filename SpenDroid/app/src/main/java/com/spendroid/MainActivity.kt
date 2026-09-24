@@ -5,6 +5,7 @@ package com.spendroid
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -23,6 +24,8 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.graphics.graphicsLayer
 import com.spendroid.ui.theme.Motion
+import com.spendroid.domain.Category
+import com.spendroid.widget.MAIN_EXTRA_CATEGORY
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -102,8 +105,12 @@ class MainActivity : ComponentActivity() {
     private val requestNotificationPermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) {}
 
+    /** A category tapped on a widget, waiting to be opened. */
+    private val widgetCategory = mutableStateOf<String?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (savedInstanceState == null) widgetCategory.value = intent?.getStringExtra(MAIN_EXTRA_CATEGORY)
         setContent {
             BudgetTheme {
                 val state by viewModel.state.collectAsStateWithLifecycle()
@@ -116,6 +123,15 @@ class MainActivity : ComponentActivity() {
                 // Keeps each tab's scroll position and fields while another is showing, so
                 // coming back is coming back rather than starting again.
                 val tabStates = rememberSaveableStateHolder()
+
+                // A widget row names a category: open Spending filtered to it.
+                val pendingCategory = widgetCategory.value
+                LaunchedEffect(pendingCategory) {
+                    val category = Category.entries.firstOrNull { it.name == pendingCategory } ?: return@LaunchedEffect
+                    viewModel.setCategoryFilter(category)
+                    navigate(AppScreen.Spending)
+                    widgetCategory.value = null
+                }
 
                 if (state.hasCredentials) {
                     Scaffold(
@@ -332,5 +348,12 @@ class MainActivity : ComponentActivity() {
         ) {
             requestNotificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
+    }
+
+    /** singleTask: a widget tap while the app is open arrives here rather than in onCreate. */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        intent.getStringExtra(MAIN_EXTRA_CATEGORY)?.let { widgetCategory.value = it }
     }
 }

@@ -2,4 +2,5 @@
 <resources>
     <string name="widget_description">How much is left to spend before your next income</string>
     <string name="card_widget_description">What is owed on each credit card, billed and still accruing</string>
+    <string name="timeline_widget_description">The days until payday, with each bill on the day it leaves</string>
 </resources>

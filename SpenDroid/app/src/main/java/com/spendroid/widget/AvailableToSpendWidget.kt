@@ -1,10 +1,6 @@
 package com.spendroid.widget
 
 import android.content.Context
-import android.graphics.Bitmap
-import android.graphics.Canvas
-import android.graphics.Paint
-import android.graphics.RectF
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.DpSize
@@ -16,7 +12,9 @@ import androidx.glance.Image
 import androidx.glance.ImageProvider
 import androidx.glance.LocalSize
 import androidx.glance.action.clickable
+import androidx.glance.action.actionParametersOf
 import androidx.glance.action.actionStartActivity
+import androidx.glance.appwidget.action.actionRunCallback
 import androidx.glance.appwidget.GlanceAppWidget
 import androidx.glance.appwidget.GlanceAppWidgetReceiver
 import androidx.glance.appwidget.SizeMode
@@ -43,6 +41,10 @@ import com.spendroid.BudgetApplication
 import com.spendroid.MainActivity
 import com.spendroid.domain.BudgetPace
 import com.spendroid.domain.CARD_BILL_KEY_PREFIX
+import com.spendroid.domain.CategoryEngine
+import com.spendroid.domain.RecurringAnalyzer
+import com.spendroid.ui.visual
+import kotlinx.coroutines.flow.first
 import com.spendroid.ui.formatMoney
 import java.time.format.DateTimeFormatter
 
@@ -66,6 +68,7 @@ class AvailableToSpendWidget : GlanceAppWidget() {
             DIAL,
             STANDARD,
             DASHBOARD,
+            LARGE,
         ),
     )
 
@@ -77,6 +80,9 @@ class AvailableToSpendWidget : GlanceAppWidget() {
     /** A bill or a detected outgoing, flattened to what the widget actually prints. */
     private data class Line(val label: String, val amount: String, val due: String)
 
+    /** A category's share of the cycle so far, for the dashboard's top three. */
+    private data class CategoryLine(val name: String, val label: String, val amount: String, val share: Float, val color: Color)
+
     private data class Summary(
         val available: String,
         val availableRounded: String,
@@ -86,6 +92,13 @@ class AvailableToSpendWidget : GlanceAppWidget() {
         val remaining: Float,
         val pace: BudgetPace.Pace,
         val lines: List<Line>,
+        /** Fraction of the budget used, and of the cycle gone, for the ring and the pace tick. */
+        val used: Float? = null,
+        val elapsed: Float? = null,
+        val spentToday: String? = null,
+        val week: List<Long> = emptyList(),
+        val updated: String? = null,
+        val categories: List<CategoryLine> = emptyList(),
         val empty: String? = null,
     )
 
@@ -131,8 +144,40 @@ class AvailableToSpendWidget : GlanceAppWidget() {
                 pace = BudgetPace.of(snapshot),
                 // Card bills first: they are the largest and the least expected.
                 lines = (bills + fixed).take(4),
+                used = BudgetPace.usedFraction(snapshot),
+                elapsed = BudgetPace.elapsedFraction(snapshot),
+                spentToday = formatMoney(snapshot.spentToday, snapshot.baseCurrency),
+                week = snapshot.lastSevenDaysMinor,
+                updated = updatedLabel(app.repository.accounts()),
+                categories = topCategories(app, snapshot),
             )
         }.getOrElse { empty("Open SpenDroid") }
+    }
+
+    /** The same breakdown the Insights tab shows for this cycle, cut to its top three. */
+    private suspend fun topCategories(
+        app: BudgetApplication,
+        snapshot: com.spendroid.domain.BudgetSnapshot,
+    ): List<CategoryLine> {
+        val cycle = app.repository.transactions().filter { tx ->
+            RecurringAnalyzer.parseBookingDate(tx.bookingDate)?.let { !it.isBefore(snapshot.cycleStart) } == true
+        }
+        val top = CategoryEngine.spendingBreakdown(
+            cycle,
+            app.repository.categoryRules.first(),
+            snapshot.cardPaymentKeys,
+            snapshot.creditCardAccountIds,
+        ).take(3)
+        val peak = top.firstOrNull()?.amountMinor?.coerceAtLeast(1L) ?: return emptyList()
+        return top.map { total ->
+            CategoryLine(
+                name = total.category.name,
+                label = total.category.label,
+                amount = poundsOnly(total.amountMinor),
+                share = total.amountMinor.toFloat() / peak,
+                color = total.category.visual.color,
+            )
+        }
     }
 
     private fun empty(message: String) = Summary(
@@ -165,6 +210,7 @@ class AvailableToSpendWidget : GlanceAppWidget() {
         ) {
             when {
                 summary.empty != null -> Centred(summary.empty)
+                size.height >= LARGE.height -> Large(summary, size)
                 size.height >= DASHBOARD.height -> Dashboard(summary, size)
                 size.height >= DIAL.height ->
                     if (size.width >= STANDARD.width) Standard(summary, size) else Dial(summary)
@@ -209,7 +255,7 @@ class AvailableToSpendWidget : GlanceAppWidget() {
             Spacer(GlanceModifier.height(3.dp))
             Text(summary.available, style = figure(25.sp))
             Spacer(GlanceModifier.height(5.dp))
-            Rail(summary.remaining, size.width - 24.dp)
+            Rail(summary.remaining, summary.elapsed, size.width - 24.dp)
             Spacer(GlanceModifier.height(4.dp))
             Text(
                 listOfNotNull(summary.days, summary.perDay).joinToString(" · "),
@@ -257,8 +303,8 @@ class AvailableToSpendWidget : GlanceAppWidget() {
                 contentAlignment = Alignment.Center,
             ) {
                 Image(
-                    provider = ImageProvider(arcBitmap(summary.remaining)),
-                    contentDescription = "${(summary.remaining * 100).toInt()} percent of the budget left",
+                    provider = ImageProvider(ringBitmap(summary.used ?: 0f, summary.elapsed)),
+                    contentDescription = ringDescription(summary),
                     modifier = GlanceModifier.width(86.dp).height(86.dp),
                 )
                 Column(horizontalAlignment = Alignment.Horizontal.CenterHorizontally) {
@@ -272,14 +318,46 @@ class AvailableToSpendWidget : GlanceAppWidget() {
 
     // ---- 4x2 -------------------------------------------------------------------------
 
+    /**
+     * The week at a glance under the figure: a bar a day, today in full white, with today's
+     * spending and how fresh the figures are beside it.
+     */
     @Composable
     private fun Standard(summary: Summary, size: DpSize) {
-        Column(modifier = GlanceModifier.fillMaxSize().padding(14.dp)) {
+        // Measured to fit the 110dp a 4x2 can be given: every row here has earned its height.
+        Column(modifier = GlanceModifier.fillMaxSize().padding(horizontal = 14.dp, vertical = 10.dp)) {
             HeadRow(summary)
-            Spacer(GlanceModifier.height(9.dp))
-            Rail(summary.remaining, size.width - 28.dp)
-            Spacer(GlanceModifier.height(8.dp))
-            summary.lines.take(2).forEach { LineRow(it) }
+            Spacer(GlanceModifier.height(3.dp))
+            Rail(summary.remaining, summary.elapsed, size.width - 28.dp)
+            Spacer(GlanceModifier.height(5.dp))
+            Row(modifier = GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.Vertical.Bottom) {
+                Column(modifier = GlanceModifier.defaultWeight()) {
+                    Image(
+                        provider = ImageProvider(weekBitmap(summary.week)),
+                        contentDescription = weekDescription(summary),
+                        modifier = GlanceModifier.fillMaxWidth().height(17.dp),
+                    )
+                    Row(modifier = GlanceModifier.fillMaxWidth()) {
+                        weekLetters().forEach { day ->
+                            Text(
+                                day,
+                                style = caption(8.sp).copy(textAlign = TextAlign.Center),
+                                modifier = GlanceModifier.defaultWeight(),
+                            )
+                        }
+                    }
+                }
+                Spacer(GlanceModifier.width(12.dp))
+                Column(horizontalAlignment = Alignment.Horizontal.End) {
+                    summary.spentToday?.let {
+                        Row(verticalAlignment = Alignment.Vertical.CenterVertically) {
+                            Text("Today ", style = caption(10.sp))
+                            Text(it, style = figure(13.sp))
+                        }
+                    }
+                    Footer(summary)
+                }
+            }
         }
     }
 
@@ -290,31 +368,125 @@ class AvailableToSpendWidget : GlanceAppWidget() {
         Column(modifier = GlanceModifier.fillMaxSize().padding(14.dp)) {
             HeadRow(summary)
             Spacer(GlanceModifier.height(9.dp))
-            Rail(summary.remaining, size.width - 28.dp)
+            Rail(summary.remaining, summary.elapsed, size.width - 28.dp)
             Spacer(GlanceModifier.height(9.dp))
             if (summary.lines.isNotEmpty()) {
                 Text("Still to come out", style = label())
                 Spacer(GlanceModifier.height(4.dp))
             }
-            // Four is the honest limit: past that it wants scrolling, and a widget that wants
-            // scrolling should have been a shortcut into the app.
-            summary.lines.take(4).forEach { LineRow(it) }
+            // Three, leaving room for the footer: past that it wants scrolling, and a widget
+            // that wants scrolling should have been a shortcut into the app.
+            summary.lines.take(3).forEach { LineRow(it) }
+            Spacer(GlanceModifier.defaultWeight())
+            Footer(summary)
+        }
+    }
+
+    // ---- 4x4 and up ------------------------------------------------------------------
+
+    /**
+     * The home screen's summary in one tile: the ring and figure, where the cycle's money has
+     * gone, and what is still to come out. A category opens the app filtered to it.
+     */
+    @Composable
+    private fun Large(summary: Summary, size: DpSize) {
+        Column(modifier = GlanceModifier.fillMaxSize().padding(14.dp)) {
+            Row(modifier = GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.Vertical.CenterVertically) {
+                Image(
+                    provider = ImageProvider(ringBitmap(summary.used ?: 0f, summary.elapsed)),
+                    contentDescription = ringDescription(summary),
+                    modifier = GlanceModifier.width(58.dp).height(58.dp),
+                )
+                Spacer(GlanceModifier.width(12.dp))
+                Column(modifier = GlanceModifier.defaultWeight()) {
+                    Row(modifier = GlanceModifier.fillMaxWidth()) {
+                        Text("Available to spend", style = label(), modifier = GlanceModifier.defaultWeight())
+                        Text(paceLabel(summary.pace), style = chip())
+                    }
+                    Text(summary.available, style = figure(26.sp))
+                    Text(
+                        listOfNotNull(summary.days, summary.incomeDate).joinToString(" · "),
+                        style = caption(11.sp),
+                    )
+                }
+            }
+            if (summary.categories.isNotEmpty()) {
+                Spacer(GlanceModifier.height(12.dp))
+                Text("This cycle, top categories", style = label())
+                Spacer(GlanceModifier.height(5.dp))
+                summary.categories.forEach { CategoryRow(it, size.width - 28.dp) }
+            }
+            if (summary.lines.isNotEmpty()) {
+                Spacer(GlanceModifier.height(10.dp))
+                Text("Still to come out", style = label())
+                Spacer(GlanceModifier.height(4.dp))
+                summary.lines.take(2).forEach { LineRow(it) }
+            }
+            Spacer(GlanceModifier.defaultWeight())
+            Footer(summary)
+        }
+    }
+
+    @Composable
+    private fun CategoryRow(line: CategoryLine, width: androidx.compose.ui.unit.Dp) {
+        Row(
+            modifier = GlanceModifier
+                .fillMaxWidth()
+                .padding(vertical = 2.dp)
+                .clickable(actionStartActivity<MainActivity>(actionParametersOf(CategoryParam to line.name))),
+            verticalAlignment = Alignment.Vertical.CenterVertically,
+        ) {
+            Box(modifier = GlanceModifier.width(8.dp).height(8.dp).cornerRadius(2.dp).background(ColorProvider(line.color))) {}
+            Spacer(GlanceModifier.width(6.dp))
+            Text(line.label, maxLines = 1, style = caption(11.sp), modifier = GlanceModifier.width(82.dp))
+            // The bar is a share of the largest, so the three compare at a glance.
+            val track = width - 8.dp - 6.dp - 82.dp - 50.dp
+            Box(
+                modifier = GlanceModifier.defaultWeight().height(6.dp).cornerRadius(3.dp).background(ColorProvider(TrackSoft)),
+            ) {
+                Box(
+                    modifier = GlanceModifier.width(track * line.share.coerceIn(0.03f, 1f)).height(6.dp)
+                        .cornerRadius(3.dp).background(ColorProvider(line.color)),
+                ) {}
+            }
+            Spacer(GlanceModifier.width(8.dp))
+            Text(line.amount, maxLines = 1, style = figure(11.sp))
+        }
+    }
+
+    /** How fresh the figures are, and a way to redraw from what is stored. */
+    @Composable
+    private fun Footer(summary: Summary) {
+        Row(verticalAlignment = Alignment.Vertical.CenterVertically) {
+            summary.updated?.let { Text(it, style = caption(9.sp)) }
+            Spacer(GlanceModifier.width(6.dp))
+            Text(
+                "↻",
+                style = figure(13.sp),
+                modifier = GlanceModifier.clickable(actionRunCallback<RefreshWidgetsAction>()).padding(horizontal = 4.dp),
+            )
         }
     }
 
     // ---- shared pieces ---------------------------------------------------------------
 
+    /**
+     * The label with the pace beside it, then the figure with the runway beside that - two
+     * short rows, so a 4x2 still has room underneath for the week.
+     */
     @Composable
     private fun HeadRow(summary: Summary) {
-        Row(modifier = GlanceModifier.fillMaxWidth()) {
-            Column(modifier = GlanceModifier.defaultWeight()) {
-                Text("Available to spend", style = label())
-                Spacer(GlanceModifier.height(4.dp))
-                Text(summary.available, style = figure(29.sp))
+        Column(modifier = GlanceModifier.fillMaxWidth()) {
+            Row(modifier = GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.Vertical.CenterVertically) {
+                Text("Available to spend", style = label(), modifier = GlanceModifier.defaultWeight())
+                Text(paceLabel(summary.pace), style = chip())
             }
-            Column(horizontalAlignment = Alignment.Horizontal.End) {
-                summary.days?.let { Text(it, style = caption(11.sp)) }
-                summary.perDay?.let { Text(it, style = caption(11.sp)) }
+            Row(modifier = GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.Vertical.CenterVertically) {
+                Text(summary.available, style = figure(25.sp), modifier = GlanceModifier.defaultWeight())
+                Column(horizontalAlignment = Alignment.Horizontal.End) {
+                    summary.days?.let { Text(it, style = caption(10.sp)) }
+                    summary.perDay?.let { Text(it, style = caption(10.sp)) }
+                }
             }
         }
     }
@@ -340,25 +512,60 @@ class AvailableToSpendWidget : GlanceAppWidget() {
         }
     }
 
-    /** How much of the budget is left, as a bar sized against the widget's real width. */
+    /**
+     * How much of the budget is left, as a bar sized against the widget's real width, with a
+     * tick where the bar would end if spending were even across the cycle. Bar short of the
+     * tick is spending ahead of the days; past it is room in hand.
+     */
     @Composable
-    private fun Rail(remaining: Float, available: androidx.compose.ui.unit.Dp) {
-        Box(
-            modifier = GlanceModifier
-                .fillMaxWidth()
-                .height(4.dp)
-                .cornerRadius(2.dp)
-                .background(ColorProvider(TrackWhite)),
-        ) {
+    private fun Rail(remaining: Float, elapsed: Float?, available: androidx.compose.ui.unit.Dp) {
+        Box(modifier = GlanceModifier.fillMaxWidth().height(12.dp), contentAlignment = Alignment.CenterStart) {
             Box(
                 modifier = GlanceModifier
-                    .width(available * remaining.coerceIn(0.02f, 1f))
+                    .fillMaxWidth()
                     .height(4.dp)
                     .cornerRadius(2.dp)
-                    .background(ColorProvider(Color.White)),
-            ) {}
+                    .background(ColorProvider(TrackWhite)),
+            ) {
+                Box(
+                    modifier = GlanceModifier
+                        .width(available * remaining.coerceIn(0.02f, 1f))
+                        .height(4.dp)
+                        .cornerRadius(2.dp)
+                        .background(ColorProvider(Color.White)),
+                ) {}
+            }
+            elapsed?.let { gone ->
+                // Where an even pace would leave the bar: the share of the cycle still to come.
+                Row {
+                    Spacer(GlanceModifier.width(maxOf(0.dp, available * (1f - gone).coerceIn(0f, 1f) - 1.dp)))
+                    Box(modifier = GlanceModifier.width(2.dp).height(12.dp).cornerRadius(1.dp).background(ColorProvider(Color.White))) {}
+                }
+            }
         }
     }
+
+    private fun ringDescription(summary: Summary): String =
+        listOfNotNull(
+            summary.used?.let { "${(it * 100).toInt()} percent of the budget used" },
+            summary.elapsed?.let { "${(it * 100).toInt()} percent of the cycle gone" },
+        ).joinToString(", ")
+
+    private fun weekDescription(summary: Summary): String =
+        "Spending over the last seven days: " +
+            summary.week.joinToString(", ") { poundsOnly(it) }
+
+    /** Initials for the last seven days, ending today. */
+    private fun weekLetters(): List<String> {
+        val today = java.time.LocalDate.now()
+        return (6L downTo 0L).map { today.minusDays(it).dayOfWeek.getDisplayName(java.time.format.TextStyle.NARROW, java.util.Locale.getDefault()) }
+    }
+
+    private fun chip() = TextStyle(
+        color = ColorProvider(Color.White),
+        fontSize = 10.sp,
+        fontWeight = FontWeight.Bold,
+    )
 
     @Composable
     private fun Centred(message: String) {
@@ -398,12 +605,14 @@ class AvailableToSpendWidget : GlanceAppWidget() {
         val DIAL = DpSize(110.dp, 120.dp)
         val STANDARD = DpSize(250.dp, 120.dp)
         val DASHBOARD = DpSize(250.dp, 190.dp)
+        val LARGE = DpSize(250.dp, 260.dp)
 
         val GreenDeep = ColorProvider(Color(0xFF256B29))
         val AmberDeep = ColorProvider(Color(0xFF9A5B00))
         val RedDeep = ColorProvider(Color(0xFF8A2025))
         val OnHeroMuted = Color(0xD9FFFFFF)
         val TrackWhite = Color(0x47FFFFFF)
+        val TrackSoft = Color(0x2EFFFFFF)
 
         val DUE_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("d MMM")
         val INCOME_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("EEE d MMM")
@@ -415,36 +624,6 @@ class AvailableToSpendWidget : GlanceAppWidget() {
          */
         fun poundsOnly(minor: Long): String =
             formatMoney((minor / 100L) * 100L, "GBP").replace(Regex("[.,]00\\b"), "")
-
-        /**
-         * Glance has no canvas, so the arc is drawn once into a bitmap and shown as an image.
-         */
-        fun arcBitmap(remaining: Float): Bitmap {
-            val px = 220
-            val stroke = 22f
-            val bitmap = Bitmap.createBitmap(px, px, Bitmap.Config.ARGB_8888)
-            val canvas = Canvas(bitmap)
-            val box = RectF(stroke / 2f, stroke / 2f, px - stroke / 2f, px - stroke / 2f)
-
-            val track = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                style = Paint.Style.STROKE
-                strokeWidth = stroke
-                color = 0x42FFFFFF
-            }
-            canvas.drawArc(box, 0f, 360f, false, track)
-
-            val sweep = 360f * remaining.coerceIn(0f, 1f)
-            if (sweep > 0f) {
-                val arc = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                    style = Paint.Style.STROKE
-                    strokeWidth = stroke
-                    strokeCap = Paint.Cap.ROUND
-                    color = 0xFFFFFFFF.toInt()
-                }
-                canvas.drawArc(box, -90f, sweep, false, arc)
-            }
-            return bitmap
-        }
     }
 }
 
@@ -455,4 +634,6 @@ class AvailableToSpendWidgetReceiver : GlanceAppWidgetReceiver() {
 /** Refreshes every placed widget. Called after a sync, when the figures have actually moved. */
 suspend fun refreshWidgets(context: Context) {
     runCatching { AvailableToSpendWidget().updateAll(context) }
+    // Drawn from the same snapshot, so it moves when this one does.
+    refreshTimelineWidgets(context)
 }

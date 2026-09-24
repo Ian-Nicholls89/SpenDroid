@@ -156,14 +156,22 @@ object BudgetEngine {
         // there are only a handful of them, so the inner scan stays cheap.
         val detectedFixedKeys = fixedRules.filterNot { it.isManual }.map { it.key }.toSet()
         val manualFixedRules = fixedRules.filter { it.isManual }
-        val variableDebits = booked.filter { tx ->
-            val date = RecurringAnalyzer.parseBookingDate(tx.bookingDate) ?: return@filter false
-            tx.amountMinor < 0 &&
-                date >= cycleStart &&
-                (cycleEnd == null || date <= cycleEnd) &&
+        // Discretionary spending, whenever it happened: what the cycle's figures count, before
+        // they are cut to the cycle. The week's bars read from the same pool, so today's bar
+        // and "spent today" cannot disagree.
+        val discretionary = booked.mapNotNull { tx ->
+            val date = RecurringAnalyzer.parseBookingDate(tx.bookingDate) ?: return@mapNotNull null
+            val counted = tx.amountMinor < 0 &&
                 RecurringAnalyzer.groupKey(tx) !in detectedFixedKeys &&
                 manualFixedRules.none { RecurringAnalyzer.matches(it, tx) }
+            if (counted) date to tx else null
         }
+        val variableDebits = discretionary
+            .filter { (date, _) -> date >= cycleStart && (cycleEnd == null || date <= cycleEnd) }
+            .map { it.second }
+
+        val byDay = discretionary.groupBy({ it.first }, { -it.second.amountMinor })
+        val lastSevenDays = (6L downTo 0L).map { back -> byDay[today.minusDays(back)].orEmpty().sum() }
 
         val spentThisCycle = variableDebits.sumOf { -it.amountMinor }
         // Booking dates carry no time, so "the last 24 hours" could only ever mean today and
@@ -335,6 +343,7 @@ object BudgetEngine {
             potBalanceMinor = potBalance,
             cardTiming = cardTiming,
             cardsAfterPaydayMinor = cardsAfterPayday,
+            lastSevenDaysMinor = lastSevenDays,
             primaryIncomeDesignated = designated != null,
             designationLost = designationLost,
         )

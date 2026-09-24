@@ -87,6 +87,23 @@ class CycleArithmeticTest {
         assertEquals(450L, snapshot(all).spentToday)
     }
 
+    /** The week's bars and "spent today" come from one pool, so today's bar is today's figure. */
+    @Test
+    fun `the last seven days end with today's spending`() {
+        val all = monthly("ACME LTD SALARY", 250000, 28) +
+            monthly("CITY LETTINGS", -100000, 25) +
+            tx("TESCO", -1500, today.minusDays(1)) +
+            tx("PRET", -450, today) +
+            tx("OLD SHOP", -9999, today.minusDays(7))
+        val s = snapshot(all)
+
+        assertEquals(7, s.lastSevenDaysMinor.size)
+        assertEquals(s.spentToday, s.lastSevenDaysMinor.last())
+        assertEquals(1500L, s.lastSevenDaysMinor[5])
+        // Seven days ago is outside the window.
+        assertEquals(1500L + 450L, s.lastSevenDaysMinor.sum())
+    }
+
     /**
      * Paid weekly, the cycle is a week long, so a week's share of the budget is what it has
      * to last on. Handing the whole monthly figure to seven days read as four times the money.
