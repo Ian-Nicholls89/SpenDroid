@@ -5,6 +5,7 @@ import com.spendroid.data.db.AccountType
 import com.spendroid.data.db.BudgetGoalEntity
 import com.spendroid.data.db.CategoryRuleEntity
 import com.spendroid.data.db.ManualRecurringRuleEntity
+import com.spendroid.data.db.RuleOverrideEntity
 import com.spendroid.data.db.TransactionEntity
 import org.json.JSONObject
 
@@ -25,6 +26,11 @@ object BackupImporter {
         val budgetGoals: List<BudgetGoalEntity>,
         val categoryRules: List<CategoryRuleEntity>,
         val ignoredRules: Set<String>,
+        val ruleOverrides: List<RuleOverrideEntity> = emptyList(),
+        /** Null when the backup predates settings being kept, so nothing is overwritten. */
+        val primaryIncomeKey: String? = null,
+        val budgetModel: String? = null,
+        val cardTiming: String? = null,
     ) {
         val isEmpty: Boolean
             get() = accounts.isEmpty() && transactions.isEmpty() && manualRules.isEmpty()
@@ -61,6 +67,13 @@ object BackupImporter {
                 accountType = runCatching { AccountType.valueOf(o.optString("accountType")) }
                     .getOrDefault(AccountType.PERSONAL),
                 linkedCreditCardAccountId = o.nullableString("linkedCreditCardAccountId"),
+                rawBalancesJson = o.nullableString("rawBalancesJson"),
+                identity = o.nullableString("identity"),
+                spendingCapMinor = if (o.has("spendingCapMinor") && !o.isNull("spendingCapMinor")) {
+                    o.getLong("spendingCapMinor")
+                } else {
+                    null
+                },
                 statementDayOfMonth = o.nullableInt("statementDayOfMonth"),
                 paymentDayOfMonth = o.nullableInt("paymentDayOfMonth"),
             )
@@ -82,6 +95,7 @@ object BackupImporter {
                 isRecurring = o.optBoolean("isRecurring", false),
                 isCardPayment = o.optBoolean("isCardPayment", false),
                 transferOverridden = o.optBoolean("transferOverridden", false),
+                categoryOverride = o.nullableString("categoryOverride"),
             )
         }
 
@@ -121,7 +135,28 @@ object BackupImporter {
             for (i in 0 until arr.length()) ignored.add(arr.getString(i))
         }
 
-        return Restored(accounts, transactions, manualRules, budgetGoals, categoryRules, ignored)
+        val ruleOverrides = root.optJSONArray("ruleOverrides").mapObjects { o ->
+            RuleOverrideEntity(
+                ruleKey = o.getString("ruleKey"),
+                anchorDay = o.nullableInt("anchorDay"),
+                shift = o.nullableString("shift"),
+                decemberAnchorDay = o.nullableInt("decemberAnchorDay"),
+            )
+        }
+        val settings = root.optJSONObject("settings")
+
+        return Restored(
+            accounts = accounts,
+            transactions = transactions,
+            manualRules = manualRules,
+            budgetGoals = budgetGoals,
+            categoryRules = categoryRules,
+            ignoredRules = ignored,
+            ruleOverrides = ruleOverrides,
+            primaryIncomeKey = settings?.nullableString("primaryIncomeKey"),
+            budgetModel = settings?.nullableString("budgetModel"),
+            cardTiming = settings?.nullableString("cardTiming"),
+        )
     }
 
     private fun <T> org.json.JSONArray?.mapObjects(block: (JSONObject) -> T): List<T> {

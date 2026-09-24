@@ -37,6 +37,17 @@ data class AccountEntity(
     val statementDayOfMonth: Int? = null,
     /** For a credit card: the day of the month the bill is taken, when the user set it. */
     val paymentDayOfMonth: Int? = null,
+    /**
+     * What the bank calls this account independent of the consent - its IBAN, sort code and
+     * number, or masked card number. The id above is issued per consent, so reauthorising
+     * brings the same account back under a new one, and this is how it is recognised.
+     */
+    val identity: String? = null,
+    /**
+     * For a credit card: how much the user means to put on it between statements. Not the
+     * bank's credit limit, which is how much they could.
+     */
+    val spendingCapMinor: Long? = null,
 )
 
 @Entity(

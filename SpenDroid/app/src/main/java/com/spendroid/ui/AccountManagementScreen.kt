@@ -55,6 +55,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.spendroid.data.Connection
 import com.spendroid.data.db.AccountEntity
+import com.spendroid.data.toMajor
+import com.spendroid.data.toMinorLong
 import com.spendroid.data.db.AccountType
 import com.spendroid.domain.CreditCardEngine
 import com.spendroid.data.remote.InstitutionDto
@@ -154,7 +156,7 @@ private fun AccountWalletCard(
     onClick: () -> Unit,
     onRelink: (Connection) -> Unit,
 ) {
-    val daysLeft = connection?.let { calculateDaysUntilExpiry(it) }
+    val daysLeft = connection?.daysUntilExpiry()
     val isCard = account.accountType == AccountType.CREDIT_CARD
     val balance = account.balanceMinor
     val amount = balance?.let { formatMoney(it, account.currency) } ?: "—"
@@ -260,6 +262,10 @@ private fun AccountDetailSheet(
     var paymentDay by remember(account.id) {
         mutableStateOf(account.paymentDayOfMonth?.toString().orEmpty())
     }
+    var spendingCap by remember(account.id) {
+        mutableStateOf(account.spendingCapMinor?.let { it.toMajor().stripTrailingZeros().toPlainString() }.orEmpty())
+    }
+    val parsedCap = spendingCap.toBigDecimalOrNull()?.takeIf { it.signum() > 0 }?.toMinorLong()
 
     val counterparts = when (type) {
         AccountType.CREDIT_CARD -> allAccounts.filter {
@@ -303,7 +309,8 @@ private fun AccountDetailSheet(
             Text(
                 when (type) {
                     AccountType.CREDIT_CARD ->
-                        "Spending on a card is left out of your budget; the bill that pays it is counted instead."
+                        "Card spending counts once: when the bill is paid, or as you spend if you " +
+                            "choose that in Settings."
                     AccountType.JOINT ->
                         "A shared pot: what it spends is left out of your budget, and the " +
                             "money you pay into it is counted instead."
@@ -382,6 +389,31 @@ private fun AccountDetailSheet(
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+
+                Spacer(Modifier.height(16.dp))
+                Text("Spending limit", style = MaterialTheme.typography.labelLarge)
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    "How much you mean to put on the card between statements. You're told at " +
+                        "80%, on passing it, and when you're on pace to. " +
+                        (bill?.usualBillMinor?.let { "Left empty, your usual bill of ${formatMoney(it, account.currency)} is used." }
+                            ?: "Left empty, your usual bill is used once there are two to go on."),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = spendingCap,
+                    onValueChange = { entered ->
+                        spendingCap = entered.filter { it.isDigit() || it == '.' }.take(9)
+                    },
+                    label = { Text("Limit per statement") },
+                    prefix = { Text(currencySymbol(account.currency)) },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    isError = spendingCap.isNotEmpty() && parsedCap == null,
+                    modifier = Modifier.fillMaxWidth(),
+                )
             }
 
             if (balanceTypes.isNotEmpty()) {
@@ -422,6 +454,7 @@ private fun AccountDetailSheet(
                                     ?.takeIf { it in 1..31 },
                                 paymentDayOfMonth = paymentDay.toIntOrNull()
                                     ?.takeIf { it in 1..31 },
+                                spendingCapMinor = parsedCap,
                             ),
                         )
                     },
@@ -432,14 +465,8 @@ private fun AccountDetailSheet(
     }
 }
 
-private fun calculateDaysUntilExpiry(connection: Connection): Int {
-    val expiryMs = connection.createdAt + 90L * 24 * 60 * 60 * 1000
-    val days = ChronoUnit.DAYS.between(
-        Instant.ofEpochMilli(System.currentTimeMillis()).atZone(ZoneId.systemDefault()).toLocalDate(),
-        Instant.ofEpochMilli(expiryMs).atZone(ZoneId.systemDefault()).toLocalDate(),
-    )
-    return days.toInt()
-}
+private fun currencySymbol(code: String): String =
+    runCatching { java.util.Currency.getInstance(code).symbol }.getOrDefault(code)
 
 private fun syncedAt(epochMillis: Long): String =
     Instant.ofEpochMilli(epochMillis)

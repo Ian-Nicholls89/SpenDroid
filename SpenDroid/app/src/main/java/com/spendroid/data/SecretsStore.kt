@@ -7,6 +7,10 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import java.io.IOException
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
+import java.time.temporal.ChronoUnit
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.first
@@ -21,8 +25,24 @@ data class Connection(
     val institutionName: String,
     val requisitionId: String,
     val accountIds: List<String>,
+    /** When access was granted, in epoch millis. Zero when it is not known yet. */
     val createdAt: Long = System.currentTimeMillis(),
-)
+) {
+    /**
+     * Days until the bank's consent runs out, negative once it has. Null when the grant date
+     * is unknown - a guess here either nags for nothing or stays quiet until syncing stops.
+     */
+    fun daysUntilExpiry(today: LocalDate = LocalDate.now(), zone: ZoneId = ZoneId.systemDefault()): Int? {
+        if (createdAt <= 0L) return null
+        val granted = Instant.ofEpochMilli(createdAt).atZone(zone).toLocalDate()
+        return ChronoUnit.DAYS.between(today, granted.plusDays(ACCESS_DAYS)).toInt()
+    }
+
+    companion object {
+        /** How long a bank's consent lasts under PSD2, and what GoCardless grants by default. */
+        const val ACCESS_DAYS = 90L
+    }
+}
 
 class SecretsStore(private val context: Context) {
 
@@ -32,11 +52,14 @@ class SecretsStore(private val context: Context) {
         val CONNECTIONS = stringPreferencesKey("connections")
         val IGNORED_RULES = stringPreferencesKey("ignored_rules")
         val NOTIFIED_GOAL_WARNINGS = stringPreferencesKey("notified_goal_warnings")
+        val NOTIFIED_LARGE_TRANSACTIONS = stringPreferencesKey("notified_large_transactions")
+        val NOTIFIED_CARD_WARNINGS = stringPreferencesKey("notified_card_warnings")
         val REFRESH_TOKEN = stringPreferencesKey("refresh_token")
         val NOTIFICATION_TIME = stringPreferencesKey("notification_time")
         val LAST_NOTIFIED_VERSION = intPreferencesKey("last_notified_version_code")
         val PRIMARY_INCOME_KEY = stringPreferencesKey("primary_income_key")
         val BUDGET_MODEL = stringPreferencesKey("budget_model")
+        val CARD_TIMING = stringPreferencesKey("card_timing")
     }
 
     val secretId: Flow<String?> = stringFlow(Keys.SECRET_ID)
@@ -46,6 +69,11 @@ class SecretsStore(private val context: Context) {
     /** Which income the user chose to drive the pay cycle. */
     val primaryIncomeKey: Flow<String?> = stringFlow(Keys.PRIMARY_INCOME_KEY)
     val budgetModel: Flow<String?> = stringFlow(Keys.BUDGET_MODEL)
+    val cardTiming: Flow<String?> = stringFlow(Keys.CARD_TIMING)
+
+    suspend fun saveCardTiming(name: String) {
+        context.dataStore.edit { prefs -> prefs[Keys.CARD_TIMING] = name }
+    }
 
     suspend fun savePrimaryIncomeKey(key: String?) {
         context.dataStore.edit { prefs ->
@@ -70,6 +98,29 @@ class SecretsStore(private val context: Context) {
     val notifiedGoalWarnings: Flow<Set<String>> = context.dataStore.data
         .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
         .map { prefs -> parseStringSet(prefs[Keys.NOTIFIED_GOAL_WARNINGS]) }
+
+    /** "accountId|transactionId" of large transactions already announced. */
+    val notifiedLargeTransactions: Flow<Set<String>> = context.dataStore.data
+        .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
+        .map { prefs -> parseStringSet(prefs[Keys.NOTIFIED_LARGE_TRANSACTIONS]) }
+
+    /** Replaces the record wholesale, so keys outside the alert window fall away. */
+    suspend fun saveNotifiedLargeTransactions(keys: Set<String>) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.NOTIFIED_LARGE_TRANSACTIONS] = JSONArray(keys.toList()).toString()
+        }
+    }
+
+    /** Card warnings already sent, as "card|what|statementClose". */
+    val notifiedCardWarnings: Flow<Set<String>> = context.dataStore.data
+        .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
+        .map { prefs -> parseStringSet(prefs[Keys.NOTIFIED_CARD_WARNINGS]) }
+
+    suspend fun saveNotifiedCardWarnings(keys: Set<String>) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.NOTIFIED_CARD_WARNINGS] = JSONArray(keys.toList()).toString()
+        }
+    }
 
     val connections: Flow<List<Connection>> = context.dataStore.data
         .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
@@ -98,19 +149,8 @@ class SecretsStore(private val context: Context) {
         }
     }
 
-    suspend fun saveConnections(connections: List<Connection>) {        context.dataStore.edit { prefs ->
-            val arr = JSONArray()
-            connections.forEach { c ->
-                arr.put(
-                    JSONObject()
-                        .put("institutionId", c.institutionId)
-                        .put("institutionName", c.institutionName)
-                        .put("requisitionId", c.requisitionId)
-                        .put("accountIds", JSONArray(c.accountIds)),
-                )
-            }
-            prefs[Keys.CONNECTIONS] = arr.toString()
-        }
+    suspend fun saveConnections(connections: List<Connection>) {
+        context.dataStore.edit { prefs -> prefs[Keys.CONNECTIONS] = connectionsToJson(connections) }
     }
 
     /** Adds to the ignored set rather than replacing it, so a restore cannot un-ignore. */
@@ -179,18 +219,42 @@ class SecretsStore(private val context: Context) {
         }
     }
 
-    private fun parseConnections(json: String?): List<Connection> {
-        if (json.isNullOrBlank()) return emptyList()
-        val arr = JSONArray(json)
-        return List(arr.length()) { i ->
-            val o = arr.getJSONObject(i)
-            val idsArr = o.optJSONArray("accountIds") ?: JSONArray()
-            Connection(
-                institutionId = o.optString("institutionId"),
-                institutionName = o.optString("institutionName"),
-                requisitionId = o.optString("requisitionId"),
-                accountIds = List(idsArr.length()) { idsArr.getString(it) },
-            )
+    companion object {
+        /**
+         * The grant date is written out with the rest. It used not to be, so every read
+         * stamped the connection "now" - always ninety days to go, and the reminder to
+         * reauthorise could never fire.
+         */
+        internal fun connectionsToJson(connections: List<Connection>): String {
+            val arr = JSONArray()
+            connections.forEach { c ->
+                arr.put(
+                    JSONObject()
+                        .put("institutionId", c.institutionId)
+                        .put("institutionName", c.institutionName)
+                        .put("requisitionId", c.requisitionId)
+                        .put("accountIds", JSONArray(c.accountIds))
+                        .put("createdAt", c.createdAt),
+                )
+            }
+            return arr.toString()
+        }
+
+        /** Connections saved before the date was kept come back as unknown, not as today. */
+        internal fun parseConnections(json: String?): List<Connection> {
+            if (json.isNullOrBlank()) return emptyList()
+            val arr = JSONArray(json)
+            return List(arr.length()) { i ->
+                val o = arr.getJSONObject(i)
+                val idsArr = o.optJSONArray("accountIds") ?: JSONArray()
+                Connection(
+                    institutionId = o.optString("institutionId"),
+                    institutionName = o.optString("institutionName"),
+                    requisitionId = o.optString("requisitionId"),
+                    accountIds = List(idsArr.length()) { idsArr.getString(it) },
+                    createdAt = o.optLong("createdAt", 0L),
+                )
+            }
         }
     }
 }

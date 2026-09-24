@@ -425,7 +425,7 @@ private fun CycleTimeline(budget: BudgetSnapshot) {
                     modifier = Modifier.weight(1f),
                 )
                 Text(
-                    formatMoney(budget.availableToSpend, "GBP"),
+                    formatMoney(budget.availableToSpend, budget.baseCurrency),
                     style = MaterialTheme.typography.titleSmall.copy(fontFeatureSettings = "tnum"),
                     fontWeight = FontWeight.Bold,
                 )

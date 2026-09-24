@@ -25,6 +25,7 @@ import com.spendroid.data.remote.TransactionsDto
 import com.spendroid.domain.PayPalEngine
 import com.spendroid.domain.BudgetEngine
 import com.spendroid.domain.BudgetModel
+import com.spendroid.domain.CardTiming
 import com.spendroid.domain.BudgetSnapshot
 import com.spendroid.domain.RecurringAnalyzer
 import com.spendroid.domain.WorkingDayCalendar
@@ -55,6 +56,8 @@ class GoCardlessRepository private constructor(
     val connections: Flow<List<Connection>> = secrets.connections
     val ignoredRules: Flow<Set<String>> = secrets.ignoredRules
     val notifiedGoalWarnings: Flow<Set<String>> = secrets.notifiedGoalWarnings
+    val notifiedLargeTransactions: Flow<Set<String>> = secrets.notifiedLargeTransactions
+    val notifiedCardWarnings: Flow<Set<String>> = secrets.notifiedCardWarnings
     val manualRules: Flow<List<ManualRecurringRuleEntity>> = dao.activeManualRulesFlow()
     val notificationTime: Flow<String> = secrets.notificationTime
     val lastNotifiedVersionCode: Flow<Int> = secrets.lastNotifiedVersionCode
@@ -100,6 +103,10 @@ class GoCardlessRepository private constructor(
 
     suspend fun saveBudgetModel(name: String) = secrets.saveBudgetModel(name)
 
+    val cardTiming: Flow<String?> = secrets.cardTiming
+
+    suspend fun saveCardTiming(name: String) = secrets.saveCardTiming(name)
+
     suspend fun setCategoryOverride(accountId: String, transactionId: String, category: String?) {
         dao.setCategoryOverride(accountId, transactionId, category)
     }
@@ -130,6 +137,12 @@ class GoCardlessRepository private constructor(
 
     suspend fun saveNotifiedGoalWarnings(keys: Set<String>) =
         secrets.saveNotifiedGoalWarnings(keys)
+
+    suspend fun saveNotifiedLargeTransactions(keys: Set<String>) =
+        secrets.saveNotifiedLargeTransactions(keys)
+
+    suspend fun saveNotifiedCardWarnings(keys: Set<String>) =
+        secrets.saveNotifiedCardWarnings(keys)
 
     suspend fun setRuleIgnored(key: String, ignored: Boolean) {
         secrets.setRuleIgnored(key, ignored)
@@ -271,9 +284,74 @@ class GoCardlessRepository private constructor(
         return req
     }
 
-    suspend fun saveConnection(connection: Connection) {
+    /**
+     * Keyed by the consent rather than the bank, so a second login at the same bank - a
+     * partner's accounts, a business account - is added alongside rather than replacing the
+     * first. [replacing] is the consent this one renews, when it renews one.
+     */
+    suspend fun saveConnection(connection: Connection, replacing: Connection? = null) {
         val existing = connections.first()
-        saveConnections(existing.filter { it.institutionId != connection.institutionId } + connection)
+        saveConnections(
+            existing.filter {
+                it.requisitionId != connection.requisitionId &&
+                    it.requisitionId != replacing?.requisitionId
+            } + connection,
+        )
+    }
+
+    /**
+     * Folds accounts a new consent has reissued under new ids into the copies already stored.
+     *
+     * Reauthorising issues every account a new id, so without this the old copy and the new
+     * one both count the ninety days they overlap, and everything set on the old one - its
+     * type, its name, a card's statement day - is on neither. See [matchSuccessors] for when
+     * two are taken to be the same account; where that is not certain, both are left.
+     */
+    suspend fun adoptPredecessors(newConnection: Connection) {
+        val all = dao.accounts()
+        val newIds = newConnection.accountIds.toSet()
+        val otherConnections = connections.first().filter { it.requisitionId != newConnection.requisitionId }
+        val pairs = matchSuccessors(
+            newAccounts = all.filter { it.id in newIds },
+            others = all.filter { it.id !in newIds },
+            otherConnections = otherConnections,
+        )
+        if (pairs.isEmpty()) return
+
+        for ((old, new) in pairs) {
+            val successor = refreshedAccount(old.copy(id = new.id), new)
+            val history = succeededHistory(dao.transactionsFor(old.id), dao.transactionsFor(new.id), new.id)
+            dao.replaceAccount(old.id, successor, history)
+        }
+
+        // The old consent no longer answers for those accounts, and one left answering for
+        // none is gone. A consent that never listed any is still pending and is kept.
+        val adopted = pairs.map { it.first.id }.toSet()
+        saveConnections(
+            connections.first().mapNotNull { c ->
+                if (c.requisitionId == newConnection.requisitionId || c.accountIds.isEmpty()) return@mapNotNull c
+                c.copy(accountIds = c.accountIds - adopted).takeIf { it.accountIds.isNotEmpty() }
+            },
+        )
+        analyzeTransactions()
+    }
+
+    /**
+     * Fills in when access was granted for connections saved before that was kept, from the
+     * requisition itself. Without it the expiry is unknown and no reminder can be sent.
+     */
+    suspend fun backfillConnectionDates() {
+        val stored = connections.first()
+        if (stored.none { it.createdAt <= 0L }) return
+        val filled = stored.map { connection ->
+            if (connection.createdAt > 0L) return@map connection
+            val created = runCatching { dataApi.requisition(connection.requisitionId).created }
+                .getOrNull()
+                ?.let { runCatching { java.time.OffsetDateTime.parse(it).toInstant().toEpochMilli() }.getOrNull() }
+                ?: return@map connection
+            connection.copy(createdAt = created)
+        }
+        if (filled != stored) saveConnections(filled)
     }
 
     suspend fun importAccount(institutionName: String, accountId: String): AccountEntity {
@@ -286,11 +364,14 @@ class GoCardlessRepository private constructor(
         val (balanceMinor, currency) = pickBalance(balances, info, accountType)
 
         val rows = mutableListOf<TransactionEntity>()
+        // Rows the bank sends without an id are named after their contents, and two
+        // identical purchases on one day need telling apart; this counts them as they come.
+        val seen = mutableMapOf<String, Int>()
         var page: TransactionsDto? =
             dataApi.accountTransactions(accountId, dateFrom = LocalDate.now().minusDays(90).toString(), dateTo = null)
         while (page != null) {
-            page.transactions.booked.forEach { toEntity(accountId, it, pending = false)?.let(rows::add) }
-            page.transactions.pending.forEach { toEntity(accountId, it, pending = true)?.let(rows::add) }
+            page.transactions.booked.forEach { toEntity(accountId, it, pending = false, seen)?.let(rows::add) }
+            page.transactions.pending.forEach { toEntity(accountId, it, pending = true, seen)?.let(rows::add) }
             page = page.next?.let { dataApi.transactionsPage(it) }
         }
 
@@ -314,17 +395,18 @@ class GoCardlessRepository private constructor(
         // the row from scratch reset the type, regenerated the label over any rename, and
         // dropped the card-to-account link entirely - every single day.
         val existing = dao.accounts().firstOrNull { it.id == accountId }
-        val entity = AccountEntity(
+        val fetched = AccountEntity(
             id = accountId,
             institutionName = institutionName,
-            label = existing?.label ?: labelFor(metadata, info, accountId),
+            label = labelFor(metadata, info, accountId),
             currency = currency,
             balanceMinor = balanceMinor,
             lastSynced = System.currentTimeMillis(),
-            accountType = existing?.accountType ?: accountType,
-            linkedCreditCardAccountId = existing?.linkedCreditCardAccountId,
+            accountType = accountType,
             rawBalancesJson = GSON.toJson(balances),
+            identity = identityFor(metadata, info),
         )
+        val entity = refreshedAccount(existing, fetched)
         dao.upsertAccount(entity)
 
         analyzeTransactions()
@@ -360,6 +442,7 @@ class GoCardlessRepository private constructor(
             budgetModel = BudgetModel.from(budgetModel.first()),
             calendar = WorkingDayCalendar(holidays.keys),
             overrides = ruleOverrides.first().associateBy { it.ruleKey },
+            cardTiming = CardTiming.from(cardTiming.first()),
         )
     }
 
@@ -381,7 +464,11 @@ class GoCardlessRepository private constructor(
             }
             .map { it.id }
             .toSet()
-        val internalPairs = detectInternalTransfers(allTx.filter { it.accountId !in excluded })
+        // A row the user has ruled on is theirs. Pairing it anyway marked only the other leg,
+        // leaving half a transfer counted and half hidden.
+        val internalPairs = detectInternalTransfers(
+            allTx.filter { it.accountId !in excluded && !it.transferOverridden },
+        )
         val recurringFlags = RecurringAnalyzer.detectRecurring(allTx)
 
         // Re-run from scratch rather than only adding: detection used to set the flag and
@@ -391,6 +478,9 @@ class GoCardlessRepository private constructor(
             dao.updateInternalTransfer(tx1.accountId, tx1.transactionId)
             dao.updateInternalTransfer(tx2.accountId, tx2.transactionId)
         }
+        // The same from-scratch rule as transfers: a payment that stopped recurring stops
+        // being flagged, rather than keeping the flag it was once given.
+        dao.clearRecurring()
         recurringFlags.forEach { entry ->
             val (key, isRecurring) = entry
             if (isRecurring) {
@@ -486,6 +576,10 @@ class GoCardlessRepository private constructor(
         budgetGoals = dao.budgetGoals(),
         categoryRules = dao.categoryRules(),
         ignoredRules = secrets.ignoredRules.first(),
+        ruleOverrides = dao.ruleOverrides(),
+        primaryIncomeKey = secrets.primaryIncomeKey.first(),
+        budgetModel = secrets.budgetModel.first(),
+        cardTiming = secrets.cardTiming.first(),
     )
 
     /**
@@ -500,6 +594,10 @@ class GoCardlessRepository private constructor(
         restored.budgetGoals.forEach { dao.upsertBudgetGoal(it) }
         restored.categoryRules.forEach { dao.upsertCategoryRule(it) }
         secrets.addIgnoredRules(restored.ignoredRules)
+        restored.ruleOverrides.forEach { dao.upsertRuleOverride(it) }
+        restored.primaryIncomeKey?.let { secrets.savePrimaryIncomeKey(it) }
+        restored.budgetModel?.let { secrets.saveBudgetModel(it) }
+        restored.cardTiming?.let { secrets.saveCardTiming(it) }
         return restored
     }
 
@@ -517,7 +615,12 @@ class GoCardlessRepository private constructor(
         return PayPalEngine.reconcile(stored, dao.accounts())
     }
 
-    private fun toEntity(accountId: String, tx: TransactionDto, pending: Boolean): TransactionEntity? {
+    private fun toEntity(
+        accountId: String,
+        tx: TransactionDto,
+        pending: Boolean,
+        seen: MutableMap<String, Int>,
+    ): TransactionEntity? {
         val amount: AmountDto = tx.transactionAmount ?: return null
         val minor = try {
             BigDecimal(amount.amount).toMinorLong()
@@ -525,7 +628,12 @@ class GoCardlessRepository private constructor(
             return null
         }
         val payee = payeeFor(tx)
-        val txId = tx.transactionId ?: "${tx.bookingDate}|$minor|$payee".hashCode().toString()
+        val txId = tx.transactionId ?: run {
+            val content = "${tx.bookingDate}|$minor|$payee"
+            val occurrence = (seen[content] ?: 0) + 1
+            seen[content] = occurrence
+            fallbackTransactionId(tx.bookingDate, minor, payee, occurrence)
+        }
         val info = when (val riu = tx.remittanceInformationUnstructured) {
             is List<*> -> riu.firstOrNull()?.toString().orEmpty()
             null -> ""
@@ -606,6 +714,123 @@ class GoCardlessRepository private constructor(
          * but not on what the user decided about it. Those decisions exist nowhere else and
          * cannot be re-derived, so they win over the freshly built row.
          */
+        /**
+         * The stored account with what the bank knows brought up to date.
+         *
+         * Built the other way round - a fresh row with the user's settings copied in one by
+         * one - every setting added later had to be remembered here too, and the card's
+         * statement and payment days were not: a sync wiped them nightly. Starting from the
+         * stored row means anything not named below is kept.
+         */
+        internal fun refreshedAccount(existing: AccountEntity?, fetched: AccountEntity): AccountEntity =
+            existing?.copy(
+                institutionName = fetched.institutionName,
+                currency = fetched.currency,
+                balanceMinor = fetched.balanceMinor,
+                lastSynced = fetched.lastSynced,
+                rawBalancesJson = fetched.rawBalancesJson,
+                identity = fetched.identity ?: existing.identity,
+            ) ?: fetched
+
+        /**
+         * What the bank calls this account whichever consent it arrived under: the IBAN, the
+         * UK sort code and number, or a card's masked number, in that order of certainty.
+         * Formatting is stripped so "60-16-13" and "601613" agree.
+         */
+        internal fun identityFor(metadata: AccountDetailsDto, info: AccountInfoDto): String? {
+            fun clean(value: String?) = value?.filter { it.isLetterOrDigit() }?.uppercase()?.takeIf { it.isNotBlank() }
+            clean(info.iban ?: metadata.iban)?.let { return "iban:$it" }
+            val sortCode = clean(info.sortCode)
+            val number = clean(info.accountNumber)
+            if (sortCode != null && number != null) return "uk:$sortCode/$number"
+            clean(info.bban ?: metadata.bban)?.let { return "bban:$it" }
+            clean(info.maskedPan)?.let { return "pan:$it" }
+            return null
+        }
+
+        /**
+         * Pairs each newly linked account with the stored account it replaces, as (old, new).
+         *
+         * The same bank's identity is proof, provided exactly one stored account carries it.
+         * Failing that - cards often have no number the API will share - an identical name
+         * will do, but only among accounts no live consent still holds, or whose consent has
+         * just been shown to be the one being replaced. Anything less certain is left alone:
+         * a wrong merge would move one person's history onto another's account.
+         */
+        internal fun matchSuccessors(
+            newAccounts: List<AccountEntity>,
+            others: List<AccountEntity>,
+            otherConnections: List<Connection>,
+        ): List<Pair<AccountEntity, AccountEntity>> {
+            val pairs = mutableListOf<Pair<AccountEntity, AccountEntity>>()
+            val usedOld = mutableSetOf<String>()
+
+            for (new in newAccounts) {
+                val identity = new.identity ?: continue
+                val match = others
+                    .filter { it.institutionName == new.institutionName && it.identity == identity }
+                    .singleOrNull() ?: continue
+                // Two new accounts claiming one old one is as ambiguous as the reverse.
+                if (newAccounts.count { it.identity == identity } != 1) continue
+                pairs += match to new
+                usedOld += match.id
+            }
+
+            val superseded = otherConnections.filter { c -> c.accountIds.any { it in usedOld } }
+            val stillHeld = otherConnections.filter { it !in superseded }.flatMap { it.accountIds }.toSet()
+            val matchedNew = pairs.map { it.second.id }.toSet()
+
+            for (new in newAccounts.filter { it.id !in matchedNew }) {
+                val match = others
+                    .filter { old ->
+                        old.id !in usedOld &&
+                            old.id !in stillHeld &&
+                            old.institutionName == new.institutionName &&
+                            old.label == new.label &&
+                            // Two different numbers are two different accounts, whatever the name.
+                            (old.identity == null || new.identity == null || old.identity == new.identity)
+                    }
+                    .singleOrNull() ?: continue
+                pairs += match to new
+                usedOld += match.id
+            }
+            return pairs
+        }
+
+        /**
+         * The history an account carries into its successor. Before the new consent's first
+         * row, the old account is the only copy and moves across; from there on, the fresh
+         * fetch is the authority, keeping what the user decided about the rows the two share.
+         */
+        internal fun succeededHistory(
+            old: List<TransactionEntity>,
+            fresh: List<TransactionEntity>,
+            newId: String,
+        ): List<TransactionEntity> {
+            val rekeyed = old.map { it.copy(accountId = newId) }
+            val start = fresh.mapNotNull { runCatching { LocalDate.parse(it.bookingDate) }.getOrNull() }.minOrNull()
+                ?: return rekeyed + fresh
+            val before = rekeyed.filter { tx ->
+                runCatching { LocalDate.parse(tx.bookingDate) }.getOrNull()?.isBefore(start) == true
+            }
+            return before + preserveUserEdits(fresh, rekeyed)
+        }
+
+        /**
+         * An id for a row the bank sent without one, from what it contains. The first of a kind
+         * keeps the id rows have always been stored under, so nothing already stored is
+         * duplicated; a second identical row on the same day is numbered rather than dropped.
+         */
+        internal fun fallbackTransactionId(
+            bookingDate: String?,
+            minor: Long,
+            payee: String,
+            occurrence: Int,
+        ): String {
+            val base = "$bookingDate|$minor|$payee".hashCode().toString()
+            return if (occurrence <= 1) base else "$base#$occurrence"
+        }
+
         internal fun preserveUserEdits(
             fetched: List<TransactionEntity>,
             existing: List<TransactionEntity>,
@@ -733,13 +958,24 @@ class GoCardlessRepository private constructor(
             }
             val dataClient = OkHttpClient.Builder()
                 .callTimeout(30, TimeUnit.SECONDS)
+                // The token goes on every request up front. Leaving it to the authenticator
+                // sent each call twice - once bare, to be refused, and again with the token -
+                // against an API that rations calls per account per day.
+                .addInterceptor { chain ->
+                    val token = runBlocking { tokenManager.get() }
+                    chain.proceed(
+                        chain.request().newBuilder().header("Authorization", "Bearer $token").build(),
+                    )
+                }
                 .addInterceptor(logging)
                 .authenticator { _, response ->
-                    // Guard against an infinite 401 loop: never re-attach a token
-                    // to a request that already carried one.
-                    if (response.request.header("Authorization") != null) {
+                    // A 401 on a token that looked valid means it was revoked early: drop it and
+                    // try once more with a fresh one. Once only, so a refusal that is about the
+                    // bank's consent rather than the token cannot loop.
+                    if (response.priorResponse != null) {
                         null
                     } else {
+                        tokenManager.clear()
                         val token = runBlocking { tokenManager.get() }
                         response.request.newBuilder().header("Authorization", "Bearer $token").build()
                     }

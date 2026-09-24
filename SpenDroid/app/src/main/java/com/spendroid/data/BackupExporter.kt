@@ -4,6 +4,7 @@ import com.spendroid.data.db.AccountEntity
 import com.spendroid.data.db.BudgetGoalEntity
 import com.spendroid.data.db.CategoryRuleEntity
 import com.spendroid.data.db.ManualRecurringRuleEntity
+import com.spendroid.data.db.RuleOverrideEntity
 import com.spendroid.data.db.TransactionEntity
 import org.json.JSONArray
 import org.json.JSONObject
@@ -19,7 +20,7 @@ import org.json.JSONObject
 object BackupExporter {
 
     /** Bumped when the shape changes, so a future import can tell what it is reading. */
-    const val FORMAT_VERSION = 2
+    const val FORMAT_VERSION = 3
 
     fun toJson(
         accounts: List<AccountEntity>,
@@ -28,6 +29,11 @@ object BackupExporter {
         budgetGoals: List<BudgetGoalEntity>,
         categoryRules: List<CategoryRuleEntity>,
         ignoredRules: Set<String>,
+        ruleOverrides: List<RuleOverrideEntity> = emptyList(),
+        /** The income chosen to set the cycle, and how the budget is worked out. */
+        primaryIncomeKey: String? = null,
+        budgetModel: String? = null,
+        cardTiming: String? = null,
         exportedAtMillis: Long = System.currentTimeMillis(),
     ): String {
         val root = JSONObject()
@@ -49,6 +55,9 @@ object BackupExporter {
                             .put("balanceMinor", account.balanceMinor ?: JSONObject.NULL)
                             .put("lastSynced", account.lastSynced)
                             .put("accountType", account.accountType.name)
+                            .put("rawBalancesJson", account.rawBalancesJson ?: JSONObject.NULL)
+                            .put("identity", account.identity ?: JSONObject.NULL)
+                            .put("spendingCapMinor", account.spendingCapMinor ?: JSONObject.NULL)
                             .put(
                                 "linkedCreditCardAccountId",
                                 account.linkedCreditCardAccountId ?: JSONObject.NULL,
@@ -85,6 +94,7 @@ object BackupExporter {
                             .put("isRecurring", tx.isRecurring)
                             .put("isCardPayment", tx.isCardPayment)
                             .put("transferOverridden", tx.transferOverridden)
+                            .put("categoryOverride", tx.categoryOverride ?: JSONObject.NULL)
                             // rawJson is the untouched payload from the bank. It is the only
                             // way to recover a field this app does not model yet, so a backup
                             // that dropped it would not really be a backup.
@@ -143,6 +153,30 @@ object BackupExporter {
         )
 
         root.put("ignoredRules", JSONArray(ignoredRules.toList()))
+
+        // Corrections to a detected rule's day are the user's own knowledge of their pay
+        // and bills, and exist nowhere else.
+        root.put(
+            "ruleOverrides",
+            JSONArray().also { arr ->
+                ruleOverrides.forEach { o ->
+                    arr.put(
+                        JSONObject()
+                            .put("ruleKey", o.ruleKey)
+                            .put("anchorDay", o.anchorDay ?: JSONObject.NULL)
+                            .put("shift", o.shift ?: JSONObject.NULL)
+                            .put("decemberAnchorDay", o.decemberAnchorDay ?: JSONObject.NULL),
+                    )
+                }
+            },
+        )
+        root.put(
+            "settings",
+            JSONObject()
+                .put("primaryIncomeKey", primaryIncomeKey ?: JSONObject.NULL)
+                .put("budgetModel", budgetModel ?: JSONObject.NULL)
+                .put("cardTiming", cardTiming ?: JSONObject.NULL),
+        )
 
         return root.toString(2)
     }

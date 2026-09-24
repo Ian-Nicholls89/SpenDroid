@@ -38,16 +38,27 @@ class AlertsWorker(
 
         val goals = goalWarnings(repo, snapshot, transactions)
 
+        val large = unusuallyLargeTransaction(
+            transactions,
+            snapshot,
+            repo.notifiedLargeTransactions.first(),
+        )
+
+        val cards = CardWatch.warnings(snapshot.cardBills, repo.notifiedCardWarnings.first())
+
         val alerts = buildList {
             billsDueTomorrow(snapshot)?.let(::add)
-            unusuallyLargeTransaction(transactions)?.let(::add)
+            large.message?.let(::add)
             addAll(goals.messages)
+            addAll(cards.messages)
         }
         if (alerts.isEmpty()) return Result.success()
 
         // Recorded before the notification goes out, so a failure to post cannot turn into
         // the same warning arriving every day for the rest of the cycle.
         if (goals.messages.isNotEmpty()) repo.saveNotifiedGoalWarnings(goals.keys)
+        if (large.message != null) repo.saveNotifiedLargeTransactions(large.keys)
+        if (cards.messages.isNotEmpty()) repo.saveNotifiedCardWarnings(cards.keys)
 
         notify(alerts)
         return Result.success()
@@ -99,14 +110,14 @@ class AlertsWorker(
             if (key in alreadySent) continue
 
             val remaining = (goal.limitMinor - spent).coerceAtLeast(0L)
-            val cap = formatMoney(goal.limitMinor, "GBP")
-            val left = formatMoney(remaining, "GBP")
+            val cap = formatMoney(goal.limitMinor, snapshot.baseCurrency)
+            val left = formatMoney(remaining, snapshot.baseCurrency)
             val runway = snapshot.daysUntilNextIncome
                 ?.let { days -> " with " + days + " day" + (if (days == 1) "" else "s") + " to go" }
                 .orEmpty()
 
             messages += if (share >= 1f) {
-                "${category.label} is over its $cap, at ${formatMoney(spent, "GBP")}."
+                "${category.label} is over its $cap, at ${formatMoney(spent, snapshot.baseCurrency)}."
             } else {
                 "${category.label} is at ${(share * 100).toInt()}% of its $cap, $left still to go$runway."
             }
@@ -125,33 +136,52 @@ class AlertsWorker(
         val names = due.joinToString(", ") { it.rule.payee }
         val estimated = due.any { it.rule.key.startsWith(CARD_BILL_KEY_PREFIX) }
         val prefix = if (estimated) "About " else ""
-        return "$prefix${formatMoney(total, "GBP")} leaves tomorrow ($names). " +
-            "That leaves ${formatMoney(snapshot.availableToSpend, "GBP")} to spend."
+        return "$prefix${formatMoney(total, snapshot.baseCurrency)} leaves tomorrow ($names). " +
+            "That leaves ${formatMoney(snapshot.availableToSpend, snapshot.baseCurrency)} to spend."
     }
+
+    private data class LargeTransaction(val message: String?, val keys: Set<String>)
 
     /**
      * A debit far above the usual for its size, judged against the median rather than the
      * mean so a single outlier does not raise the bar that catches the next one.
+     *
+     * The window covers yesterday as well as today, because a row can book after the evening
+     * run - which meant one purchase was announced on both nights. What has been said is
+     * remembered for as long as it is in the window. A card bill payment is large by nature
+     * and expected, so it is not news.
      */
     private fun unusuallyLargeTransaction(
-        transactions: List<com.spendroid.data.db.TransactionEntity>,
-    ): String? {
-        val yesterday = LocalDate.now().minusDays(1)
-        val debits = transactions.filter { !it.isInternalTransfer && it.amountMinor < 0 }
-        if (debits.size < MIN_HISTORY_FOR_COMPARISON) return null
+        transactions: List<TransactionEntity>,
+        snapshot: com.spendroid.domain.BudgetSnapshot,
+        alreadySent: Set<String>,
+    ): LargeTransaction {
+        val none = LargeTransaction(null, alreadySent)
+        val debits = transactions.filter {
+            !it.isInternalTransfer && it.amountMinor < 0 &&
+                "${it.accountId}|${it.transactionId}" !in snapshot.cardPaymentKeys
+        }
+        if (debits.size < MIN_HISTORY_FOR_COMPARISON) return none
 
         val amounts = debits.map { abs(it.amountMinor) }.sorted()
         val median = amounts[amounts.size / 2]
-        if (median <= 0L) return null
+        if (median <= 0L) return none
 
-        val recent = debits.firstOrNull { tx ->
-            RecurringAnalyzer.parseBookingDate(tx.bookingDate)?.isAfter(yesterday.minusDays(1)) == true &&
+        val since = LocalDate.now().minusDays(1)
+        val inWindow = debits.filter { tx ->
+            RecurringAnalyzer.parseBookingDate(tx.bookingDate)?.let { !it.isBefore(since) } == true &&
                 abs(tx.amountMinor) > median * LARGE_MULTIPLE
-        } ?: return null
+        }
+        val keys = inWindow.mapTo(mutableSetOf()) { "${it.accountId}|${it.transactionId}" }
+        val recent = inWindow.firstOrNull { "${it.accountId}|${it.transactionId}" !in alreadySent }
+            ?: return none
 
         val multiple = abs(recent.amountMinor) / median
-        return "${formatMoney(recent.amountMinor, recent.currency)} at ${recent.payee} — " +
-            "about ${multiple}× your usual transaction."
+        return LargeTransaction(
+            "${formatMoney(recent.amountMinor, recent.currency)} at ${recent.payee} — " +
+                "about ${multiple}× your usual transaction.",
+            keys,
+        )
     }
 
     private fun notify(alerts: List<String>) {
@@ -159,7 +189,7 @@ class AlertsWorker(
         val manager = applicationContext.getSystemService(NotificationManager::class.java)
         manager.createNotificationChannel(
             NotificationChannel(CHANNEL_ID, "Alerts", NotificationManager.IMPORTANCE_DEFAULT).apply {
-                description = "Bills falling due and unusually large transactions"
+                description = "Bills falling due, unusually large transactions, and spending limits"
             },
         )
 

@@ -2,6 +2,8 @@ package com.spendroid.data.remote
 
 import com.spendroid.data.SecretsStore
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 class TokenManager(
     private val authApi: GcAuthApi,
@@ -11,11 +13,14 @@ class TokenManager(
     private var accessToken: String? = null
     private var expiresAtMs = 0L
 
-    suspend fun get(): String {
+    /** Several requests can find the token expired at once; one refresh serves them all. */
+    private val lock = Mutex()
+
+    suspend fun get(): String = lock.withLock {
         if (accessToken == null || expiresAtMs - 60_000 < System.currentTimeMillis()) {
             refresh()
         }
-        return accessToken ?: error("GoCardless credentials not configured")
+        accessToken ?: error("GoCardless credentials not configured")
     }
 
     /**

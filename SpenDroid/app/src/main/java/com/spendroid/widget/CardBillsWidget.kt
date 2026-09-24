@@ -36,6 +36,8 @@ import androidx.glance.text.TextStyle
 import com.spendroid.BudgetApplication
 import com.spendroid.MainActivity
 import com.spendroid.domain.CreditCardEngine
+import com.spendroid.ui.CardPaceLine
+import com.spendroid.ui.cardPaceLine
 import com.spendroid.ui.formatMoney
 import java.time.format.DateTimeFormatter
 
@@ -62,6 +64,8 @@ class CardBillsWidget : GlanceAppWidget() {
         val detail: String,
         /** Share of the total already on a closed statement, for the split bar. */
         val billedShare: Float,
+        /** How the statement now building is going; null until there is a measure. */
+        val pace: CardPaceLine? = null,
     )
 
     private suspend fun loadCards(context: Context): List<CardRow>? {
@@ -92,6 +96,7 @@ class CardBillsWidget : GlanceAppWidget() {
             total = formatMoney(outstandingMinor, currency),
             detail = detail,
             billedShare = (billedMinor.toFloat() / outstandingMinor.toFloat()).coerceIn(0f, 1f),
+            pace = cardPaceLine(this),
         )
     }
 
@@ -171,6 +176,17 @@ class CardBillsWidget : GlanceAppWidget() {
                         fontSize = 10.sp,
                     ),
                 )
+                card.pace?.let { pace ->
+                    Text(
+                        pace.text,
+                        maxLines = 1,
+                        style = TextStyle(
+                            color = if (pace.over) GlanceTheme.colors.error else GlanceTheme.colors.onSurfaceVariant,
+                            fontSize = 10.sp,
+                            fontWeight = if (pace.over) FontWeight.Medium else FontWeight.Normal,
+                        ),
+                    )
+                }
             }
             Spacer(GlanceModifier.height(5.dp))
             SplitBar(card.billedShare, width)

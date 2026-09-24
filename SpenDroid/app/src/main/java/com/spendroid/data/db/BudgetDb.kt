@@ -6,6 +6,7 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.RoomDatabase
+import androidx.room.Transaction
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import kotlinx.coroutines.flow.Flow
@@ -20,7 +21,7 @@ import kotlinx.coroutines.flow.Flow
         RuleOverrideEntity::class,
         CategoryRuleEntity::class,
     ],
-    version = 13,
+    version = 14,
     exportSchema = false,
 )
 abstract class BudgetDb : RoomDatabase() {
@@ -56,17 +57,12 @@ abstract class BudgetDb : RoomDatabase() {
                 db.execSQL("ALTER TABLE accounts ADD COLUMN linkedCreditCardAccountId TEXT")
             }
         }
-        /**
-         * Types a PayPal account as one.
-         *
-         * A sync deliberately never overwrites the stored type, so an account linked before
-         * AccountType.PAYPAL existed keeps whatever was detected at the time and can never
-         * reach the new type on its own - leaving PayPal enrichment silently switched off
-         * for exactly the people who already had PayPal linked.
-         *
-         * Only the two types PayPal could have been auto-detected as are touched, so a type
-         * the user chose deliberately is left alone.
-         */
+        val MIGRATION_13_14 = object : Migration(13, 14) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE accounts ADD COLUMN identity TEXT")
+                db.execSQL("ALTER TABLE accounts ADD COLUMN spendingCapMinor INTEGER")
+            }
+        }
         val MIGRATION_12_13 = object : Migration(12, 13) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL(
@@ -81,6 +77,17 @@ abstract class BudgetDb : RoomDatabase() {
                 )
             }
         }
+        /**
+         * Types a PayPal account as one.
+         *
+         * A sync deliberately never overwrites the stored type, so an account linked before
+         * AccountType.PAYPAL existed keeps whatever was detected at the time and can never
+         * reach the new type on its own - leaving PayPal enrichment silently switched off
+         * for exactly the people who already had PayPal linked.
+         *
+         * Only the two types PayPal could have been auto-detected as are touched, so a type
+         * the user chose deliberately is left alone.
+         */
         val MIGRATION_10_11 = object : Migration(10, 11) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL(
@@ -237,6 +244,9 @@ interface BudgetDao {
     @Query("UPDATE transactions SET isRecurring = 1 WHERE accountId = :accountId AND transactionId = :transactionId")
     suspend fun updateRecurring(accountId: String, transactionId: String)
 
+    @Query("UPDATE transactions SET isRecurring = 0")
+    suspend fun clearRecurring()
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertManualRule(rule: ManualRecurringRuleEntity)
 
@@ -323,5 +333,25 @@ interface BudgetDao {
 
     suspend fun updateAccount(account: AccountEntity) {
         upsertAccount(account)
+    }
+
+    @Query("UPDATE accounts SET linkedCreditCardAccountId = :newId WHERE linkedCreditCardAccountId = :oldId")
+    suspend fun repointLinks(oldId: String, newId: String)
+
+    /**
+     * Folds an account the bank has reissued under a new id into its successor, in one step so
+     * a failure part way cannot leave the history in neither place.
+     */
+    @Transaction
+    suspend fun replaceAccount(
+        oldId: String,
+        successor: AccountEntity,
+        transactions: List<TransactionEntity>,
+    ) {
+        upsertAccount(successor)
+        upsertTransactions(transactions)
+        repointLinks(oldId, successor.id)
+        deleteTransactions(oldId)
+        deleteAccount(oldId)
     }
 }

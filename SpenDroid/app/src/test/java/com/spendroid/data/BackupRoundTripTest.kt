@@ -5,6 +5,7 @@ import com.spendroid.data.db.AccountType
 import com.spendroid.data.db.BudgetGoalEntity
 import com.spendroid.data.db.CategoryRuleEntity
 import com.spendroid.data.db.ManualRecurringRuleEntity
+import com.spendroid.data.db.RuleOverrideEntity
 import com.spendroid.data.db.TransactionEntity
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -26,6 +27,11 @@ class BackupRoundTripTest {
         lastSynced = 1_700_000_000_000,
         accountType = AccountType.CREDIT_CARD,
         linkedCreditCardAccountId = "acc-2",
+        rawBalancesJson = """{"balances":[]}""",
+        statementDayOfMonth = 12,
+        paymentDayOfMonth = 5,
+        identity = "iban:GB29NWBK60161331926819",
+        spendingCapMinor = 50000,
     )
 
     private val transaction = TransactionEntity(
@@ -41,6 +47,17 @@ class BackupRoundTripTest {
         rawJson = """{"raw":"kept"}""",
         isInternalTransfer = true,
         isRecurring = true,
+        // Every user decision set, so a field the backup forgets fails the equality below.
+        categoryOverride = "EATING_OUT",
+        isCardPayment = true,
+        transferOverridden = true,
+    )
+
+    private val override = RuleOverrideEntity(
+        ruleKey = "IN|GBP|2500|acme ltd",
+        anchorDay = 25,
+        shift = "PREVIOUS_WORKING_DAY",
+        decemberAnchorDay = 19,
     )
 
     private fun export() = BackupExporter.toJson(
@@ -62,6 +79,10 @@ class BackupRoundTripTest {
         budgetGoals = listOf(BudgetGoalEntity("GROCERIES", 35000, "GBP")),
         categoryRules = listOf(CategoryRuleEntity("sainsburys", "GROCERIES", 1_700_000_000_000)),
         ignoredRules = setOf("OUT|GBP|15|netflix"),
+        ruleOverrides = listOf(override),
+        primaryIncomeKey = "IN|GBP|2500|acme ltd",
+        budgetModel = "ROLLOVER",
+        cardTiming = "AT_PURCHASE",
     )
 
     @Test
@@ -75,6 +96,27 @@ class BackupRoundTripTest {
         assertEquals(setOf("OUT|GBP|15|netflix"), restored.ignoredRules)
         assertEquals(35000, restored.budgetGoals.first().limitMinor)
         assertEquals("GROCERIES", restored.categoryRules.first().category)
+        assertEquals(listOf(override), restored.ruleOverrides)
+        assertEquals("IN|GBP|2500|acme ltd", restored.primaryIncomeKey)
+        assertEquals("ROLLOVER", restored.budgetModel)
+        assertEquals("AT_PURCHASE", restored.cardTiming)
+    }
+
+    /** Settings missing from an older file are left alone on restore, not cleared. */
+    @Test
+    fun `a backup without settings restores none`() {
+        val v2 = BackupExporter.toJson(
+            accounts = listOf(account),
+            transactions = listOf(transaction),
+            manualRules = emptyList(),
+            budgetGoals = emptyList(),
+            categoryRules = emptyList(),
+            ignoredRules = emptySet(),
+        )
+        val restored = BackupImporter.parse(v2)
+        assertNull(restored.primaryIncomeKey)
+        assertNull(restored.budgetModel)
+        assertTrue(restored.ruleOverrides.isEmpty())
     }
 
     @Test
@@ -88,7 +130,10 @@ class BackupRoundTripTest {
 
     @Test
     fun `a backup from a newer format version is refused, not half-read`() {
-        val newer = export().replace("\"formatVersion\": 2", "\"formatVersion\": 99")
+        val newer = export().replace(
+            "\"formatVersion\": ${BackupExporter.FORMAT_VERSION}",
+            "\"formatVersion\": 99",
+        )
         val error = runCatching { BackupImporter.parse(newer) }.exceptionOrNull()
         assertTrue(error is BackupImporter.IncompatibleBackup)
     }
@@ -102,7 +147,7 @@ class BackupRoundTripTest {
     @Test
     fun `a version 1 backup without budgets still restores`() {
         val v1 = export()
-            .replace("\"formatVersion\": 2", "\"formatVersion\": 1")
+            .replace("\"formatVersion\": ${BackupExporter.FORMAT_VERSION}", "\"formatVersion\": 1")
         val restored = BackupImporter.parse(v1)
         assertEquals(1, restored.transactions.size)
     }

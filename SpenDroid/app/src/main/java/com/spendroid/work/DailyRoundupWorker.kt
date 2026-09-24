@@ -30,8 +30,8 @@ class DailyRoundupWorker(
 
         val dateFormat = DateTimeFormatter.ofPattern("d MMM")
         val body = buildString {
-            append("Spent today ${formatMoney(snapshot.spentToday, "GBP")} · ")
-            append("left to spend ${formatMoney(snapshot.availableToSpend, "GBP")}")
+            append("Spent today ${formatMoney(snapshot.spentToday, snapshot.baseCurrency)} · ")
+            append("left to spend ${formatMoney(snapshot.availableToSpend, snapshot.baseCurrency)}")
             snapshot.nextIncomeDate?.let { append(" until income on ${it.format(dateFormat)}") }
         }
 

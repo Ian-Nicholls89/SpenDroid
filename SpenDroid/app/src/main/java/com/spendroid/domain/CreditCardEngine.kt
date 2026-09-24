@@ -59,6 +59,12 @@ object CreditCardEngine {
         val billedMinor: Long,
         /** Charged since the statement closed; will land on the following bill. */
         val unbilledMinor: Long,
+        /**
+         * What the next payment will take, paid as the statement balance: the closed statement
+         * while it is unpaid, and once it is settled, whatever is owed and still accruing.
+         * Defaults to the whole balance where the statement is not known.
+         */
+        val dueMinor: Long = outstandingMinor,
         val dueDate: LocalDate?,
         /** Day of month the payment nominally lands on, before weekend drift. */
         val nominalPaymentDay: Int?,
@@ -77,7 +83,28 @@ object CreditCardEngine {
         val cycleFitErrorMinor: Long?,
         /** How many past bills the solved cycle was checked against. More is firmer. */
         val cycleBillsChecked: Int?,
+        /** When the statement now building closes. */
+        val nextStatementClose: LocalDate? = null,
+        /**
+         * Where the statement now building is heading: what is on it so far, plus the recent
+         * daily rate carried to its close. Null until there is enough history to have a rate.
+         */
+        val projectedMinor: Long? = null,
+        /** The middle of the bills actually paid, once there are two to go on. */
+        val usualBillMinor: Long? = null,
+        /** What spending on the card is measured against: the user's limit, else the usual bill. */
+        val capMinor: Long? = null,
+        val capSource: CapSource? = null,
     )
+
+    /** Where a card's spending limit came from, which decides how it is worded. */
+    enum class CapSource {
+        /** The user set it. */
+        USER,
+
+        /** Nothing was set, so the card's usual bill stands in. */
+        USUAL,
+    }
 
     data class CardAnalysis(
         val bills: List<CardBill>,
@@ -176,14 +203,32 @@ object CreditCardEngine {
 
             val bankOwed = card.balanceMinor?.let { maxOf(0L, -it) }
             val outstanding = bankOwed ?: outstandingSince(cardTxs, paymentDates.lastOrNull())
+            val billed = (outstanding - unbilled).coerceAtLeast(0L)
+
+            // Spending after the close is next month's bill, so while this statement is still
+            // to be paid, the statement is all that leaves. Once a payment has landed since the
+            // close it is settled, and what is owed now is what the next bill will be built on.
+            val statementPaid = statementClose != null &&
+                paymentDates.any { it.isAfter(statementClose) && !it.isAfter(today) }
+            val dueNext = when {
+                statementClose == null -> outstanding
+                statementPaid -> outstanding
+                else -> billed
+            }
+
+            val nextClose = statementDay?.let { day -> statementClose?.let { onDay(it.plusMonths(1), day) } }
+            val projected = nextClose?.let { projectStatement(cardTxs, paymentIds, unbilled, today, it) }
+            val usual = medianOf(payments.map { (cardTx, _) -> cardTx.amountMinor }.filter { it > 0L })
+            val cap = card.spendingCapMinor?.takeIf { it > 0L }
 
             bills += CardBill(
                 cardAccountId = card.id,
                 cardLabel = card.label,
                 currency = card.currency,
                 outstandingMinor = outstanding,
-                billedMinor = (outstanding - unbilled).coerceAtLeast(0L),
+                billedMinor = billed,
                 unbilledMinor = unbilled.coerceAtMost(outstanding),
+                dueMinor = dueNext,
                 dueDate = due,
                 nominalPaymentDay = nominalDay,
                 dueDateInferred = card.paymentDayOfMonth != null ||
@@ -198,10 +243,61 @@ object CreditCardEngine {
                 },
                 cycleFitErrorMinor = fit?.averageErrorMinor,
                 cycleBillsChecked = fit?.billsChecked,
+                nextStatementClose = nextClose,
+                projectedMinor = projected,
+                usualBillMinor = usual,
+                capMinor = cap ?: usual,
+                capSource = when {
+                    cap != null -> CapSource.USER
+                    usual != null -> CapSource.USUAL
+                    else -> null
+                },
             )
         }
 
         return CardAnalysis(bills, paymentKeys, settlementKeys, confirmedSettlements)
+    }
+
+    /**
+     * Where the statement now building is heading, at the rate the card has been used lately.
+     *
+     * The rate is the last four weeks rather than this statement alone: three days into a
+     * statement, one big shop would otherwise project to a bill ten times the usual. Refunds
+     * net off, as they do on the bill; payments do not, as they settle the old statement.
+     * Under a week of history is not a rate, so there is no projection.
+     */
+    internal fun projectStatement(
+        cardTxs: List<TransactionEntity>,
+        paymentIds: Set<String>,
+        soFar: Long,
+        today: LocalDate,
+        closes: LocalDate,
+    ): Long? {
+        val earliest = cardTxs.mapNotNull { RecurringAnalyzer.parseBookingDate(it.bookingDate) }.minOrNull()
+            ?: return null
+        val windowStart = maxOf(earliest, today.minusDays(RATE_WINDOW_DAYS))
+        val windowDays = today.toEpochDay() - windowStart.toEpochDay()
+        if (windowDays < MIN_RATE_DAYS) return null
+
+        val recent = cardTxs
+            .filter { tx ->
+                if (tx.transactionId in paymentIds) return@filter false
+                val date = RecurringAnalyzer.parseBookingDate(tx.bookingDate) ?: return@filter false
+                date.isAfter(windowStart) && !date.isAfter(today)
+            }
+            .sumOf { it.amountMinor }
+            .let { maxOf(0L, -it) }
+
+        val daysLeft = (closes.toEpochDay() - today.toEpochDay()).coerceAtLeast(0L)
+        return soFar + recent * daysLeft / windowDays
+    }
+
+    /** The middle value, averaging the two middles of an even count. Null under two values. */
+    private fun medianOf(values: List<Long>): Long? {
+        if (values.size < 2) return null
+        val sorted = values.sorted()
+        val mid = sorted.size / 2
+        return if (sorted.size % 2 == 0) (sorted[mid - 1] + sorted[mid]) / 2 else sorted[mid]
     }
 
     /** A candidate statement day and how well it reproduced the bills actually paid. */
@@ -470,6 +566,12 @@ object CreditCardEngine {
     }
 
     private const val PAYMENT_MATCH_DAYS = 5L
+
+    /** How far back the card's recent rate of spending is measured. */
+    private const val RATE_WINDOW_DAYS = 28L
+
+    /** Less history than this is not a rate worth projecting from. */
+    private const val MIN_RATE_DAYS = 7L
 
     /** UK cards typically fall due around three weeks after the statement closes. */
     private const val TYPICAL_PAYMENT_TERM_DAYS = 23L

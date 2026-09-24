@@ -110,6 +110,10 @@ data class BudgetSnapshot(
     val shortfallMinor: Long = 0L,
     /** What is in the pot now. */
     val potBalanceMinor: Long? = null,
+    /** When card spending came off [availableToSpend]. */
+    val cardTiming: CardTiming = CardTiming.AT_BILL,
+    /** Card spending owed or heading for a bill due after payday; zero when counted at the till. */
+    val cardsAfterPaydayMinor: Long = 0L,
     /** True when the user picked the income that sets the cycle, rather than it being guessed. */
     val primaryIncomeDesignated: Boolean = false,
     /** True when a designated income no longer matches any rule and the guess took over. */

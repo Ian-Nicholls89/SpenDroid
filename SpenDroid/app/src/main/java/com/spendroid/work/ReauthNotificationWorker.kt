@@ -10,10 +10,6 @@ import androidx.work.WorkerParameters
 import com.spendroid.BudgetApplication
 import com.spendroid.data.Connection
 import kotlinx.coroutines.flow.first
-import java.time.Instant
-import java.time.ZoneId
-import java.time.format.DateTimeFormatter
-import java.time.temporal.ChronoUnit
 
 class ReauthNotificationWorker(
     app: Context,
@@ -21,30 +17,22 @@ class ReauthNotificationWorker(
 ) : CoroutineWorker(app, parameters) {
 
     override suspend fun doWork(): Result {
-        val app = applicationContext as BudgetApplication
-        val connections = app.repository.connections.first()
+        val repo = (applicationContext as BudgetApplication).repository
+        // Connections saved before the grant date was kept have none; the requisition knows.
+        runCatching { repo.backfillConnectionDates() }
 
-        val now = System.currentTimeMillis()
-        val warningThresholdMs = 14L * 24 * 60 * 60 * 1000 // 14 days
-        val urgentThresholdMs = 3L * 24 * 60 * 60 * 1000 // 3 days
-
-        val expiringSoon = connections.filter { conn ->
-            val expiryMs = conn.createdAt + 90L * 24 * 60 * 60 * 1000
-            val daysLeft = ChronoUnit.DAYS.between(
-                Instant.ofEpochMilli(now).atZone(ZoneId.systemDefault()).toLocalDate(),
-                Instant.ofEpochMilli(expiryMs).atZone(ZoneId.systemDefault()).toLocalDate(),
-            )
-            daysLeft <= 14
-        }
+        val expiringSoon = repo.connections.first()
+            .mapNotNull { conn -> conn.daysUntilExpiry()?.let { conn to it } }
+            .filter { (_, daysLeft) -> daysLeft <= WARN_DAYS }
 
         if (expiringSoon.isNotEmpty()) {
-            sendNotifications(expiringSoon, now)
+            sendNotifications(expiringSoon)
         }
 
         return Result.success()
     }
 
-    private fun sendNotifications(connections: List<Connection>, now: Long) {
+    private fun sendNotifications(connections: List<Pair<Connection, Int>>) {
         if (!NotificationManagerCompat.from(applicationContext).areNotificationsEnabled()) return
         val manager = applicationContext.getSystemService(NotificationManager::class.java)
         val channel = NotificationChannel(
@@ -56,16 +44,13 @@ class ReauthNotificationWorker(
         }
         manager.createNotificationChannel(channel)
 
-        connections.forEachIndexed { index, conn ->
-            val expiryMs = conn.createdAt + 90L * 24 * 60 * 60 * 1000
-            val daysLeft = ChronoUnit.DAYS.between(
-                Instant.ofEpochMilli(now).atZone(ZoneId.systemDefault()).toLocalDate(),
-                Instant.ofEpochMilli(expiryMs).atZone(ZoneId.systemDefault()).toLocalDate(),
-            )
-
+        connections.forEachIndexed { index, (conn, daysLeft) ->
             val (title, body) = when {
+                // "Expires in -12 days" is not a sentence anyone should get daily.
+                daysLeft < 0 -> "${conn.institutionName} has stopped syncing" to
+                    "Your ${conn.institutionName} connection has expired. Open the app to reauthorise."
                 daysLeft <= 3 -> "Reauthorise ${conn.institutionName} now" to
-                    "Your ${conn.institutionName} connection expires in $daysLeft day(s). Open the app to reauthorise."
+                    "Your ${conn.institutionName} connection expires in $daysLeft day${if (daysLeft == 1) "" else "s"}. Open the app to reauthorise."
                 daysLeft <= 7 -> "${conn.institutionName} expires soon" to
                     "Your ${conn.institutionName} connection expires in $daysLeft days. Reauthorise to keep syncing."
                 else -> "${conn.institutionName} reauthorisation needed" to
@@ -88,5 +73,6 @@ class ReauthNotificationWorker(
     companion object {
         private const val CHANNEL_ID = "reauth_reminders"
         private const val NOTIFICATION_BASE_ID = 2000
+        private const val WARN_DAYS = 14
     }
 }

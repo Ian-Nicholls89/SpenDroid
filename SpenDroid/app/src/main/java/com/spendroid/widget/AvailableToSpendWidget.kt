@@ -42,6 +42,7 @@ import androidx.glance.unit.ColorProvider
 import com.spendroid.BudgetApplication
 import com.spendroid.MainActivity
 import com.spendroid.domain.BudgetPace
+import com.spendroid.domain.CARD_BILL_KEY_PREFIX
 import com.spendroid.ui.formatMoney
 import java.time.format.DateTimeFormatter
 
@@ -98,15 +99,19 @@ class AvailableToSpendWidget : GlanceAppWidget() {
 
             val days = snapshot.daysUntilNextIncome
             val bills = snapshot.cardBills
-                .filter { it.outstandingMinor > 0L }
+                .filter { it.dueMinor > 0L }
                 .map { bill ->
+                    // Beside a due date, the figure is what that date takes, not all that is owed.
                     Line(
                         label = bill.cardLabel,
-                        amount = formatMoney(bill.outstandingMinor, bill.currency),
+                        amount = formatMoney(bill.dueMinor, bill.currency),
                         due = bill.dueDate?.format(DUE_FORMAT).orEmpty(),
                     )
                 }
-            val fixed = snapshot.upcomingFixed.map { payment ->
+            // Card bills are listed above already; upcoming carries them too, once due.
+            val fixed = snapshot.upcomingFixed
+                .filterNot { it.rule.key.startsWith(CARD_BILL_KEY_PREFIX) }
+                .map { payment ->
                 Line(
                     label = payment.rule.payee,
                     amount = formatMoney(payment.amountMinor, payment.rule.currency),
@@ -115,11 +120,11 @@ class AvailableToSpendWidget : GlanceAppWidget() {
             }
 
             Summary(
-                available = formatMoney(snapshot.availableToSpend, "GBP"),
+                available = formatMoney(snapshot.availableToSpend, snapshot.baseCurrency),
                 availableRounded = poundsOnly(snapshot.availableToSpend),
                 days = days?.let { "$it day${if (it == 1) "" else "s"}" },
                 perDay = days?.takeIf { it > 0 }?.let {
-                    "${formatMoney(snapshot.availableToSpend / it, "GBP")} a day"
+                    "${formatMoney(snapshot.availableToSpend / it, snapshot.baseCurrency)} a day"
                 },
                 incomeDate = snapshot.nextIncomeDate?.let { "Income ${it.format(INCOME_FORMAT)}" },
                 remaining = BudgetPace.remainingFraction(snapshot),

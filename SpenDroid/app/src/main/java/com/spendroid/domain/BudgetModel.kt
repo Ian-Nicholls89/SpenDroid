@@ -43,3 +43,28 @@ enum class BudgetModel(val label: String, val explanation: String) {
             entries.firstOrNull { it.name == name } ?: FRESH_START
     }
 }
+
+/**
+ * When card spending comes off the budget. Either way it is counted once: the question is
+ * whether that is at the till or when the bill leaves the current account.
+ */
+enum class CardTiming(val label: String, val explanation: String) {
+    /** The bill is the expense; purchases on the card are next month's problem. */
+    AT_BILL(
+        "When the bill is paid",
+        "Card purchases count when the statement is paid from your account. Spending on the " +
+            "card shows as next month's bill, with warnings as it builds.",
+    ),
+
+    /** Every purchase counts in the cycle it was made in; paying the bill is a transfer. */
+    AT_PURCHASE(
+        "When you spend",
+        "Card purchases count against this cycle as you make them, like spending from your " +
+            "account. Paying the bill is then just moving money, and is not counted again.",
+    ),
+    ;
+
+    companion object {
+        fun from(name: String?): CardTiming = entries.firstOrNull { it.name == name } ?: AT_BILL
+    }
+}

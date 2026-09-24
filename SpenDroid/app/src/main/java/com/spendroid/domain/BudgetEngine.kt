@@ -20,6 +20,7 @@ object BudgetEngine {
         budgetModel: BudgetModel = BudgetModel.FRESH_START,
         calendar: WorkingDayCalendar = WorkingDayCalendar(),
         overrides: Map<String, RuleOverrideEntity> = emptyMap(),
+        cardTiming: CardTiming = CardTiming.AT_BILL,
     ): BudgetSnapshot {
         fun nextFor(rule: RecurringRule, after: LocalDate): LocalDate {
             val override = overrides[rule.key]
@@ -50,7 +51,10 @@ object BudgetEngine {
             .filter { it.accountType == AccountType.JOINT }
             .map { it.id }
             .toSet()
-        val notSpendableFrom = creditCardAccountIds + sharedAccountIds
+        val atPurchase = cardTiming == CardTiming.AT_PURCHASE
+        // Counted at the till, a card is spent from like any account, and paying its bill is
+        // only moving money to cover what was already counted.
+        val notSpendableFrom = if (atPurchase) sharedAccountIds else creditCardAccountIds + sharedAccountIds
 
         val cardAnalysis = CreditCardEngine.analyze(transactions, accounts, referenceTime.toLocalDate())
 
@@ -66,6 +70,7 @@ object BudgetEngine {
         // under this model, so it is kept in.
         val relevantTransactions = transactions.filter { tx ->
             val isCardPayment = "${tx.accountId}|${tx.transactionId}" in cardAnalysis.cardPaymentKeys
+            if (atPurchase && isCardPayment) return@filter false
             (!tx.isInternalTransfer || isCardPayment) &&
             tx.bookingDate.isNotBlank() &&
             tx.amountMinor != 0L &&
@@ -92,12 +97,33 @@ object BudgetEngine {
         //
         // Manual rules carry no accounts and are always the user's own statement of a real
         // commitment, so they are kept.
+        val today = referenceTime.toLocalDate()
+
+        val cardPayerRuleKeys = transactions
+            .filter { "${it.accountId}|${it.transactionId}" in cardAnalysis.cardPaymentKeys }
+            .mapTo(mutableSetOf()) { RecurringAnalyzer.groupKey(it) }
+
         val cashRules = rules.filter { rule ->
             // Moving your own money between your own accounts is neither earning nor
             // spending, however monthly it looks. Excluding the transactions was not enough:
             // the rule built from them still reached income and fixed outgoings, so a
             // standing order into a joint account was counted as a salary.
             if (rule.internalTransfer) return@filter false
+            // History is kept long after the API's window has passed, so a job that ended
+            // or a subscription that was cancelled is still detected from its old rows.
+            // Counted, it is income that never arrives and a bill that is never taken.
+            if (isStale(rule, today)) return@filter false
+            // Paying a card by a fixed direct debit groups into a monthly rule of its own.
+            // The card is already counted - by its bill or by its purchases - so this would
+            // be the same money a second time.
+            if (!rule.isManual && rule.key in cardPayerRuleKeys) return@filter false
+            // A card's credits are bill payments and refunds, never income, whenever card
+            // spending is counted.
+            if (rule.direction == Direction.IN && rule.accountIds.isNotEmpty() &&
+                rule.accountIds.all { it in creditCardAccountIds }
+            ) {
+                return@filter false
+            }
             rule.accountIds.isEmpty() || !rule.accountIds.all { it in notSpendableFrom }
         }
         val incomeRules = cashRules.filter { it.direction == Direction.IN }
@@ -117,10 +143,6 @@ object BudgetEngine {
         val averageMonthlyIncome = incomeRules.sumOf { abs(monthlyEquivalent(it)) }
         val fixedMonthlyOutgoings = fixedRules.sumOf { abs(monthlyEquivalent(it)) }
         val variableBudget = (averageMonthlyIncome - fixedMonthlyOutgoings).coerceAtLeast(0L)
-
-        val today = referenceTime.toLocalDate()
-        val referenceDate = referenceTime.toLocalDate()
-        val startOfWindow = referenceTime.minusHours(24).toLocalDate()
 
         val nextIncomeDate = primaryIncome?.let { nextFor(it, today) }
         val lastIncome = primaryIncome?.lastOccurrence?.takeIf { !it.isAfter(today) }
@@ -144,11 +166,10 @@ object BudgetEngine {
         }
 
         val spentThisCycle = variableDebits.sumOf { -it.amountMinor }
+        // Booking dates carry no time, so "the last 24 hours" could only ever mean today and
+        // yesterday together - which is not what a figure labelled today says.
         val spentToday = variableDebits
-            .filter { tx ->
-                val date = RecurringAnalyzer.parseBookingDate(tx.bookingDate) ?: return@filter false
-                date >= startOfWindow && date <= referenceDate
-            }
+            .filter { tx -> RecurringAnalyzer.parseBookingDate(tx.bookingDate) == today }
             .sumOf { -it.amountMinor }
 
         val upcomingFixed = if (nextIncomeDate != null) {
@@ -161,12 +182,13 @@ object BudgetEngine {
                 }
             }
             // Card bills are variable, so RecurringAnalyzer cannot detect them; they are
-            // computed from the outstanding balance instead.
+            // computed instead: the statement while it is unpaid, since spending after the
+            // close is next month's bill.
             val fromCards = cardAnalysis.bills.mapNotNull { bill ->
                 val due = bill.dueDate ?: return@mapNotNull null
-                if (bill.outstandingMinor <= 0L) return@mapNotNull null
+                if (bill.dueMinor <= 0L) return@mapNotNull null
                 if (!due.isAfter(today) || due.isAfter(nextIncomeDate)) return@mapNotNull null
-                UpcomingPayment(cardBillRule(bill, due), due, bill.outstandingMinor)
+                UpcomingPayment(cardBillRule(bill, due), due, bill.dueMinor)
             }
             (fromRules + fromCards).sortedBy { it.dueDate }
         } else {
@@ -174,6 +196,24 @@ object BudgetEngine {
         }
 
         val upcomingTotal = upcomingFixed.sumOf { it.amountMinor }
+
+        /**
+         * Card spending this cycle does not pay for: owed now but due after payday, plus where
+         * the statement now building is heading. Counted at the bill it is out of sight until
+         * then, so it is said out loud - the next cycle starts that much lighter.
+         */
+        val cardsAfterPayday = if (atPurchase) {
+            0L
+        } else {
+            cardAnalysis.bills.sumOf { bill ->
+                val thisCycle = upcomingFixed
+                    .filter { it.rule.key == "$CARD_BILL_KEY_PREFIX${bill.cardAccountId}" }
+                    .sumOf { it.amountMinor }
+                val owedLater = (bill.outstandingMinor - thisCycle).coerceAtLeast(0L)
+                val stillToCome = ((bill.projectedMinor ?: bill.unbilledMinor) - bill.unbilledMinor).coerceAtLeast(0L)
+                owedLater + stillToCome
+            }
+        }
 
         // The pot is the account the main income lands in, which makes designating the income
         // designate the account too, with no second setting to keep in step.
@@ -201,7 +241,29 @@ object BudgetEngine {
             (account.balanceMinor ?: return@let null) - sinceStart
         }
 
-        val freshStart = variableBudget - spentThisCycle - upcomingTotal
+        /**
+         * The share of the monthly budget this cycle has to last on. Paid weekly, the cycle is
+         * a week, and handing the whole month's figure to seven days read as four times the
+         * money there really was.
+         */
+        val cycleBudget = primaryIncome?.let { perCycle(variableBudget, it.cadence) } ?: variableBudget
+
+        /**
+         * Fixed commitments are already out of the budget - that is what makes it the variable
+         * budget - so taking the ones still to come off again counted them twice, and straight
+         * after payday, when all of them are still to come, the figure was short by every one.
+         * Card bills are the exception: card spending is in neither the commitments nor the
+         * spending above, so the bill is the only place it is counted at all.
+         */
+        val upcomingCardBills = if (atPurchase) {
+            // Already counted, purchase by purchase.
+            0L
+        } else {
+            upcomingFixed
+                .filter { it.rule.key.startsWith(CARD_BILL_KEY_PREFIX) }
+                .sumOf { it.amountMinor }
+        }
+        val freshStart = cycleBudget - spentThisCycle - upcomingCardBills
 
         /**
          * Carrying over is answered from the balance itself: what is in the account, less
@@ -230,7 +292,7 @@ object BudgetEngine {
          * beside a figure of nothing left, both correct and only one of them believable.
          */
         val spendableThisCycle = when (budgetModel) {
-            BudgetModel.FRESH_START, BudgetModel.SHOW_BOTH -> variableBudget
+            BudgetModel.FRESH_START, BudgetModel.SHOW_BOTH -> cycleBudget
             BudgetModel.ROLLOVER -> spentThisCycle + availableToSpend
         }
 
@@ -271,6 +333,8 @@ object BudgetEngine {
             // How far past nothing the figure really is, since zero cannot say.
             shortfallMinor = if (uncapped < 0L) -uncapped else 0L,
             potBalanceMinor = potBalance,
+            cardTiming = cardTiming,
+            cardsAfterPaydayMinor = cardsAfterPayday,
             primaryIncomeDesignated = designated != null,
             designationLost = designationLost,
         )
@@ -286,7 +350,7 @@ object BudgetEngine {
             key = "$CARD_BILL_KEY_PREFIX${bill.cardAccountId}",
             payee = bill.cardLabel,
             direction = Direction.OUT,
-            amountMinor = -bill.outstandingMinor,
+            amountMinor = -bill.dueMinor,
             currency = bill.currency,
             cadence = Cadence.MONTHLY,
             anchorDay = bill.nominalPaymentDay ?: due.dayOfMonth,
@@ -294,6 +358,34 @@ object BudgetEngine {
             occurrences = 1,
             score = 1f,
         )
+
+    /** A monthly amount expressed as one cycle's worth, for a cycle of [cadence]. */
+    private fun perCycle(monthly: Long, cadence: Cadence): Long = when (cadence) {
+        Cadence.WEEKLY -> monthly * 12L / 52L
+        Cadence.FORTNIGHTLY -> monthly * 12L / 26L
+        Cadence.QUARTERLY -> monthly * 3L
+        Cadence.ANNUAL -> monthly * 12L
+        else -> monthly
+    }
+
+    /**
+     * True once a detected rule has missed its slot by long enough that it has stopped:
+     * half a period late plus a week, which clears weekends, bank holidays and a late
+     * employer without keeping a cancelled direct debit alive for months. The user's own
+     * rules are their statement of a commitment and never lapse on their own.
+     */
+    internal fun isStale(rule: RecurringRule, today: LocalDate): Boolean {
+        if (rule.isManual) return false
+        val periodDays = when (rule.cadence) {
+            Cadence.WEEKLY -> 7L
+            Cadence.FORTNIGHTLY -> 14L
+            Cadence.QUARTERLY -> 92L
+            Cadence.ANNUAL -> 365L
+            else -> 31L
+        }
+        val allowance = periodDays + periodDays / 2 + 7L
+        return ChronoUnit.DAYS.between(rule.lastOccurrence, today) > allowance
+    }
 
     private fun monthlyEquivalent(rule: RecurringRule): Long = when (rule.cadence) {
         Cadence.WEEKLY -> rule.amountMinor * 52L / 12L

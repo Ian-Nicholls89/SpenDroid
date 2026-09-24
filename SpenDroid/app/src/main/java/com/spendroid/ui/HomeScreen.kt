@@ -93,14 +93,17 @@ private fun cycleElapsedFraction(budget: BudgetSnapshot): Float? =
  * spending against time, not just the remaining balance.
  */
 private fun paceCaption(budget: BudgetSnapshot): String? {
-    val used = budgetUsedFraction(budget) ?: return null
+    budgetUsedFraction(budget) ?: return null
     val elapsed = cycleElapsedFraction(budget) ?: return null
-    val expected = (budget.variableMonthlyBudget * elapsed).toLong()
+    // Measured against what the ring and the headline use, or under carrying over the
+    // caption would call the cycle on track beside a ring that says otherwise.
+    val against = budget.spendableThisCycle.takeIf { it > 0L } ?: budget.variableMonthlyBudget
+    val expected = (against * elapsed).toLong()
     val difference = expected - budget.spentThisCycle
     val throughCycle = "${(elapsed * 100).toInt()}% through the cycle"
     return when {
-        difference > 500L -> "$throughCycle · ahead by ${formatMoney(difference, "GBP")}"
-        difference < -500L -> "$throughCycle · over by ${formatMoney(-difference, "GBP")}"
+        difference > 500L -> "$throughCycle · ahead by ${formatMoney(difference, budget.baseCurrency)}"
+        difference < -500L -> "$throughCycle · over by ${formatMoney(-difference, budget.baseCurrency)}"
         else -> "$throughCycle · on track"
     }
 }
@@ -211,8 +214,9 @@ private fun CardBillCard(bill: CreditCardEngine.CardBill) {
         modifier = Modifier
             .fillMaxWidth()
             .semantics(mergeDescendants = true) {
-                contentDescription = "${bill.cardLabel}, estimated bill " +
-                    formatMoney(bill.outstandingMinor, bill.currency)
+                contentDescription = "${bill.cardLabel}, " +
+                    formatMoney(bill.outstandingMinor, bill.currency) + " owed, next payment about " +
+                    formatMoney(bill.dueMinor, bill.currency)
             },
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
@@ -282,6 +286,15 @@ private fun CardBillCard(bill: CreditCardEngine.CardBill) {
                             .background(MaterialTheme.colorScheme.primaryContainer),
                     )
                 }
+            }
+            cardPaceLine(bill)?.let { pace ->
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    pace.text,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (pace.over) OutColor else MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontWeight = if (pace.over) FontWeight.SemiBold else FontWeight.Normal,
+                )
             }
             Spacer(Modifier.height(10.dp))
             Text(
@@ -640,7 +653,7 @@ private fun HeroBudgetCard(budget: BudgetSnapshot) {
                             color = Color.White.copy(alpha = 0.85f),
                         )
                         Text(
-                            formatMoney(budget.availableToSpend, "GBP"),
+                            formatMoney(budget.availableToSpend, budget.baseCurrency),
                             style = MaterialTheme.typography.headlineLarge,
                             fontWeight = FontWeight.Bold,
                             color = Color.White,
@@ -656,20 +669,20 @@ private fun HeroBudgetCard(budget: BudgetSnapshot) {
                 }
                 Spacer(Modifier.height(12.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
-                    HeroStat("Spent today", formatMoney(budget.spentToday, "GBP"))
-                    HeroStat("This cycle", formatMoney(budget.spentThisCycle, "GBP"))
+                    HeroStat("Spent today", formatMoney(budget.spentToday, budget.baseCurrency))
+                    HeroStat("This cycle", formatMoney(budget.spentThisCycle, budget.baseCurrency))
                     // Deliberately beside the budget rather than folded into it: the two
                     // answer different questions and the gap between them is the point.
                     if (budget.budgetModel == BudgetModel.SHOW_BOTH) {
                         budget.potBalanceMinor?.let { pot ->
-                            HeroStat("In the account", formatMoney(pot, "GBP"))
+                            HeroStat("In the account", formatMoney(pot, budget.baseCurrency))
                         }
                     }
                 }
                 if (budget.budgetModel == BudgetModel.ROLLOVER) {
                     budget.potBalanceMinor?.let { pot ->
                         Text(
-                            "${formatMoney(pot, "GBP")} in the account, less what is due before payday",
+                            "${formatMoney(pot, budget.baseCurrency)} in the account, less what is due before payday",
                             style = MaterialTheme.typography.labelSmall,
                             color = Color.White.copy(alpha = 0.8f),
                         )
@@ -678,7 +691,17 @@ private fun HeroBudgetCard(budget: BudgetSnapshot) {
                 // Zero cannot say how far past zero, and the difference matters.
                 if (budget.shortfallMinor > 0L) {
                     Text(
-                        "${formatMoney(budget.shortfallMinor, "GBP")} short of covering what is still to come out",
+                        "${formatMoney(budget.shortfallMinor, budget.baseCurrency)} short of covering what is still to come out",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color.White.copy(alpha = 0.9f),
+                    )
+                }
+                // Counted at the bill, card spending is out of this figure by design - so say
+                // where it went, rather than let the next cycle be a surprise.
+                if (budget.cardsAfterPaydayMinor > 0L) {
+                    Text(
+                        "About ${formatMoney(budget.cardsAfterPaydayMinor, budget.baseCurrency)} on " +
+                            "cards comes out after payday",
                         style = MaterialTheme.typography.labelSmall,
                         color = Color.White.copy(alpha = 0.9f),
                     )
@@ -695,9 +718,9 @@ private fun HeroBudgetCard(budget: BudgetSnapshot) {
                 }
                 Spacer(Modifier.height(12.dp))
                 Text(
-                    "Income ${formatMoney(budget.averageMonthlyIncome, "GBP")}/mo · " +
-                        "Fixed ${formatMoney(budget.fixedMonthlyOutgoings, "GBP")}/mo · " +
-                        "Variable ${formatMoney(budget.variableMonthlyBudget, "GBP")}/mo",
+                    "Income ${formatMoney(budget.averageMonthlyIncome, budget.baseCurrency)}/mo · " +
+                        "Fixed ${formatMoney(budget.fixedMonthlyOutgoings, budget.baseCurrency)}/mo · " +
+                        "Variable ${formatMoney(budget.variableMonthlyBudget, budget.baseCurrency)}/mo",
                     style = MaterialTheme.typography.bodySmall,
                     color = Color.White.copy(alpha = 0.85f),
                 )

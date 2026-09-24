@@ -27,6 +27,8 @@ data class RequisitionDto(
     val link: String? = null,
     val status: String? = null,
     val accounts: List<String> = emptyList(),
+    /** When the requisition was created, as an ISO-8601 timestamp. */
+    val created: String? = null,
 )
 
 data class BalancesDto(
@@ -70,6 +72,8 @@ data class AccountInfoDto(
     val bban: String? = null,
     val sortCode: String? = null,
     val accountNumber: String? = null,
+    /** A card's number with most digits hidden, which is still enough to tell cards apart. */
+    val maskedPan: String? = null,
     // The bank's own description of the account. Previously unmodelled, which left account
     // type detection with nothing to read but a name most banks do not send.
     val name: String? = null,

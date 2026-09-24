@@ -42,6 +42,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.spendroid.domain.BudgetModel
+import com.spendroid.domain.CardTiming
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
@@ -74,6 +75,7 @@ fun SettingsScreen(
     state: RootUiState,
     onSave: (String, String) -> Unit,
     onSetBudgetModel: (BudgetModel) -> Unit,
+    onSetCardTiming: (CardTiming) -> Unit,
     onExport: (Uri) -> Unit,
     onImport: (Uri) -> Unit,
     onClearData: () -> Unit,
@@ -128,6 +130,11 @@ fun SettingsScreen(
                     BudgetSection(
                         current = state.budgetModel,
                         onSelect = onSetBudgetModel,
+                    )
+                    SectionBreak()
+                    CardTimingSection(
+                        current = state.cardTiming,
+                        onSelect = onSetCardTiming,
                     )
                     SectionBreak()
                     NotificationsSection(
@@ -458,6 +465,42 @@ private fun BudgetSection(
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
+}
+
+@Composable
+private fun CardTimingSection(
+    current: CardTiming,
+    onSelect: (CardTiming) -> Unit,
+) {
+    Text("When card spending counts", style = MaterialTheme.typography.titleMedium)
+    Spacer(Modifier.height(4.dp))
+    Text(
+        "Either way it counts once - at the till, or when the bill leaves your account.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    Spacer(Modifier.height(12.dp))
+
+    CardTiming.entries.forEach { timing ->
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { onSelect(timing) }
+                .padding(vertical = 8.dp),
+            verticalAlignment = Alignment.Top,
+        ) {
+            RadioButton(selected = current == timing, onClick = { onSelect(timing) })
+            Spacer(Modifier.width(8.dp))
+            Column {
+                Text(timing.label, style = MaterialTheme.typography.bodyLarge)
+                Text(
+                    timing.explanation,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
 }
 
 @Composable

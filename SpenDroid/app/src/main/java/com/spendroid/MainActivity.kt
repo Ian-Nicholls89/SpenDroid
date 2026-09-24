@@ -202,6 +202,7 @@ class MainActivity : ComponentActivity() {
                                     state = state,
                                     onSave = viewModel::saveSecret,
                                     onSetBudgetModel = viewModel::setBudgetModel,
+                                    onSetCardTiming = viewModel::setCardTiming,
                                     onExport = viewModel::exportTo,
                                     onImport = viewModel::importFrom,
                                     onClearData = viewModel::clearData,

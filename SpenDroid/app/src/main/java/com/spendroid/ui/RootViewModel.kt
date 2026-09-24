@@ -24,6 +24,7 @@ import com.spendroid.data.db.TransactionEntity
 import com.spendroid.data.remote.InstitutionDto
 import com.spendroid.domain.BudgetEngine
 import com.spendroid.domain.BudgetModel
+import com.spendroid.domain.CardTiming
 import com.spendroid.domain.PaymentShift
 import com.spendroid.domain.WorkingDayCalendar
 import com.spendroid.domain.Category
@@ -31,6 +32,8 @@ import com.spendroid.domain.BudgetSnapshot
 import com.spendroid.domain.RecurringAnalyzer
 import com.spendroid.domain.RecurringRule
 import com.spendroid.domain.toRecurringRule
+import com.spendroid.widget.refreshCardWidgets
+import com.spendroid.widget.refreshWidgets
 import com.spendroid.work.DailyRoundupScheduler
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -100,6 +103,7 @@ data class RootUiState(
     val categoryFilter: Category? = null,
     val primaryIncomeKey: String? = null,
     val budgetModel: BudgetModel = BudgetModel.FRESH_START,
+    val cardTiming: CardTiming = CardTiming.AT_BILL,
     val ruleOverrides: Map<String, RuleOverrideEntity> = emptyMap(),
     val bankHolidays: Set<java.time.LocalDate> = emptySet(),
     /** Name of today's bank holiday, when today is one. */
@@ -281,7 +285,7 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
                 _state.update { it.copy(error = "${connection.institutionName} is no longer available.") }
                 return@launch
             }
-            doLink(institution)
+            doLink(institution, replacing = connection)
         }
     }
 
@@ -323,6 +327,15 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             repo.saveBudgetModel(model.name)
             loadLocal()
+        }
+    }
+
+    fun setCardTiming(timing: CardTiming) {
+        viewModelScope.launch {
+            repo.saveCardTiming(timing.name)
+            loadLocal()
+            // The widget reads the same setting, and would otherwise disagree until the next sync.
+            refreshWidgets(getApplication())
         }
     }
 
@@ -490,7 +503,8 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    private suspend fun doLink(institution: InstitutionDto) {
+    /** [replacing] is the consent being renewed, when this is a reauthorisation. */
+    private suspend fun doLink(institution: InstitutionDto, replacing: Connection? = null) {
         _state.update { it.copy(linkingBank = institution.name, error = null) }
         runCatching {
             _state.update { it.copy(linkProgress = "Contacting GoCardless…") }
@@ -511,9 +525,12 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
                 requisitionId = done.id ?: req.id!!,
                 accountIds = done.accounts,
             )
-            repo.saveConnection(connection)
+            repo.saveConnection(connection, replacing)
             _state.update { it.copy(linkProgress = "Importing ${done.accounts.size} account(s)…") }
             done.accounts.forEach { repo.importAccount(institution.name, it) }
+            // A renewed consent reissues every account under a new id; fold them back into
+            // the accounts already here rather than counting them twice.
+            repo.adoptPredecessors(connection)
         }
             .onSuccess {
                 _state.update {
@@ -524,7 +541,9 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
                         // Most people have more than one account, and this is the moment they
                         // are already in the flow and have the bank's app to hand.
                         justLinked = institution.name,
-                        reauthNeeded = it.reauthNeeded.filter { c -> c.institutionId != institution.id },
+                        reauthNeeded = it.reauthNeeded.filter { c ->
+                            c.requisitionId != replacing?.requisitionId && c.institutionId != institution.id
+                        },
                     )
                 }
                 loadLocal()
@@ -552,28 +571,57 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             _state.update { it.copy(syncing = true, error = null) }
             val reauth = mutableListOf<Connection>()
+            var offline = false
+            // PSD2 rations unattended calls to about four per account per day and the nightly
+            // sync spends one, so an account pulled within the hour is not pulled again.
+            val recent = repo.accounts()
+                .filter { System.currentTimeMillis() - it.lastSynced < MIN_MANUAL_RESYNC_MS }
+                .map { it.id }
+                .toSet()
+
+            /**
+             * Only a refusal from the bank means the consent needs renewing. A dropped
+             * connection used to be reported the same way, sending people to reauthorise a
+             * bank that was fine.
+             */
+            fun needsReauth(e: Throwable): Boolean {
+                if (e is java.io.IOException) offline = true
+                return e is retrofit2.HttpException && e.code() in REAUTH_CODES
+            }
+
             runCatching {
                 repo.connections.first().forEach { connection ->
-                    var ok = false
                     if (connection.accountIds.isNotEmpty()) {
-                        ok = runCatching {
-                            connection.accountIds.forEach { repo.importAccount(connection.institutionName, it) }
-                        }.isSuccess
+                        connection.accountIds.filter { it !in recent }.forEach { id ->
+                            runCatching { repo.importAccount(connection.institutionName, id) }
+                                .onFailure { e -> if (needsReauth(e) && connection !in reauth) reauth += connection }
+                        }
                     } else {
-                        val req = runCatching { repo.requisition(connection.requisitionId) }.getOrNull()
-                        if (req != null && req.status == "SA" && req.accounts.isNotEmpty()) {
+                        val req = runCatching { repo.requisition(connection.requisitionId) }
+                            .onFailure { e -> if (needsReauth(e)) reauth += connection }
+                            .getOrNull()
+                        if (req != null && req.status in setOf("SA", "LN") && req.accounts.isNotEmpty()) {
                             repo.saveConnection(connection.copy(accountIds = req.accounts))
-                            ok = runCatching {
-                                req.accounts.forEach { repo.importAccount(connection.institutionName, it) }
-                            }.isSuccess
+                            req.accounts.forEach { id ->
+                                runCatching { repo.importAccount(connection.institutionName, id) }
+                                    .onFailure { e -> if (needsReauth(e) && connection !in reauth) reauth += connection }
+                            }
+                        } else if (req != null && req.status in setOf("EX", "RJ")) {
+                            reauth += connection
                         }
                     }
-                    if (!ok) reauth += connection
                 }
             }
                 .onFailure { e -> _state.update { it.copy(error = e.message) } }
-            _state.update { it.copy(reauthNeeded = reauth) }
+            _state.update {
+                it.copy(
+                    reauthNeeded = reauth,
+                    error = it.error ?: if (offline) "Couldn't reach your bank. Check your connection and try again." else null,
+                )
+            }
             loadLocal()
+            refreshWidgets(getApplication())
+            refreshCardWidgets(getApplication())
             _state.update { it.copy(syncing = false) }
         }
     }
@@ -590,6 +638,7 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
         // Refreshes itself only when the stored run of holidays is nearly spent.
         val holidays = runCatching { repo.bankHolidays() }.getOrDefault(emptyMap())
         val budgetModel = BudgetModel.from(repo.budgetModel.first())
+        val cardTiming = CardTiming.from(repo.cardTiming.first())
         val budgetGoals = repo.budgetGoals.first()
         // Compile-time constants: no PackageManager lookup to fail and fall back to a fake
         // "1.0.0" / 0 that would then be compared against the latest release.
@@ -614,12 +663,14 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
                     budgetModel = budgetModel,
                     calendar = WorkingDayCalendar(holidays.keys),
                     overrides = overrides,
+                    cardTiming = cardTiming,
                 ),
                 ruleOverrides = overrides,
                 bankHolidays = holidays.keys,
                 bankHolidayToday = holidays[java.time.LocalDate.now()],
                 primaryIncomeKey = primaryIncomeKey,
                 budgetModel = budgetModel,
+                cardTiming = cardTiming,
                 connections = repo.connections.first(),
                 versionName = versionName,
                 versionCode = versionCode,
@@ -628,6 +679,11 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     companion object {
+        private val MIN_MANUAL_RESYNC_MS = java.util.concurrent.TimeUnit.HOURS.toMillis(1)
+
+        /** Refusals that mean the bank's consent has lapsed or been withdrawn. */
+        private val REAUTH_CODES = setOf(401, 403, 409)
+
         fun factory(app: Application) = viewModelFactory {
             initializer { RootViewModel(app) }
         }
