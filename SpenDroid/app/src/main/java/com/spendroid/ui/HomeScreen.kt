@@ -1,5 +1,11 @@
 package com.spendroid.ui
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
@@ -35,9 +41,11 @@ import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.CreditCard
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -67,6 +75,7 @@ import com.spendroid.domain.CreditCardEngine
 import com.spendroid.domain.CategoryTotal
 import com.spendroid.domain.TrendSummary
 import com.spendroid.domain.TrendsEngine
+import com.spendroid.ui.theme.Motion
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -126,6 +135,18 @@ private fun heroGradient(budget: BudgetSnapshot): List<Color> =
         BudgetPace.Pace.ON_TRACK -> listOf(HeroGreenStart, HeroGreenEnd)
     }
 
+/**
+ * The pace colours, faded from one to the next. Tipping from on track to tight is exactly the
+ * moment worth noticing, and a jump cut is easy to miss while a change of colour is not.
+ */
+@Composable
+private fun animatedHeroGradient(budget: BudgetSnapshot): List<Color> {
+    val (start, end) = heroGradient(budget)
+    val a by animateColorAsState(start, Motion.change(Motion.LONG), label = "hero start")
+    val b by animateColorAsState(end, Motion.change(Motion.LONG), label = "hero end")
+    return listOf(a, b)
+}
+
 private val HeroGreenStart = Color(0xFF2E7D32)
 private val HeroGreenEnd = Color(0xFF1B5E20)
 private val HeroAmberStart = Color(0xFFB26A00)
@@ -139,12 +160,30 @@ private val HeroRedEnd = Color(0xFF5D1214)
  */
 @Composable
 private fun SpendingPaceRing(budget: BudgetSnapshot) {
-    val used = budgetUsedFraction(budget)
-    val elapsed = cycleElapsedFraction(budget)
-    if (used == null) return
+    val usedTarget = budgetUsedFraction(budget)
+    val elapsedTarget = cycleElapsedFraction(budget)
+    if (usedTarget == null) return
+
+    // Both arcs sweep from empty when the ring first appears, then glide to each new value:
+    // the grey arc (time gone) leads and the white one (money gone) follows, so the gap
+    // between them - which is the whole reading - opens up in front of you.
+    var appeared by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(Unit) { appeared = true }
+    val elapsedAnim by animateFloatAsState(
+        if (appeared) elapsedTarget ?: 0f else 0f,
+        Motion.settle(),
+        label = "cycle gone",
+    )
+    val usedAnim by animateFloatAsState(
+        if (appeared) usedTarget else 0f,
+        Motion.settle(),
+        label = "budget used",
+    )
+    val used = usedAnim
+    val elapsed = elapsedTarget?.let { elapsedAnim }
 
     val spoken = paceCaption(budget)
-        ?: "${(used * 100).toInt()} percent of the budget used"
+        ?: "${(usedTarget * 100).toInt()} percent of the budget used"
     Box(
         contentAlignment = Alignment.Center,
         modifier = Modifier
@@ -622,7 +661,7 @@ private fun HeroBudgetCard(budget: BudgetSnapshot) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(Brush.linearGradient(heroGradient(budget)))
+                .background(Brush.linearGradient(animatedHeroGradient(budget)))
                 .padding(20.dp),
         ) {
             Column {
@@ -652,30 +691,40 @@ private fun HeroBudgetCard(budget: BudgetSnapshot) {
                             style = MaterialTheme.typography.labelMedium,
                             color = Color.White.copy(alpha = 0.85f),
                         )
-                        Text(
-                            formatMoney(budget.availableToSpend, budget.baseCurrency),
+                        RollingAmount(
+                            minor = budget.availableToSpend,
+                            currency = budget.baseCurrency,
                             style = MaterialTheme.typography.headlineLarge,
                             fontWeight = FontWeight.Bold,
                             color = Color.White,
                         )
-                        paceCaption(budget)?.let { caption ->
-                            Text(
-                                caption,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = Color.White.copy(alpha = 0.8f),
-                            )
+                        // Fades rather than jumps, so a change of verdict is noticed.
+                        AnimatedContent(
+                            targetState = paceCaption(budget),
+                            transitionSpec = {
+                                fadeIn(Motion.arrive()).togetherWith(fadeOut(Motion.change(Motion.SHORT)))
+                            },
+                            label = "pace caption",
+                        ) { caption ->
+                            if (caption != null) {
+                                Text(
+                                    caption,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color.White.copy(alpha = 0.8f),
+                                )
+                            }
                         }
                     }
                 }
                 Spacer(Modifier.height(12.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
-                    HeroStat("Spent today", formatMoney(budget.spentToday, budget.baseCurrency))
-                    HeroStat("This cycle", formatMoney(budget.spentThisCycle, budget.baseCurrency))
+                    HeroStat("Spent today", budget.spentToday, budget.baseCurrency)
+                    HeroStat("This cycle", budget.spentThisCycle, budget.baseCurrency)
                     // Deliberately beside the budget rather than folded into it: the two
                     // answer different questions and the gap between them is the point.
                     if (budget.budgetModel == BudgetModel.SHOW_BOTH) {
                         budget.potBalanceMinor?.let { pot ->
-                            HeroStat("In the account", formatMoney(pot, budget.baseCurrency))
+                            HeroStat("In the account", pot, budget.baseCurrency)
                         }
                     }
                 }
@@ -777,15 +826,16 @@ private fun HeroBudgetCard(budget: BudgetSnapshot) {
 }
 
 @Composable
-private fun HeroStat(label: String, value: String) {
+private fun HeroStat(label: String, minor: Long, currency: String) {
     Column {
         Text(
             label,
             style = MaterialTheme.typography.labelSmall,
             color = Color.White.copy(alpha = 0.8f),
         )
-        Text(
-            value,
+        RollingAmount(
+            minor = minor,
+            currency = currency,
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold,
             color = Color.White,

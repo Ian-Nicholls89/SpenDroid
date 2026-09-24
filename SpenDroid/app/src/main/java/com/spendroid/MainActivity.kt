@@ -10,6 +10,19 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.togetherWith
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
+import androidx.compose.ui.graphics.graphicsLayer
+import com.spendroid.ui.theme.Motion
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -100,6 +113,9 @@ class MainActivity : ComponentActivity() {
                 var showManualDialog by remember { mutableStateOf(false) }
 
                 val navigate: (AppScreen) -> Unit = { target -> screenRoute = target.route }
+                // Keeps each tab's scroll position and fields while another is showing, so
+                // coming back is coming back rather than starting again.
+                val tabStates = rememberSaveableStateHolder()
 
                 if (state.hasCredentials) {
                     Scaffold(
@@ -128,11 +144,31 @@ class MainActivity : ComponentActivity() {
                                         selected = destination == screen,
                                         onClick = { navigate(destination) },
                                         icon = {
+                                            // A small bounce on arrival says which tab took the
+                                            // tap; Material's own pill slides across beneath it.
+                                            val bounce = remember { Animatable(1f) }
+                                            val selected = destination == screen
+                                            LaunchedEffect(selected) {
+                                                if (selected) {
+                                                    bounce.snapTo(0.8f)
+                                                    bounce.animateTo(
+                                                        1f,
+                                                        spring(
+                                                            dampingRatio = Spring.DampingRatioMediumBouncy,
+                                                            stiffness = Spring.StiffnessMedium,
+                                                        ),
+                                                    )
+                                                }
+                                            }
                                             // Label is hidden unless selected, so the icon
                                             // has to carry the name for a screen reader.
                                             Icon(
                                                 destination.icon,
                                                 contentDescription = destination.title,
+                                                modifier = Modifier.graphicsLayer {
+                                                    scaleX = bounce.value
+                                                    scaleY = bounce.value
+                                                },
                                             )
                                         },
                                         label = { Text(destination.shortTitle) },
@@ -147,72 +183,88 @@ class MainActivity : ComponentActivity() {
                                 .fillMaxSize()
                                 .padding(padding),
                         ) {
-                            when (screen) {
-                                AppScreen.Home -> HomeScreen(
-                                    state = state,
-                                    onRefresh = viewModel::refresh,
-                                    onRelink = viewModel::relink,
-                                    onSeeAllTransactions = { navigate(AppScreen.Spending) },
-                                    onSetBudgetGoal = viewModel::setBudgetGoal,
-                                    onLinkBank = { showLinkDialog = true },
-                                )
+                            // Material's fade-through: the old screen gets out of the way fast and
+                            // the new one settles in, so the change reads as "somewhere else"
+                            // without the sideways slide that implies an order between tabs.
+                            AnimatedContent(
+                                targetState = screen,
+                                transitionSpec = {
+                                    (
+                                        fadeIn(Motion.arrive(Motion.MEDIUM - 90, delay = 90)) +
+                                            scaleIn(Motion.arrive(Motion.MEDIUM - 90, delay = 90), initialScale = 0.94f)
+                                        ).togetherWith(fadeOut(tween(90, easing = Motion.EmphasizedAccelerate)))
+                                },
+                                label = "tab",
+                            ) { shown ->
+                                tabStates.SaveableStateProvider(shown.route) {
+                                    when (shown) {
+                                        AppScreen.Home -> HomeScreen(
+                                            state = state,
+                                            onRefresh = viewModel::refresh,
+                                            onRelink = viewModel::relink,
+                                            onSeeAllTransactions = { navigate(AppScreen.Spending) },
+                                            onSetBudgetGoal = viewModel::setBudgetGoal,
+                                            onLinkBank = { showLinkDialog = true },
+                                        )
 
-                                AppScreen.Spending -> SpendingScreen(
-                                    state = state,
-                                    onRefresh = viewModel::refresh,
-                                    onToggleRecurring = viewModel::toggleRecurringOnly,
-                                    onToggleInternal = viewModel::toggleInternalTransfers,
-                                    onQueryChange = viewModel::setTransactionQuery,
-                                    onAccountFilter = viewModel::setAccountFilter,
-                                    onOverrideCategory = viewModel::overrideCategory,
-                                    onAlwaysCategorise = viewModel::alwaysCategorise,
-                                    onMarkTransfer = viewModel::markAsTransfer,
-                                    onMarkCardPayment = viewModel::markAsCardPayment,
-                                    onCategoryFilter = viewModel::setCategoryFilter,
-                                    onSetBudgetGoal = viewModel::setBudgetGoal,
-                                )
+                                        AppScreen.Spending -> SpendingScreen(
+                                            state = state,
+                                            onRefresh = viewModel::refresh,
+                                            onToggleRecurring = viewModel::toggleRecurringOnly,
+                                            onToggleInternal = viewModel::toggleInternalTransfers,
+                                            onQueryChange = viewModel::setTransactionQuery,
+                                            onAccountFilter = viewModel::setAccountFilter,
+                                            onOverrideCategory = viewModel::overrideCategory,
+                                            onAlwaysCategorise = viewModel::alwaysCategorise,
+                                            onMarkTransfer = viewModel::markAsTransfer,
+                                            onMarkCardPayment = viewModel::markAsCardPayment,
+                                            onCategoryFilter = viewModel::setCategoryFilter,
+                                            onSetBudgetGoal = viewModel::setBudgetGoal,
+                                        )
 
-                                AppScreen.Accounts -> AccountManagementScreen(
-                                    state = state,
-                                    onLink = viewModel::link,
-                                    onRelink = viewModel::relink,
-                                    onUpdateAccount = viewModel::updateAccount,
-                                    balanceTypesFor = viewModel::balanceTypesFor,
-                                    onSeeTransactions = { account ->
-                                        viewModel.setAccountFilter(account.id)
-                                        navigate(AppScreen.Spending)
-                                    },
-                                )
+                                        AppScreen.Accounts -> AccountManagementScreen(
+                                            state = state,
+                                            onLink = viewModel::link,
+                                            onRelink = viewModel::relink,
+                                            onUpdateAccount = viewModel::updateAccount,
+                                            balanceTypesFor = viewModel::balanceTypesFor,
+                                            onSeeTransactions = { account ->
+                                                viewModel.setAccountFilter(account.id)
+                                                navigate(AppScreen.Spending)
+                                            },
+                                        )
 
-                                AppScreen.Rules -> RecurringRulesScreen(
-                                    rules = state.rules,
-                                    manualRules = state.manualRules,
-                                    ignored = state.ignoredRules,
-                                    onToggle = viewModel::setRuleIgnored,
-                                    onAddManual = { showManualDialog = true },
-                                    primaryIncomeKey = state.primaryIncomeKey,
-                                    onSetPrimaryIncome = viewModel::setPrimaryIncome,
-                                    budget = state.budget,
-                                    overrides = state.ruleOverrides,
-                                    onSetOverride = viewModel::setRuleOverride,
-                                    holidays = state.bankHolidays,
-                                )
+                                        AppScreen.Rules -> RecurringRulesScreen(
+                                            rules = state.rules,
+                                            manualRules = state.manualRules,
+                                            ignored = state.ignoredRules,
+                                            onToggle = viewModel::setRuleIgnored,
+                                            onAddManual = { showManualDialog = true },
+                                            primaryIncomeKey = state.primaryIncomeKey,
+                                            onSetPrimaryIncome = viewModel::setPrimaryIncome,
+                                            budget = state.budget,
+                                            overrides = state.ruleOverrides,
+                                            onSetOverride = viewModel::setRuleOverride,
+                                            holidays = state.bankHolidays,
+                                        )
 
-                                AppScreen.Settings -> SettingsScreen(
-                                    state = state,
-                                    onSave = viewModel::saveSecret,
-                                    onSetBudgetModel = viewModel::setBudgetModel,
-                                    onSetCardTiming = viewModel::setCardTiming,
-                                    onExport = viewModel::exportTo,
-                                    onImport = viewModel::importFrom,
-                                    onClearData = viewModel::clearData,
-                                    onCheckUpdate = viewModel::checkForUpdate,
-                                    onOpenInstallSettings = viewModel::openInstallPermissionSettings,
-                                    secretId = viewModel.secretIdValue.collectAsStateWithLifecycle().value,
-                                    secretKey = viewModel.secretKeyValue.collectAsStateWithLifecycle().value,
-                                    notificationTime = viewModel.notificationTime.collectAsStateWithLifecycle().value,
-                                    onSaveNotificationTime = viewModel::saveNotificationTime,
-                                )
+                                        AppScreen.Settings -> SettingsScreen(
+                                            state = state,
+                                            onSave = viewModel::saveSecret,
+                                            onSetBudgetModel = viewModel::setBudgetModel,
+                                            onSetCardTiming = viewModel::setCardTiming,
+                                            onExport = viewModel::exportTo,
+                                            onImport = viewModel::importFrom,
+                                            onClearData = viewModel::clearData,
+                                            onCheckUpdate = viewModel::checkForUpdate,
+                                            onOpenInstallSettings = viewModel::openInstallPermissionSettings,
+                                            secretId = viewModel.secretIdValue.collectAsStateWithLifecycle().value,
+                                            secretKey = viewModel.secretKeyValue.collectAsStateWithLifecycle().value,
+                                            notificationTime = viewModel.notificationTime.collectAsStateWithLifecycle().value,
+                                            onSaveNotificationTime = viewModel::saveNotificationTime,
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
