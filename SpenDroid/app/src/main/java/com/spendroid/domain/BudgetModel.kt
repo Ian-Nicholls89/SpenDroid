@@ -23,8 +23,8 @@ enum class BudgetModel(val label: String, val explanation: String) {
      */
     ROLLOVER(
         "Carry the balance over",
-        "What you started the cycle with is added to this cycle's budget, so a surplus " +
-            "carries forward and a shortfall follows you.",
+        "What is in the account you are paid into, less what is still due before your next " +
+            "income. A surplus carries forward and a shortfall follows you.",
     ),
 
     /**

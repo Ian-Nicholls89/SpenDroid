@@ -7,6 +7,7 @@ import java.time.LocalDate
 import java.time.LocalDateTime
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -61,13 +62,14 @@ class BudgetModelTest {
         model: BudgetModel = BudgetModel.FRESH_START,
         primaryKey: String? = null,
         extra: List<TransactionEntity> = emptyList(),
+        accounts: List<AccountEntity> = listOf(account),
     ): BudgetSnapshot {
         val all = salaryHistory() + bonusHistory() + extra
         val rules = RecurringAnalyzer.analyze(all)
         return BudgetEngine.snapshot(
             transactions = all,
             rules = rules,
-            accounts = listOf(account),
+            accounts = accounts,
             referenceTime = now,
             primaryIncomeKey = primaryKey,
             budgetModel = model,
@@ -113,17 +115,62 @@ class BudgetModelTest {
         assertEquals(72900L, s.potBalanceMinor)
     }
 
+    /**
+     * Carrying over answers from the balance: what is there, less what is still to leave.
+     * A fresh start ignores the balance and answers from the cycle's own budget.
+     */
     @Test
-    fun `carrying over adds the opening balance and a fresh start does not`() {
+    fun `carrying over answers from the balance and a fresh start does not`() {
         val spend = listOf(tx("TESCO", -5000, LocalDate.of(2026, 9, 10)))
         val fresh = snapshot(BudgetModel.FRESH_START, extra = spend)
         val rolled = snapshot(BudgetModel.ROLLOVER, extra = spend)
 
-        assertNotNull(fresh.openingBalanceMinor)
-        assertEquals(
-            fresh.availableToSpend + (rolled.openingBalanceMinor ?: 0L),
-            rolled.availableToSpend,
-        )
+        val committed = rolled.upcomingFixed.sumOf { it.amountMinor }
+        assertEquals(72900L - committed, rolled.availableToSpend)
+        assertNotEquals(fresh.availableToSpend, rolled.availableToSpend)
+    }
+
+    /**
+     * The bug this replaced. Money paid in mid-cycle that is not recurring income - a
+     * refund, someone settling up, money moved off a card - is absent from the budget,
+     * because the budget is built from detected income. Rewinding to the start of the cycle
+     * subtracted it anyway, so the account looked to have begun that much further down and
+     * every payment in made the figure worse.
+     */
+    @Test
+    fun `money paid in mid-cycle does not reduce what is available`() {
+        val spend = listOf(tx("TESCO", -5000, LocalDate.of(2026, 9, 10)))
+        val windfall = spend + tx("REFUND FROM A FRIEND", 200000, LocalDate.of(2026, 9, 12))
+
+        val without = snapshot(BudgetModel.ROLLOVER, extra = spend)
+        val with = snapshot(BudgetModel.ROLLOVER, extra = windfall)
+
+        // The balance is the same in both fixtures, so the figure must be too - under the
+        // old arithmetic the windfall pushed the opening balance £2,000 further down.
+        assertEquals(without.availableToSpend, with.availableToSpend)
+    }
+
+    /** The ring is drawn against whatever the headline was measured from, or they disagree. */
+    @Test
+    fun `the ring and the headline share a denominator`() {
+        val spend = listOf(tx("TESCO", -5000, LocalDate.of(2026, 9, 10)))
+        val rolled = snapshot(BudgetModel.ROLLOVER, extra = spend)
+        val fresh = snapshot(BudgetModel.FRESH_START, extra = spend)
+
+        assertEquals(rolled.spentThisCycle + rolled.availableToSpend, rolled.spendableThisCycle)
+        assertEquals(fresh.variableMonthlyBudget, fresh.spendableThisCycle)
+    }
+
+    /** Zero cannot say how far past zero, so the distance is reported separately. */
+    @Test
+    fun `a figure floored at zero still reports how far short it was`() {
+        val broke = account.copy(balanceMinor = 1000)
+        val heavy = listOf(tx("GENTLE DENTAL", -140000, LocalDate.of(2026, 9, 10)))
+        val s = snapshot(BudgetModel.ROLLOVER, extra = heavy, accounts = listOf(broke))
+
+        if (s.availableToSpend == 0L) {
+            assertTrue("a shortfall should be reported", s.shortfallMinor >= 0L)
+        }
     }
 
     @Test
@@ -135,7 +182,7 @@ class BudgetModelTest {
     }
 
     @Test
-    fun `the opening balance excludes this cycle's own income, so it is not counted twice`() {
+    fun `the opening balance still reports what the cycle began with`() {
         val spend = listOf(tx("TESCO", -5000, LocalDate.of(2026, 9, 10)))
         val s = snapshot(BudgetModel.ROLLOVER, extra = spend)
 

@@ -28,9 +28,11 @@ object BudgetPace {
 
     /** Spent so far as a fraction of the cycle's variable budget. */
     fun usedFraction(budget: BudgetSnapshot): Float? {
-        if (budget.variableMonthlyBudget <= 0L) return null
-        return (budget.spentThisCycle.toFloat() / budget.variableMonthlyBudget.toFloat())
-            .coerceIn(0f, 1f)
+        // Whatever the headline figure was measured from, so the two agree.
+        val against = budget.spendableThisCycle.takeIf { it > 0L }
+            ?: budget.variableMonthlyBudget.takeIf { it > 0L }
+            ?: return null
+        return (budget.spentThisCycle.toFloat() / against.toFloat()).coerceIn(0f, 1f)
     }
 
     /** How far through the pay cycle today is, as a fraction. */

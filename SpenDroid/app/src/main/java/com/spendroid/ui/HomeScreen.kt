@@ -667,13 +667,21 @@ private fun HeroBudgetCard(budget: BudgetSnapshot) {
                     }
                 }
                 if (budget.budgetModel == BudgetModel.ROLLOVER) {
-                    budget.openingBalanceMinor?.let { opening ->
+                    budget.potBalanceMinor?.let { pot ->
                         Text(
-                            "Includes ${formatMoney(opening, "GBP")} carried in at the start of the cycle",
+                            "${formatMoney(pot, "GBP")} in the account, less what is due before payday",
                             style = MaterialTheme.typography.labelSmall,
                             color = Color.White.copy(alpha = 0.8f),
                         )
                     }
+                }
+                // Zero cannot say how far past zero, and the difference matters.
+                if (budget.shortfallMinor > 0L) {
+                    Text(
+                        "${formatMoney(budget.shortfallMinor, "GBP")} short of covering what is still to come out",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color.White.copy(alpha = 0.9f),
+                    )
                 }
                 if (budget.designationLost) {
                     Spacer(Modifier.height(8.dp))

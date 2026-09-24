@@ -101,6 +101,13 @@ data class BudgetSnapshot(
     val potAccountId: String? = null,
     /** What was in the pot when the cycle began, derived by rewinding today's balance. */
     val openingBalanceMinor: Long? = null,
+    /**
+     * What [availableToSpend] was measured against. The ring and the headline have to share
+     * this, or they describe the same cycle differently.
+     */
+    val spendableThisCycle: Long = 0L,
+    /** How far below nothing the figure landed before it was floored at zero. */
+    val shortfallMinor: Long = 0L,
     /** What is in the pot now. */
     val potBalanceMinor: Long? = null,
     /** True when the user picked the income that sets the cycle, rather than it being guessed. */

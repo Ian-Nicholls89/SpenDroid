@@ -202,11 +202,37 @@ object BudgetEngine {
         }
 
         val freshStart = variableBudget - spentThisCycle - upcomingTotal
-        val availableToSpend = when (budgetModel) {
+
+        /**
+         * Carrying over is answered from the balance itself: what is in the account, less
+         * what is already committed before the next income arrives.
+         *
+         * It used to add a rewound opening balance to the budget instead, which counted
+         * money asymmetrically. Anything paid in mid-cycle that was not recurring income -
+         * a refund, a transfer from someone, money moved off a card - is absent from the
+         * budget, because the budget is built from detected income. But rewinding to the
+         * start subtracted it, so the account looked to have begun the cycle that much
+         * further down. The shortfall a payment implied was counted; the payment that
+         * resolved it was not, and every windfall made the figure worse.
+         */
+        val rollover = potBalance?.let { it - upcomingTotal }
+
+        val uncapped = when (budgetModel) {
             BudgetModel.FRESH_START, BudgetModel.SHOW_BOTH -> freshStart
-            // What was already there is spendable too, so it joins this cycle's budget.
-            BudgetModel.ROLLOVER -> freshStart + (openingBalance ?: 0L)
-        }.coerceAtLeast(0L)
+            // No balance to work from means no carry to report; the budget is all there is.
+            BudgetModel.ROLLOVER -> rollover ?: freshStart
+        }
+        val availableToSpend = uncapped.coerceAtLeast(0L)
+
+        /**
+         * The denominator the ring is drawn against, which has to be whatever the headline
+         * figure is measured from or the two contradict each other - the ring read 96% used
+         * beside a figure of nothing left, both correct and only one of them believable.
+         */
+        val spendableThisCycle = when (budgetModel) {
+            BudgetModel.FRESH_START, BudgetModel.SHOW_BOTH -> variableBudget
+            BudgetModel.ROLLOVER -> spentThisCycle + availableToSpend
+        }
 
         return BudgetSnapshot(
             averageMonthlyIncome = averageMonthlyIncome,
@@ -241,6 +267,9 @@ object BudgetEngine {
             budgetModel = budgetModel,
             potAccountId = potAccount?.id,
             openingBalanceMinor = openingBalance,
+            spendableThisCycle = spendableThisCycle,
+            // How far past nothing the figure really is, since zero cannot say.
+            shortfallMinor = if (uncapped < 0L) -uncapped else 0L,
             potBalanceMinor = potBalance,
             primaryIncomeDesignated = designated != null,
             designationLost = designationLost,
