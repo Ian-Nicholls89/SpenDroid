@@ -58,7 +58,7 @@ object CardWatch {
 
             // Only while still under: once past, the warning above already says so.
             val projected = bill.projectedMinor
-            if (projected != null && spent < cap && projected > cap) {
+            if (projected != null && spent < cap && CreditCardEngine.projectedOverCap(bill)) {
                 val k = key("pace")
                 standing += k
                 if (k !in alreadySent) {

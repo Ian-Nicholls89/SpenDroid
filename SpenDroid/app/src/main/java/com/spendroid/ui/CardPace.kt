@@ -28,6 +28,7 @@ fun cardPaceLine(bill: CreditCardEngine.CardBill): CardPaceLine? {
             add("$whose ${formatMoney(c, bill.currency)}")
         }
     }
-    val over = cap != null && (bill.unbilledMinor >= cap || (projected ?: 0L) > cap)
+    // The same test the notification uses, so the line is never red without a reason to say so.
+    val over = cap != null && (bill.unbilledMinor >= cap || CreditCardEngine.projectedOverCap(bill))
     return CardPaceLine(parts.joinToString(" · ").replaceFirstChar { it.uppercase() }, over)
 }

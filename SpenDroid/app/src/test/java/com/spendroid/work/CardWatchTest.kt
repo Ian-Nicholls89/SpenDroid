@@ -68,18 +68,70 @@ class CardWatchTest {
         assertEquals((8800L + 6200L) / 2, bill(history(), -4000).usualBillMinor)
     }
 
-    /** £15 in the four weeks to today, carried seventeen more days to the 10 October close. */
+    /**
+     * Thirteen days into a thirty-day statement with £15 spent: the daily rate is 13/30 this
+     * statement's own (£15 over 13 days) and 17/30 the usual bill's (£75 over 30 days).
+     */
     @Test
-    fun `the statement is projected at the recent rate`() {
+    fun `the projection leans on this statement as it goes on`() {
         val b = bill(history(), -4000)
         assertEquals(LocalDate.of(2026, 10, 10), b.nextStatementClose)
-        assertEquals(1500L + 1500L * 17 / 28, b.projectedMinor)
+        assertEquals(13, b.statementDaysElapsed)
+        val rate = (13.0 / 30) * (1500.0 / 13) + (17.0 / 30) * (7500.0 / 30)
+        assertEquals(1500L + Math.round(rate * 17), b.projectedMinor)
     }
 
+    /**
+     * The reported case. The day after a statement closes nothing has been spent, and the
+     * old four-week rate was last month's statement replayed - so a card read "on pace" to
+     * beat its usual bill on the strength of spending already billed.
+     */
     @Test
-    fun `a card with under a week of history is not projected`() {
-        val fresh = listOf(tx("2026-09-20", -1000))
-        assertNull(CreditCardEngine.projectStatement(fresh, emptySet(), 1000L, today, LocalDate.of(2026, 10, 10)))
+    fun `the day after a statement closes, the projection is the usual bill`() {
+        // A heavy month just billed - £115 against a usual £75 - and nothing since.
+        val quiet = history(tx("2026-09-05", -9000)).filterNot { it.bookingDate == "2026-09-15" }
+        val b = CreditCardEngine.analyze(quiet, listOf(card(-11500)), LocalDate.of(2026, 9, 11)).bills.single()
+
+        assertEquals(0L, b.unbilledMinor)
+        assertEquals(Math.round(7500.0 * 29 / 30 * 29 / 30), b.projectedMinor)
+        assertTrue(b.projectedMinor!! < b.usualBillMinor!!)
+        assertTrue(CardWatch.warnings(listOf(b), emptySet()).messages.isEmpty())
+        assertEquals(false, com.spendroid.ui.cardPaceLine(b)?.over)
+    }
+
+    /** With no usual bill to lean on, a statement needs a week of its own before it has a pace. */
+    @Test
+    fun `without a usual bill, under a week is not a pace`() {
+        assertNull(
+            CreditCardEngine.projectStatement(
+                soFar = 1000L,
+                usualMinor = null,
+                today = LocalDate.of(2026, 9, 14),
+                closedOn = LocalDate.of(2026, 9, 10),
+                closes = LocalDate.of(2026, 10, 10),
+            ),
+        )
+    }
+
+    /** Against the usual bill a little over is ordinary; a limit the user set is meant exactly. */
+    @Test
+    fun `a projection a little over the usual bill is not a warning`() {
+        val base = bill(history(), -4000)
+        val slightlyOver = base.copy(
+            projectedMinor = 7900L,
+            capMinor = 7500L,
+            capSource = CreditCardEngine.CapSource.USUAL,
+        )
+        assertEquals(false, CreditCardEngine.projectedOverCap(slightlyOver))
+        assertEquals(true, CreditCardEngine.projectedOverCap(slightlyOver.copy(capSource = CreditCardEngine.CapSource.USER)))
+    }
+
+    /** A pace from the first days of a statement is mostly guesswork, so it waits. */
+    @Test
+    fun `no pace warning in a statement's first week`() {
+        val base = bill(history(), -4000)
+        val early = base.copy(projectedMinor = 20000L, capMinor = 7500L, statementDaysElapsed = 3)
+        assertEquals(false, CreditCardEngine.projectedOverCap(early))
     }
 
     @Test
@@ -105,10 +157,10 @@ class CardWatchTest {
 
     @Test
     fun `heading over the limit is said while there is still time`() {
-        // £15 so far against £20, but on pace for about £24.
+        // £15 so far against £20, thirteen days in, on pace for about £47.58.
         val b = bill(history(), -4000, cap = 2000)
         val w = CardWatch.warnings(listOf(b), emptySet())
-        assertTrue(w.messages.single().startsWith("Tesco Card is on pace for about £24.10 by the 10 Oct statement"))
+        assertTrue(w.messages.single().startsWith("Tesco Card is on pace for about £47.58 by the 10 Oct statement"))
     }
 
     @Test

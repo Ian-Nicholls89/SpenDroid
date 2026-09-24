@@ -85,6 +85,8 @@ object CreditCardEngine {
         val cycleBillsChecked: Int?,
         /** When the statement now building closes. */
         val nextStatementClose: LocalDate? = null,
+        /** Days since the statement closed, which is how far into the new one today is. */
+        val statementDaysElapsed: Int? = null,
         /**
          * Where the statement now building is heading: what is on it so far, plus the recent
          * daily rate carried to its close. Null until there is enough history to have a rate.
@@ -217,8 +219,12 @@ object CreditCardEngine {
             }
 
             val nextClose = statementDay?.let { day -> statementClose?.let { onDay(it.plusMonths(1), day) } }
-            val projected = nextClose?.let { projectStatement(cardTxs, paymentIds, unbilled, today, it) }
             val usual = medianOf(payments.map { (cardTx, _) -> cardTx.amountMinor }.filter { it > 0L })
+            val projected = if (statementClose != null && nextClose != null) {
+                projectStatement(unbilled, usual, today, statementClose, nextClose)
+            } else {
+                null
+            }
             val cap = card.spendingCapMinor?.takeIf { it > 0L }
 
             bills += CardBill(
@@ -244,6 +250,7 @@ object CreditCardEngine {
                 cycleFitErrorMinor = fit?.averageErrorMinor,
                 cycleBillsChecked = fit?.billsChecked,
                 nextStatementClose = nextClose,
+                statementDaysElapsed = statementClose?.let { (today.toEpochDay() - it.toEpochDay()).toInt() },
                 projectedMinor = projected,
                 usualBillMinor = usual,
                 capMinor = cap ?: usual,
@@ -259,37 +266,52 @@ object CreditCardEngine {
     }
 
     /**
-     * Where the statement now building is heading, at the rate the card has been used lately.
+     * Where the statement now building is heading.
      *
-     * The rate is the last four weeks rather than this statement alone: three days into a
-     * statement, one big shop would otherwise project to a bill ten times the usual. Refunds
-     * net off, as they do on the bill; payments do not, as they settle the old statement.
-     * Under a week of history is not a rate, so there is no projection.
+     * The daily rate starts as the usual bill's and hands over to this statement's own as the
+     * statement goes on, in proportion to how much of it has passed. It used to be the last
+     * four weeks of card spending, which the day after a close is the statement just billed:
+     * a card with nothing on it read as on pace to beat its usual bill, on the strength of
+     * spending already paid for. Starting from the usual bill means a quiet start reads as
+     * ordinary, and a busy one pulls the figure up as the days bear it out.
+     *
+     * With no usual bill yet there is nothing to start from, so the statement needs a week
+     * of its own first.
      */
     internal fun projectStatement(
-        cardTxs: List<TransactionEntity>,
-        paymentIds: Set<String>,
         soFar: Long,
+        usualMinor: Long?,
         today: LocalDate,
+        closedOn: LocalDate,
         closes: LocalDate,
     ): Long? {
-        val earliest = cardTxs.mapNotNull { RecurringAnalyzer.parseBookingDate(it.bookingDate) }.minOrNull()
-            ?: return null
-        val windowStart = maxOf(earliest, today.minusDays(RATE_WINDOW_DAYS))
-        val windowDays = today.toEpochDay() - windowStart.toEpochDay()
-        if (windowDays < MIN_RATE_DAYS) return null
+        val cycleDays = (closes.toEpochDay() - closedOn.toEpochDay()).toDouble()
+        if (cycleDays <= 0.0) return null
+        val elapsed = (today.toEpochDay() - closedOn.toEpochDay()).toDouble().coerceIn(0.0, cycleDays)
+        val daysLeft = cycleDays - elapsed
 
-        val recent = cardTxs
-            .filter { tx ->
-                if (tx.transactionId in paymentIds) return@filter false
-                val date = RecurringAnalyzer.parseBookingDate(tx.bookingDate) ?: return@filter false
-                date.isAfter(windowStart) && !date.isAfter(today)
-            }
-            .sumOf { it.amountMinor }
-            .let { maxOf(0L, -it) }
+        val ownRate = if (elapsed > 0.0) soFar / elapsed else 0.0
+        val rate = if (usualMinor != null) {
+            val share = elapsed / cycleDays
+            share * ownRate + (1 - share) * (usualMinor / cycleDays)
+        } else {
+            if (elapsed < MIN_OWN_PACE_DAYS) return null
+            ownRate
+        }
+        return soFar + Math.round(rate * daysLeft)
+    }
 
-        val daysLeft = (closes.toEpochDay() - today.toEpochDay()).coerceAtLeast(0L)
-        return soFar + recent * daysLeft / windowDays
+    /**
+     * Whether a card's projection is worth a warning. Not in a statement's first week, when
+     * the pace is mostly guesswork. Against the usual bill, only past a tenth over, since a few
+     * pounds either side of usual is ordinary; a limit the user set is meant exactly.
+     */
+    fun projectedOverCap(bill: CardBill): Boolean {
+        val cap = bill.capMinor?.takeIf { it > 0L } ?: return false
+        val projected = bill.projectedMinor ?: return false
+        if ((bill.statementDaysElapsed ?: 0) < MIN_OWN_PACE_DAYS) return false
+        val line = if (bill.capSource == CapSource.USUAL) cap + cap / 10 else cap
+        return projected > line
     }
 
     /** The middle value, averaging the two middles of an even count. Null under two values. */
@@ -567,11 +589,8 @@ object CreditCardEngine {
 
     private const val PAYMENT_MATCH_DAYS = 5L
 
-    /** How far back the card's recent rate of spending is measured. */
-    private const val RATE_WINDOW_DAYS = 28L
-
-    /** Less history than this is not a rate worth projecting from. */
-    private const val MIN_RATE_DAYS = 7L
+    /** Days a statement needs before its own pace means much. */
+    private const val MIN_OWN_PACE_DAYS = 7
 
     /** UK cards typically fall due around three weeks after the statement closes. */
     private const val TYPICAL_PAYMENT_TERM_DAYS = 23L
