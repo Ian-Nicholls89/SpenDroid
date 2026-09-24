@@ -51,6 +51,10 @@ fun TransactionDetailSheet(
     onMarkCardPayment: (TransactionEntity, Boolean) -> Unit = { _, _ -> },
     cardPaymentKeys: Set<String> = emptySet(),
     creditCardAccountIds: Set<String> = emptySet(),
+    /** How many stored transactions share this one's payee and amount, this one included. */
+    similarCount: Int = 1,
+    groupMarkedAsTransfer: Boolean = false,
+    onMarkTransferGroup: (TransactionEntity, Boolean) -> Unit = { _, _ -> },
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val current =
@@ -155,6 +159,25 @@ fun TransactionDetailSheet(
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+
+            // A regular move between accounts should be said once, not every month: marking one
+            // occurrence left the rest - and next month's - counted as a commitment.
+            if (similarCount > 1 || groupMarkedAsTransfer) {
+                Spacer(Modifier.height(8.dp))
+                FilterChip(
+                    selected = groupMarkedAsTransfer,
+                    onClick = { onMarkTransferGroup(transaction, !groupMarkedAsTransfer) },
+                    label = { Text("Every payment like this ($similarCount so far)") },
+                )
+                Text(
+                    "Marks every ${formatMoney(kotlin.math.abs(transaction.amountMinor), transaction.currency)} " +
+                        "${if (transaction.amountMinor < 0) "to" else "from"} " +
+                        "${transaction.payee.tidyPayee().take(24)} as money moved between your accounts, " +
+                        "including ones that arrive later.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
 
             // Only a credit on a card raises the question, and only when its other leg was
             // never found - a payment from an account the app can see is matched already.

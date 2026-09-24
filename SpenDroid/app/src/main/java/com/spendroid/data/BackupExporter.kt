@@ -29,6 +29,7 @@ object BackupExporter {
         budgetGoals: List<BudgetGoalEntity>,
         categoryRules: List<CategoryRuleEntity>,
         ignoredRules: Set<String>,
+        transferGroups: Set<String> = emptySet(),
         ruleOverrides: List<RuleOverrideEntity> = emptyList(),
         /** The income chosen to set the cycle, and how the budget is worked out. */
         primaryIncomeKey: String? = null,
@@ -153,6 +154,7 @@ object BackupExporter {
         )
 
         root.put("ignoredRules", JSONArray(ignoredRules.toList()))
+        root.put("transferGroups", JSONArray(transferGroups.toList()))
 
         // Corrections to a detected rule's day are the user's own knowledge of their pay
         // and bills, and exist nowhere else.

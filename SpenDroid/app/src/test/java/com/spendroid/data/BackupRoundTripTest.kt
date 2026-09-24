@@ -80,6 +80,7 @@ class BackupRoundTripTest {
         categoryRules = listOf(CategoryRuleEntity("sainsburys", "GROCERIES", 1_700_000_000_000)),
         ignoredRules = setOf("OUT|GBP|15|netflix"),
         ruleOverrides = listOf(override),
+        transferGroups = setOf("OUT|GBP|500|monthly savings"),
         primaryIncomeKey = "IN|GBP|2500|acme ltd",
         budgetModel = "ROLLOVER",
         cardTiming = "AT_PURCHASE",
@@ -97,6 +98,7 @@ class BackupRoundTripTest {
         assertEquals(35000, restored.budgetGoals.first().limitMinor)
         assertEquals("GROCERIES", restored.categoryRules.first().category)
         assertEquals(listOf(override), restored.ruleOverrides)
+        assertEquals(setOf("OUT|GBP|500|monthly savings"), restored.transferGroups)
         assertEquals("IN|GBP|2500|acme ltd", restored.primaryIncomeKey)
         assertEquals("ROLLOVER", restored.budgetModel)
         assertEquals("AT_PURCHASE", restored.cardTiming)

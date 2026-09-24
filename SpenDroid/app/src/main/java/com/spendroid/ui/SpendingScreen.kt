@@ -39,6 +39,7 @@ fun SpendingScreen(
     onOverrideCategory: (TransactionEntity, Category?) -> Unit,
     onAlwaysCategorise: (TransactionEntity, Category) -> Unit,
     onMarkTransfer: (TransactionEntity, Boolean) -> Unit,
+    onMarkTransferGroup: (TransactionEntity, Boolean) -> Unit = { _, _ -> },
     onMarkCardPayment: (TransactionEntity, Boolean) -> Unit,
     onCategoryFilter: (Category?) -> Unit,
     onSetBudgetGoal: (Category, Long) -> Unit,
@@ -66,6 +67,7 @@ fun SpendingScreen(
                 onOverrideCategory = onOverrideCategory,
                 onAlwaysCategorise = onAlwaysCategorise,
                 onMarkTransfer = onMarkTransfer,
+                onMarkTransferGroup = onMarkTransferGroup,
                 onMarkCardPayment = onMarkCardPayment,
                 onCategoryFilter = onCategoryFilter,
             )

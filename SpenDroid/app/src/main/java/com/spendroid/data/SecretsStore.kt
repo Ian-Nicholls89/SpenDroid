@@ -54,6 +54,7 @@ class SecretsStore(private val context: Context) {
         val NOTIFIED_GOAL_WARNINGS = stringPreferencesKey("notified_goal_warnings")
         val NOTIFIED_LARGE_TRANSACTIONS = stringPreferencesKey("notified_large_transactions")
         val NOTIFIED_CARD_WARNINGS = stringPreferencesKey("notified_card_warnings")
+        val TRANSFER_GROUPS = stringPreferencesKey("transfer_groups")
         val REFRESH_TOKEN = stringPreferencesKey("refresh_token")
         val NOTIFICATION_TIME = stringPreferencesKey("notification_time")
         val LAST_NOTIFIED_VERSION = intPreferencesKey("last_notified_version_code")
@@ -109,6 +110,28 @@ class SecretsStore(private val context: Context) {
         context.dataStore.edit { prefs ->
             prefs[Keys.NOTIFIED_LARGE_TRANSACTIONS] = JSONArray(keys.toList()).toString()
         }
+    }
+
+    /**
+     * Regular payments the user has said are moves between their own accounts, by the same
+     * key recurring detection groups them under. Every occurrence, past and future, follows.
+     */
+    val transferGroups: Flow<Set<String>> = context.dataStore.data
+        .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
+        .map { prefs -> parseStringSet(prefs[Keys.TRANSFER_GROUPS]) }
+
+    suspend fun setTransferGroup(key: String, isTransfer: Boolean) {
+        val current = parseStringSet(context.dataStore.data.first()[Keys.TRANSFER_GROUPS]).toMutableSet()
+        if (isTransfer) current.add(key) else current.remove(key)
+        context.dataStore.edit { prefs -> prefs[Keys.TRANSFER_GROUPS] = JSONArray(current.toList()).toString() }
+    }
+
+    /** Adds to the set rather than replacing it, so a restore cannot undo a choice. */
+    suspend fun addTransferGroups(keys: Set<String>) {
+        if (keys.isEmpty()) return
+        val current = parseStringSet(context.dataStore.data.first()[Keys.TRANSFER_GROUPS]).toMutableSet()
+        current.addAll(keys)
+        context.dataStore.edit { prefs -> prefs[Keys.TRANSFER_GROUPS] = JSONArray(current.toList()).toString() }
     }
 
     /** Card warnings already sent, as "card|what|statementClose". */
@@ -190,6 +213,7 @@ class SecretsStore(private val context: Context) {
             prefs.remove(Keys.REFRESH_TOKEN)
             prefs.remove(Keys.CONNECTIONS)
             prefs.remove(Keys.IGNORED_RULES)
+            prefs.remove(Keys.TRANSFER_GROUPS)
             prefs.remove(Keys.PRIMARY_INCOME_KEY)
         }
     }

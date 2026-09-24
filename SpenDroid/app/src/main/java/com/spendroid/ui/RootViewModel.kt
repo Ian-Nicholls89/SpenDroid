@@ -104,6 +104,8 @@ data class RootUiState(
     val primaryIncomeKey: String? = null,
     val budgetModel: BudgetModel = BudgetModel.FRESH_START,
     val cardTiming: CardTiming = CardTiming.AT_BILL,
+    /** Regular payments marked as transfers once for every occurrence. */
+    val transferGroups: Set<String> = emptySet(),
     val ruleOverrides: Map<String, RuleOverrideEntity> = emptyMap(),
     val bankHolidays: Set<java.time.LocalDate> = emptySet(),
     /** Name of today's bank holiday, when today is one. */
@@ -376,6 +378,14 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
     fun markAsTransfer(tx: TransactionEntity, isTransfer: Boolean) {
         viewModelScope.launch {
             repo.setInternalTransfer(tx.accountId, tx.transactionId, isTransfer)
+            loadLocal()
+        }
+    }
+
+    /** Marks every payment like this one - past and still to come - as a transfer, or undoes it. */
+    fun markGroupAsTransfer(tx: TransactionEntity, isTransfer: Boolean) {
+        viewModelScope.launch {
+            repo.setTransferGroup(RecurringAnalyzer.groupKey(tx), isTransfer)
             loadLocal()
         }
     }
@@ -677,6 +687,7 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
                 primaryIncomeKey = primaryIncomeKey,
                 budgetModel = budgetModel,
                 cardTiming = cardTiming,
+                transferGroups = repo.transferGroups.first(),
                 connections = repo.connections.first(),
                 versionName = versionName,
                 versionCode = versionCode,

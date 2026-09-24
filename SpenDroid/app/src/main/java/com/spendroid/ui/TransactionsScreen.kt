@@ -52,6 +52,7 @@ import com.spendroid.data.db.CategoryRuleEntity
 import com.spendroid.data.db.TransactionEntity
 import com.spendroid.domain.Category
 import com.spendroid.domain.CategoryEngine
+import com.spendroid.domain.RecurringAnalyzer
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -73,6 +74,7 @@ fun TransactionsScreen(
     onOverrideCategory: (TransactionEntity, Category?) -> Unit,
     onAlwaysCategorise: (TransactionEntity, Category) -> Unit,
     onMarkTransfer: (TransactionEntity, Boolean) -> Unit,
+    onMarkTransferGroup: (TransactionEntity, Boolean) -> Unit = { _, _ -> },
     onMarkCardPayment: (TransactionEntity, Boolean) -> Unit,
     onCategoryFilter: (Category?) -> Unit,
 ) {
@@ -352,6 +354,10 @@ fun TransactionsScreen(
     }
 
     selected?.let { tx ->
+        val group = remember(tx) { RecurringAnalyzer.groupKey(tx) }
+        val similar = remember(tx, state.transactions) {
+            state.transactions.count { RecurringAnalyzer.groupKey(it) == group }
+        }
         TransactionDetailSheet(
             transaction = tx,
             userRules = state.categoryRules,
@@ -361,6 +367,9 @@ fun TransactionsScreen(
             onOverrideCategory = { t, c -> onOverrideCategory(t, c); selected = null },
             onAlwaysCategorise = { t, c -> onAlwaysCategorise(t, c); selected = null },
             onMarkTransfer = { t, v -> onMarkTransfer(t, v); selected = null },
+            similarCount = similar,
+            groupMarkedAsTransfer = group in state.transferGroups,
+            onMarkTransferGroup = { t, v -> onMarkTransferGroup(t, v); selected = null },
             onMarkCardPayment = { t, v -> onMarkCardPayment(t, v); selected = null },
         )
     }

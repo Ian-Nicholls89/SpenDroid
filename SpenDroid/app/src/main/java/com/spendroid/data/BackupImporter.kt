@@ -27,6 +27,7 @@ object BackupImporter {
         val categoryRules: List<CategoryRuleEntity>,
         val ignoredRules: Set<String>,
         val ruleOverrides: List<RuleOverrideEntity> = emptyList(),
+        val transferGroups: Set<String> = emptySet(),
         /** Null when the backup predates settings being kept, so nothing is overwritten. */
         val primaryIncomeKey: String? = null,
         val budgetModel: String? = null,
@@ -144,6 +145,10 @@ object BackupImporter {
             )
         }
         val settings = root.optJSONObject("settings")
+        val transferGroups = mutableSetOf<String>()
+        root.optJSONArray("transferGroups")?.let { arr ->
+            for (i in 0 until arr.length()) transferGroups.add(arr.getString(i))
+        }
 
         return Restored(
             accounts = accounts,
@@ -153,6 +158,7 @@ object BackupImporter {
             categoryRules = categoryRules,
             ignoredRules = ignored,
             ruleOverrides = ruleOverrides,
+            transferGroups = transferGroups,
             primaryIncomeKey = settings?.nullableString("primaryIncomeKey"),
             budgetModel = settings?.nullableString("budgetModel"),
             cardTiming = settings?.nullableString("cardTiming"),

@@ -58,6 +58,13 @@ class GoCardlessRepository private constructor(
     val notifiedGoalWarnings: Flow<Set<String>> = secrets.notifiedGoalWarnings
     val notifiedLargeTransactions: Flow<Set<String>> = secrets.notifiedLargeTransactions
     val notifiedCardWarnings: Flow<Set<String>> = secrets.notifiedCardWarnings
+    val transferGroups: Flow<Set<String>> = secrets.transferGroups
+
+    /** Marks or unmarks every payment like this one as a transfer, and re-applies at once. */
+    suspend fun setTransferGroup(key: String, isTransfer: Boolean) {
+        secrets.setTransferGroup(key, isTransfer)
+        analyzeTransactions()
+    }
     val manualRules: Flow<List<ManualRecurringRuleEntity>> = dao.activeManualRulesFlow()
     val notificationTime: Flow<String> = secrets.notificationTime
     val lastNotifiedVersionCode: Flow<Int> = secrets.lastNotifiedVersionCode
@@ -481,6 +488,11 @@ class GoCardlessRepository private constructor(
             dao.updateInternalTransfer(tx1.accountId, tx1.transactionId)
             dao.updateInternalTransfer(tx2.accountId, tx2.transactionId)
         }
+        // Regular payments the user has said are transfers: every occurrence follows,
+        // including ones that arrive later, so the choice is made once rather than monthly.
+        inTransferGroups(allTx, secrets.transferGroups.first()).forEach { tx ->
+            dao.updateInternalTransfer(tx.accountId, tx.transactionId)
+        }
         // The same from-scratch rule as transfers: a payment that stopped recurring stops
         // being flagged, rather than keeping the flag it was once given.
         dao.clearRecurring()
@@ -507,6 +519,7 @@ class GoCardlessRepository private constructor(
         budgetGoals = dao.budgetGoals(),
         categoryRules = dao.categoryRules(),
         ignoredRules = secrets.ignoredRules.first(),
+        transferGroups = secrets.transferGroups.first(),
         ruleOverrides = dao.ruleOverrides(),
         primaryIncomeKey = secrets.primaryIncomeKey.first(),
         budgetModel = secrets.budgetModel.first(),
@@ -525,6 +538,7 @@ class GoCardlessRepository private constructor(
         restored.budgetGoals.forEach { dao.upsertBudgetGoal(it) }
         restored.categoryRules.forEach { dao.upsertCategoryRule(it) }
         secrets.addIgnoredRules(restored.ignoredRules)
+        secrets.addTransferGroups(restored.transferGroups)
         restored.ruleOverrides.forEach { dao.upsertRuleOverride(it) }
         restored.primaryIncomeKey?.let { secrets.savePrimaryIncomeKey(it) }
         restored.budgetModel?.let { secrets.saveBudgetModel(it) }
@@ -772,6 +786,20 @@ class GoCardlessRepository private constructor(
          * out every row the user had ruled on, either way, and a £500 move to savings whose
          * receiving side had been marked by hand turned into a £500 monthly commitment.
          */
+        /**
+         * The transactions a marked group covers. A row the user individually said is not a
+         * transfer keeps their word: the narrower decision wins over the broader one.
+         */
+        internal fun inTransferGroups(
+            transactions: List<TransactionEntity>,
+            groups: Set<String>,
+        ): List<TransactionEntity> {
+            if (groups.isEmpty()) return emptyList()
+            return transactions.filter { tx ->
+                RecurringAnalyzer.groupKey(tx) in groups && !(tx.transferOverridden && !tx.isInternalTransfer)
+            }
+        }
+
         internal fun transferCandidates(
             transactions: List<TransactionEntity>,
             excludedAccounts: Set<String>,
@@ -797,28 +825,53 @@ class GoCardlessRepository private constructor(
         internal fun detectInternalTransfers(
             transactions: List<TransactionEntity>,
         ): List<Pair<TransactionEntity, TransactionEntity>> {
-            val byAccount = transactions.groupBy { it.accountId }
-            val accountIds = byAccount.keys.toList()
+            // A fixed order, whatever order the accounts arrived in. It used to follow the
+            // order they last synced, so the same data could pair one way at 16:26 and another
+            // at 16:50 - and did, turning a transfer into a £500 commitment.
+            val sorted = transactions.sortedWith(
+                compareBy<TransactionEntity>({ it.bookingDate }, { it.accountId }, { it.transactionId }),
+            )
+            val credits = sorted.filter { it.amountMinor > 0 }.groupBy { it.amountMinor }
+            val debits = sorted.filter { it.amountMinor < 0 }.groupBy { -it.amountMinor }
+
+            fun creditsFor(debit: TransactionEntity) = credits[-debit.amountMinor].orEmpty()
+                .filter { it.accountId != debit.accountId && couldOffset(debit, it) }
+            fun debitsFor(credit: TransactionEntity) = debits[credit.amountMinor].orEmpty()
+                .filter { it.accountId != credit.accountId && couldOffset(it, credit) }
+
             val pairs = mutableListOf<Pair<TransactionEntity, TransactionEntity>>()
             val used = mutableSetOf<String>()
+            fun open(list: List<TransactionEntity>) = list.filter { transferKey(it) !in used }
 
-            for (i in accountIds.indices) {
-                for (j in (i + 1) until accountIds.size) {
-                    val txs1 = byAccount[accountIds[i]] ?: emptyList()
-                    val txs2 = byAccount[accountIds[j]] ?: emptyList()
+            /**
+             * The credit this debit pairs with, when the pairing is certain from both ends.
+             *
+             * One-sided certainty was the old rule, and it is not enough: a credit that two
+             * debits could claim was taken by whichever came first, even when its reference
+             * named the other. So a pair needs each side to be the other's only match - or,
+             * failing that, the references to single out one pairing on both sides.
+             */
+            fun partner(debit: TransactionEntity): TransactionEntity? {
+                val options = open(creditsFor(debit))
+                options.singleOrNull()?.let { credit ->
+                    if (open(debitsFor(credit)).singleOrNull() == debit) return credit
+                }
+                val named = options.filter { referencesAgree(debit, it) }.singleOrNull() ?: return null
+                val namedBack = open(debitsFor(named)).filter { referencesAgree(it, named) }.singleOrNull()
+                return named.takeIf { namedBack == debit }
+            }
 
-                    for (tx1 in txs1) {
-                        if (transferKey(tx1) in used) continue
-                        val candidates = txs2.filter {
-                            transferKey(it) !in used && couldOffset(tx1, it)
-                        }
-                        val match = candidates.singleOrNull()
-                            ?: candidates.singleOrNull { referencesAgree(tx1, it) }
-                            ?: continue
-                        pairs.add(tx1 to match)
-                        used.add(transferKey(tx1))
-                        used.add(transferKey(match))
-                    }
+            // Each pair made can settle another that was ambiguous only because of it.
+            var progress = true
+            while (progress) {
+                progress = false
+                for (debit in sorted) {
+                    if (debit.amountMinor >= 0 || transferKey(debit) in used) continue
+                    val credit = partner(debit) ?: continue
+                    pairs += debit to credit
+                    used += transferKey(debit)
+                    used += transferKey(credit)
+                    progress = true
                 }
             }
             return pairs

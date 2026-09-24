@@ -233,6 +233,7 @@ class MainActivity : ComponentActivity() {
                                             onOverrideCategory = viewModel::overrideCategory,
                                             onAlwaysCategorise = viewModel::alwaysCategorise,
                                             onMarkTransfer = viewModel::markAsTransfer,
+                                            onMarkTransferGroup = viewModel::markGroupAsTransfer,
                                             onMarkCardPayment = viewModel::markAsCardPayment,
                                             onCategoryFilter = viewModel::setCategoryFilter,
                                             onSetBudgetGoal = viewModel::setBudgetGoal,
