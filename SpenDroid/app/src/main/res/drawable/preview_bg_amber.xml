@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Widget picker preview only: the live widgets draw themselves through Glance. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <gradient android:angle="315" android:startColor="#FFB26A00" android:endColor="#FF7A4600" />
+    <corners android:radius="18dp" />
+</shape>

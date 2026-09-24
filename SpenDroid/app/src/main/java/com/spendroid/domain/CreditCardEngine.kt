@@ -89,6 +89,8 @@ object CreditCardEngine {
         val statementDaysElapsed: Int? = null,
         /** True once a payment has landed since the statement closed. */
         val statementPaid: Boolean = false,
+        /** Bills already paid, oldest first, as (date paid, amount): the card's history. */
+        val pastBills: List<Pair<LocalDate, Long>> = emptyList(),
         /**
          * Where the statement now building is heading: what is on it so far, plus the recent
          * daily rate carried to its close. Null until there is enough history to have a rate.
@@ -253,6 +255,13 @@ object CreditCardEngine {
                 cycleBillsChecked = fit?.billsChecked,
                 nextStatementClose = nextClose,
                 statementPaid = statementPaid,
+                pastBills = payments
+                    .mapNotNull { (cardTx, _) ->
+                        val date = RecurringAnalyzer.parseBookingDate(cardTx.bookingDate) ?: return@mapNotNull null
+                        (date to cardTx.amountMinor).takeIf { cardTx.amountMinor > 0L }
+                    }
+                    .sortedBy { it.first }
+                    .takeLast(PAST_BILLS_SHOWN),
                 statementDaysElapsed = statementClose?.let { (today.toEpochDay() - it.toEpochDay()).toInt() },
                 projectedMinor = projected,
                 usualBillMinor = usual,
@@ -608,6 +617,9 @@ object CreditCardEngine {
     }
 
     private const val PAYMENT_MATCH_DAYS = 5L
+
+    /** Enough past bills to see a pattern, few enough to read on a phone. */
+    private const val PAST_BILLS_SHOWN = 6
 
     /** Days a statement needs before its own pace means much. */
     private const val MIN_OWN_PACE_DAYS = 7

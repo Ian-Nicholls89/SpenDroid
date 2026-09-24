@@ -171,4 +171,13 @@ class CardWatchTest {
         assertTrue("card|0.8|2026-08-10" !in w.keys)
         assertTrue(w.messages.isNotEmpty())
     }
+
+    /** The history behind the panel: bills paid, oldest first. */
+    @Test
+    fun `past bills are the payments made, in order`() {
+        assertEquals(
+            listOf(LocalDate.of(2026, 8, 1) to 8800L, LocalDate.of(2026, 9, 1) to 6200L),
+            bill(history(), -4000).pastBills,
+        )
+    }
 }

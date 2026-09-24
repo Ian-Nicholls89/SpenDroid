@@ -2,6 +2,12 @@ package com.spendroid.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.graphics.Color
+import com.spendroid.ui.theme.Motion
+import com.spendroid.ui.theme.entrance
+import kotlinx.coroutines.delay
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.layout.PaddingValues
@@ -91,43 +97,21 @@ fun TransactionsScreen(
         state.budget?.confirmedSettlementKeys,
         state.categoryFilter,
     ) {
-        val query = state.transactionQuery.tidyPayee().lowercase()
-        val settlements = state.budget?.confirmedSettlementKeys.orEmpty()
-        val payers = state.budget?.cardPayerKeys.orEmpty()
-        state.transactions
-            .filter { tx ->
-                val id = "${tx.accountId}|${tx.transactionId}"
-                // Paying a card posts a credit on the card and a debit on the account that
-                // paid. They are one event, and the debit is the half that matters: it is
-                // the money actually leaving. The credit only restates it, in green, in a
-                // list of spending - so it is dropped unless you are looking at that card's
-                // own transactions, where its ledger has to balance.
-                val duplicateHalf = id in settlements &&
-                    state.accountFilter != tx.accountId &&
-                    !state.showInternalTransfers
-                // Pairing may also have flagged the paying debit as a transfer. By shape it
-                // is one; by consequence it is spending, so it stays visible.
-                val realOutflow = id in payers
-
-                !duplicateHalf &&
-                    (state.accountFilter == null || tx.accountId == state.accountFilter) &&
-                    (
-                        state.categoryFilter == null ||
-                            CategoryEngine.classify(
-                                tx,
-                                state.categoryRules,
-                                state.budget?.cardPaymentKeys.orEmpty(),
-                                state.budget?.creditCardAccountIds.orEmpty(),
-                            ) == state.categoryFilter
-                        ) &&
-                    (!state.showRecurringOnly || tx.isRecurring) &&
-                    (state.showInternalTransfers || !tx.isInternalTransfer || realOutflow) &&
-                    (
-                        query.isEmpty() ||
-                            tx.payee.tidyPayee().lowercase().contains(query) ||
-                            tx.description?.tidyPayee()?.lowercase()?.contains(query) == true
-                        )
-            }
+        visibleTransactions(
+            transactions = state.transactions,
+            filters = ListFilters(
+                recurringOnly = state.showRecurringOnly,
+                transfersOnly = state.showInternalTransfers,
+                query = state.transactionQuery,
+                accountFilter = state.accountFilter,
+                categoryFilter = state.categoryFilter,
+            ),
+            categoryRules = state.categoryRules,
+            settlements = state.budget?.confirmedSettlementKeys.orEmpty(),
+            payers = state.budget?.cardPayerKeys.orEmpty(),
+            cardPaymentKeys = state.budget?.cardPaymentKeys.orEmpty(),
+            creditCardAccountIds = state.budget?.creditCardAccountIds.orEmpty(),
+        )
             .take(DISPLAY_TRANSACTION_LIMIT)
     }
 
@@ -137,6 +121,20 @@ fun TransactionsScreen(
             .groupBy { it.bookingDate.take(7) }
             .toList()
             .sortedByDescending { it.first }
+    }
+
+    // The first screenful arrives in order the first time the list is shown; after that rows
+    // are simply there, so scrolling never replays anything.
+    var arrived by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        delay(900)
+        arrived = true
+    }
+    val arrivalOrder = remember(months) {
+        months.flatMap { it.second }
+            .take(14)
+            .withIndex()
+            .associate { (i, tx) -> "${tx.accountId}|${tx.transactionId}" to i }
     }
 
     PullToRefreshBox(
@@ -261,7 +259,7 @@ fun TransactionsScreen(
                     FilterChip(
                         selected = state.showInternalTransfers,
                         onClick = onToggleInternal,
-                        label = { Text("Internal transfers") },
+                        label = { Text("Transfers only") },
                     )
                 }
             }
@@ -274,7 +272,7 @@ fun TransactionsScreen(
                             onQueryChange("")
                             onAccountFilter(null)
                             if (state.showRecurringOnly) onToggleRecurring()
-                            if (!state.showInternalTransfers) onToggleInternal()
+                            if (state.showInternalTransfers) onToggleInternal()
                         },
                     )
                 }
@@ -315,27 +313,37 @@ fun TransactionsScreen(
 
                 months.forEach { (monthKey, rows) ->
                     item(key = "header-$monthKey") {
-                        MonthHeader(monthKey, rows)
+                        Box(modifier = Modifier.animateItem()) { MonthHeader(monthKey, rows) }
                     }
                     items(rows, key = { "${it.accountId}|${it.transactionId}" }) { tx ->
-                        TransactionRow(
-                            tx = tx,
-                            userRules = state.categoryRules,
-                            // Redundant once the list is filtered to a single account.
-                            accountName = if (state.accountFilter == null) {
-                                accountNames[tx.accountId]
-                            } else {
-                                null
-                            },
-                            cardPaymentKeys = state.budget?.cardPaymentKeys.orEmpty(),
-                            creditCardAccountIds =
-                                state.budget?.creditCardAccountIds.orEmpty(),
-                            onClick = { selected = tx },
-                        )
-                        HorizontalDivider(
-                            modifier = Modifier.padding(start = 64.dp),
-                            color = MaterialTheme.colorScheme.outlineVariant,
-                        )
+                        val rowKey = "${tx.accountId}|${tx.transactionId}"
+                        // Re-sorted or re-filtered rows glide to their new place rather than
+                        // jumping, which is how a re-categorised row can be followed.
+                        Column(
+                            modifier = Modifier
+                                .animateItem()
+                                .entrance(if (arrived) null else arrivalOrder[rowKey]),
+                        ) {
+                            TransactionRow(
+                                tx = tx,
+                                userRules = state.categoryRules,
+                                // Redundant once the list is filtered to a single account.
+                                accountName = if (state.accountFilter == null) {
+                                    accountNames[tx.accountId]
+                                } else {
+                                    null
+                                },
+                                cardPaymentKeys = state.budget?.cardPaymentKeys.orEmpty(),
+                                creditCardAccountIds =
+                                    state.budget?.creditCardAccountIds.orEmpty(),
+                                onClick = { selected = tx },
+                                isNew = rowKey in state.newTransactionKeys,
+                            )
+                            HorizontalDivider(
+                                modifier = Modifier.padding(start = 64.dp),
+                                color = MaterialTheme.colorScheme.outlineVariant,
+                            )
+                        }
                     }
                 }
             }
@@ -438,8 +446,23 @@ private fun TransactionRow(
     cardPaymentKeys: Set<String> = emptySet(),
     creditCardAccountIds: Set<String> = emptySet(),
     onClick: () -> Unit,
+    isNew: Boolean = false,
 ) {
     val category = CategoryEngine.classify(tx, userRules, cardPaymentKeys, creditCardAccountIds)
+    // A row the latest sync brought glows briefly, then settles like the rest.
+    var glowing by remember(tx.transactionId) { mutableStateOf(isNew) }
+    LaunchedEffect(isNew) {
+        if (isNew) {
+            glowing = true
+            delay(1600)
+            glowing = false
+        }
+    }
+    val glow by animateColorAsState(
+        if (glowing) MaterialTheme.colorScheme.primary.copy(alpha = 0.16f) else Color.Transparent,
+        Motion.change(Motion.LONG),
+        label = "new row",
+    )
     // Counted like any other, but it can still change or vanish, so it says so.
     val pendingNote = if (tx.isPending) "Pending" else null
     val visual = category.visual
@@ -450,6 +473,7 @@ private fun TransactionRow(
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(min = MinTouchTarget)
+            .background(glow)
             .clickable(onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 10.dp)
             // One announcement for the row rather than four disconnected fragments.
@@ -502,5 +526,65 @@ private fun TransactionRow(
             textAlign = TextAlign.End,
             modifier = Modifier.widthIn(min = 84.dp),
         )
+    }
+}
+
+/** The list's narrowing controls: each one, when on, shows less. */
+internal data class ListFilters(
+    val recurringOnly: Boolean = false,
+    val transfersOnly: Boolean = false,
+    val query: String = "",
+    val accountFilter: String? = null,
+    val categoryFilter: Category? = null,
+)
+
+/**
+ * What the transactions list shows.
+ *
+ * Transfers between your own accounts are left out of the ordinary list, since they are
+ * neither spending nor income. "Transfers only" used to be a switch that put them back
+ * alongside everything else - labelled like "Recurring only", which narrows, but doing the
+ * opposite, so with a handful among hundreds of rows it looked as though it did nothing.
+ * Now it narrows too: on, the list is the transfers and nothing else.
+ */
+internal fun visibleTransactions(
+    transactions: List<TransactionEntity>,
+    filters: ListFilters,
+    categoryRules: List<CategoryRuleEntity> = emptyList(),
+    settlements: Set<String> = emptySet(),
+    payers: Set<String> = emptySet(),
+    cardPaymentKeys: Set<String> = emptySet(),
+    creditCardAccountIds: Set<String> = emptySet(),
+): List<TransactionEntity> {
+    val query = filters.query.tidyPayee().lowercase()
+    return transactions.filter { tx ->
+        val id = "${tx.accountId}|${tx.transactionId}"
+        // Paying a card posts a credit on the card and a debit on the account that paid.
+        // They are one event, and the debit is the half that matters: it is the money
+        // actually leaving. The credit only restates it, in green, in a list of spending -
+        // so it is dropped unless you are looking at that card's own ledger, which has to
+        // balance, or at transfers, which it is one half of.
+        val duplicateHalf = id in settlements &&
+            filters.accountFilter != tx.accountId &&
+            !filters.transfersOnly
+        // Pairing may also have flagged the paying debit as a transfer. By shape it is one;
+        // by consequence it is spending, so the ordinary list keeps it.
+        val realOutflow = id in payers
+        val transfer = tx.isInternalTransfer || id in settlements
+
+        !duplicateHalf &&
+            (filters.accountFilter == null || tx.accountId == filters.accountFilter) &&
+            (
+                filters.categoryFilter == null ||
+                    CategoryEngine.classify(tx, categoryRules, cardPaymentKeys, creditCardAccountIds) ==
+                    filters.categoryFilter
+                ) &&
+            (!filters.recurringOnly || tx.isRecurring) &&
+            (if (filters.transfersOnly) transfer else !tx.isInternalTransfer || realOutflow) &&
+            (
+                query.isEmpty() ||
+                    tx.payee.tidyPayee().lowercase().contains(query) ||
+                    tx.description?.tidyPayee()?.lowercase()?.contains(query) == true
+                )
     }
 }

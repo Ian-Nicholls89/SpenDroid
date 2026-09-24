@@ -63,6 +63,25 @@ import com.spendroid.data.db.TransactionEntity
 import com.spendroid.domain.RecurringAnalyzer
 import java.time.LocalDate
 import com.spendroid.domain.TrendBasis
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.animateIntAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.key
+import androidx.compose.ui.graphics.PathMeasure
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import com.spendroid.ui.theme.Motion
+import com.spendroid.ui.theme.rememberReveal
+import com.spendroid.ui.theme.revealWhenSeen
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /**
  * Where spending is analysed, as opposed to the dashboard, which says where the cycle
@@ -242,7 +261,8 @@ private fun CategoryBreakdownCard(
 ) {
     var editing by remember { mutableStateOf<Category?>(null) }
     val goalFor = remember(goals) { goals.associateBy { it.category } }
-    Card(modifier = Modifier.fillMaxWidth()) {
+    val reveal = rememberReveal()
+    Card(modifier = Modifier.fillMaxWidth().revealWhenSeen(reveal)) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text(
                 "Spending by category",
@@ -252,7 +272,7 @@ private fun CategoryBreakdownCard(
             Spacer(Modifier.height(8.dp))
             // Label above the bar rather than beside it: the old fixed 120.dp column clipped
             // "Bills & Utilities" and "Entertainment" on narrow screens.
-            breakdown.forEach { total ->
+            breakdown.forEach { total -> key(total.category) {
                 val maxAmount = breakdown.firstOrNull()?.amountMinor ?: 1L
                 val fraction = if (maxAmount > 0) total.amountMinor.toFloat() / maxAmount.toFloat() else 0f
                 val visual = total.category.visual
@@ -298,16 +318,21 @@ private fun CategoryBreakdownCard(
                         )
                     }
                     Spacer(Modifier.height(4.dp))
+                    // Against the cap when one is set, otherwise against the largest category -
+                    // the bar answers a different question in each case. It fills when first
+                    // seen, and slides to its new length when the period changes.
+                    val target = if (goal != null && goal > 0L) {
+                        (total.amountMinor.toFloat() / goal.toFloat()).coerceIn(0f, 1f)
+                    } else {
+                        fraction
+                    }
+                    val filled by animateFloatAsState(
+                        if (reveal.shown) target else 0f,
+                        tween(Motion.LONG + breakdown.indexOf(total) * 40, easing = Motion.EmphasizedDecelerate),
+                        label = "category bar",
+                    )
                     LinearProgressIndicator(
-                        // Against the cap when one is set, otherwise against the largest
-                        // category - the bar answers a different question in each case.
-                        progress = {
-                            if (goal != null && goal > 0L) {
-                                (total.amountMinor.toFloat() / goal.toFloat()).coerceIn(0f, 1f)
-                            } else {
-                                fraction
-                            }
-                        },
+                        progress = { filled },
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(8.dp),
@@ -322,7 +347,7 @@ private fun CategoryBreakdownCard(
                         )
                     }
                 }
-            }
+            } }
             editing?.let { category ->
                 BudgetGoalDialog(
                     category = category,
@@ -391,8 +416,8 @@ private fun TrendsCard(trends: TrendSummary, categoryTrends: List<CategoryTrend>
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Spacer(Modifier.height(10.dp))
-                categoryTrends.take(5).forEach { trend ->
-                    CategorySparkline(trend)
+                categoryTrends.take(5).forEachIndexed { index, trend ->
+                    CategorySparkline(trend, index)
                     Spacer(Modifier.height(12.dp))
                 }
             }
@@ -438,71 +463,174 @@ private fun IncomeSpendingChart(months: List<MonthSummary>) {
     val gridColor = MaterialTheme.colorScheme.outlineVariant
     val axisText = MaterialTheme.colorScheme.onSurfaceVariant
     val surface = MaterialTheme.colorScheme.surface
+    val guideColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
     val currency = months.last().currency
     val textMeasurer = rememberTextMeasurer()
     val labelStyle = MaterialTheme.typography.labelSmall.copy(color = axisText)
+    val haptics = LocalHapticFeedback.current
 
     val peak = months.maxOf { maxOf(it.income, it.spending) }.coerceAtLeast(1L)
     // Round the top of the scale up to something a label can name honestly.
     val step = niceStep(peak)
     val top = ((peak + step - 1) / step) * step
 
-    Canvas(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(180.dp),
-    ) {
-        val left = 8.dp.toPx()
-        val right = size.width - 8.dp.toPx()
-        val bottom = size.height - 18.dp.toPx()
-        val chartTop = 10.dp.toPx()
-
-        fun x(i: Int) = left + i * (right - left) / (months.size - 1)
-        fun y(v: Long) = bottom - (v.toFloat() / top.toFloat()) * (bottom - chartTop)
-
-        var line = 0L
-        while (line <= top) {
-            drawLine(
-                color = gridColor,
-                start = Offset(left, y(line)),
-                end = Offset(right, y(line)),
-                strokeWidth = 1f,
-            )
-            line += step
-        }
-
-        listOf(SeriesSpending to months.map { it.spending }, SeriesIncome to months.map { it.income })
-            .forEach { (color, values) ->
-                val path = Path().apply {
-                    values.forEachIndexed { i, v ->
-                        if (i == 0) moveTo(x(i), y(v)) else lineTo(x(i), y(v))
-                    }
-                }
-                drawPath(path, color, style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round))
-                // The last point is the one being asked about, so it alone is marked.
-                val lastIndex = values.lastIndex
-                drawCircle(surface, radius = 5.dp.toPx(), center = Offset(x(lastIndex), y(values[lastIndex])))
-                drawCircle(color, radius = 3.5.dp.toPx(), center = Offset(x(lastIndex), y(values[lastIndex])))
-            }
-
-        val first = textMeasurer.measure(months.first().month.monthLabel(), labelStyle)
-        val last = textMeasurer.measure(months.last().month.monthLabel(), labelStyle)
-        drawText(first, topLeft = Offset(left, bottom + 4.dp.toPx()))
-        drawText(last, topLeft = Offset(right - last.size.width, bottom + 4.dp.toPx()))
+    // Each line traces itself left to right the first time the chart is seen - spending
+    // first, income a beat after - and the end dots arrive with their lines.
+    val reveal = rememberReveal()
+    val spendDraw = remember { Animatable(0f) }
+    val incomeDraw = remember { Animatable(0f) }
+    LaunchedEffect(reveal.shown) {
+        if (!reveal.shown) return@LaunchedEffect
+        launch { spendDraw.animateTo(1f, tween(900, easing = Motion.EmphasizedDecelerate)) }
+        delay(120)
+        incomeDraw.animateTo(1f, tween(900, easing = Motion.EmphasizedDecelerate))
     }
 
-    Spacer(Modifier.height(8.dp))
-    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        Text(
-            "Income ${formatMoney(months.last().income, currency)}",
-            style = MaterialTheme.typography.labelLarge.copy(fontFeatureSettings = "tnum"),
-            color = SeriesIncome,
-        )
-        Text(
-            "Spending ${formatMoney(months.last().spending, currency)}",
-            style = MaterialTheme.typography.labelLarge.copy(fontFeatureSettings = "tnum"),
-            color = SeriesSpending,
-        )
+    // When the figures change - a sync lands - the lines bend into their new shape rather
+    // than being redrawn, so it is visible what moved. Points are matched by month.
+    var from by remember { mutableStateOf(months) }
+    var previousTop by remember { mutableStateOf(top) }
+    val reshape = remember { Animatable(1f) }
+    LaunchedEffect(months) {
+        if (from == months) return@LaunchedEffect
+        reshape.snapTo(0f)
+        reshape.animateTo(1f, tween(Motion.LONG, easing = Motion.Emphasized))
+        // Settled: this shape and scale are where the next change starts from.
+        from = months
+        previousTop = top
+    }
+    val previous = remember(from) { from.associateBy { it.month } }
+
+    // Touch or drag along the chart to read any month exactly.
+    var selected by remember(months) { mutableStateOf<Int?>(null) }
+
+    Column(modifier = Modifier.revealWhenSeen(reveal)) {
+        Canvas(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(180.dp)
+                .semantics {
+                    contentDescription = "Income and spending over ${months.size} months. " +
+                        months.joinToString("; ") {
+                            "${it.month.monthLabel()}: income ${formatMoney(it.income, currency)}, " +
+                                "spending ${formatMoney(it.spending, currency)}"
+                        }
+                }
+                .pointerInput(months) {
+                    fun indexAt(x: Float): Int {
+                        val left = 8.dp.toPx()
+                        val right = size.width - 8.dp.toPx()
+                        val t = ((x - left) / (right - left)).coerceIn(0f, 1f)
+                        return Math.round(t * (months.size - 1))
+                    }
+                    fun choose(x: Float) {
+                        val i = indexAt(x)
+                        if (i != selected) {
+                            selected = i
+                            haptics.performHapticFeedback(HapticFeedbackType.SegmentTick)
+                        }
+                    }
+                    awaitEachGesture {
+                        val down = awaitFirstDown()
+                        choose(down.position.x)
+                        do {
+                            val event = awaitPointerEvent()
+                            val change = event.changes.firstOrNull() ?: break
+                            if (change.pressed) {
+                                choose(change.position.x)
+                                // Only a sideways drag is the chart's; up and down still scrolls.
+                                if (kotlin.math.abs(change.position.x - change.previousPosition.x) >
+                                    kotlin.math.abs(change.position.y - change.previousPosition.y)
+                                ) {
+                                    change.consume()
+                                }
+                            }
+                        } while (event.changes.any { it.pressed })
+                    }
+                },
+        ) {
+            val left = 8.dp.toPx()
+            val right = size.width - 8.dp.toPx()
+            val bottom = size.height - 18.dp.toPx()
+            val chartTop = 10.dp.toPx()
+            val t = reshape.value
+            val scaleTop = previousTop + (top - previousTop) * t
+
+            fun x(i: Int) = left + i * (right - left) / (months.size - 1)
+            fun y(v: Float) = bottom - (v / scaleTop.toFloat()) * (bottom - chartTop)
+            fun value(i: Int, pick: (MonthSummary) -> Long): Float {
+                val now = pick(months[i]).toFloat()
+                val was = previous[months[i].month]?.let(pick)?.toFloat() ?: now
+                return was + (now - was) * t
+            }
+
+            var line = 0L
+            while (line <= top) {
+                drawLine(
+                    color = gridColor,
+                    start = Offset(left, y(line.toFloat())),
+                    end = Offset(right, y(line.toFloat())),
+                    strokeWidth = 1f,
+                )
+                line += step
+            }
+
+            listOf(
+                Triple(SeriesSpending, spendDraw.value) { m: MonthSummary -> m.spending },
+                Triple(SeriesIncome, incomeDraw.value) { m: MonthSummary -> m.income },
+            ).forEach { (color, drawn, pick) ->
+                if (drawn <= 0f) return@forEach
+                val full = Path().apply {
+                    months.indices.forEach { i ->
+                        if (i == 0) moveTo(x(i), y(value(i, pick))) else lineTo(x(i), y(value(i, pick)))
+                    }
+                }
+                val measure = PathMeasure().apply { setPath(full, false) }
+                val shown = Path()
+                measure.getSegment(0f, measure.length * drawn, shown, true)
+                drawPath(shown, color, style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round))
+                // The last point is the one being asked about, so it alone is marked - and it
+                // arrives as its line does.
+                val dot = ((drawn - 0.85f) / 0.15f).coerceIn(0f, 1f)
+                if (dot > 0f) {
+                    val last = Offset(x(months.lastIndex), y(value(months.lastIndex, pick)))
+                    drawCircle(surface, radius = 5.dp.toPx() * dot, center = last)
+                    drawCircle(color, radius = 3.5.dp.toPx() * dot, center = last)
+                }
+            }
+
+            selected?.let { i ->
+                val gx = x(i)
+                drawLine(guideColor, Offset(gx, chartTop), Offset(gx, bottom), strokeWidth = 1.dp.toPx())
+                listOf(SeriesSpending to value(i) { it.spending }, SeriesIncome to value(i) { it.income })
+                    .forEach { (color, v) ->
+                        drawCircle(surface, radius = 6.dp.toPx(), center = Offset(gx, y(v)))
+                        drawCircle(color, radius = 4.dp.toPx(), center = Offset(gx, y(v)))
+                    }
+            }
+
+            val first = textMeasurer.measure(months.first().month.monthLabel(), labelStyle)
+            val last = textMeasurer.measure(months.last().month.monthLabel(), labelStyle)
+            drawText(first, topLeft = Offset(left, bottom + 4.dp.toPx()))
+            drawText(last, topLeft = Offset(right - last.size.width, bottom + 4.dp.toPx()))
+        }
+
+        Spacer(Modifier.height(8.dp))
+        // The reading beneath follows the touch, and falls back to the latest month.
+        val shown = months[selected ?: months.lastIndex]
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(
+                (if (selected != null) "${shown.month.monthLabel()} · " else "") +
+                    "Income ${formatMoney(shown.income, currency)}",
+                style = MaterialTheme.typography.labelLarge.copy(fontFeatureSettings = "tnum"),
+                color = SeriesIncome,
+            )
+            Text(
+                "Spending ${formatMoney(shown.spending, currency)}",
+                style = MaterialTheme.typography.labelLarge.copy(fontFeatureSettings = "tnum"),
+                color = SeriesSpending,
+            )
+        }
     }
 }
 
@@ -514,7 +642,7 @@ private fun IncomeSpendingChart(months: List<MonthSummary>) {
  * colour alone is not something everyone can read.
  */
 @Composable
-private fun CategorySparkline(trend: CategoryTrend) {
+private fun CategorySparkline(trend: CategoryTrend, index: Int = 0) {
     val visual = trend.category.visual
     val change = trend.change
     val rising = change != null && change > 0.02f
@@ -525,7 +653,23 @@ private fun CategorySparkline(trend: CategoryTrend) {
         else -> MaterialTheme.colorScheme.onSurfaceVariant
     }
 
-    Column(modifier = Modifier.fillMaxWidth()) {
+    // Each line traces in when it comes into view, a beat after the one above, and the
+    // percentage counts up alongside it.
+    val reveal = rememberReveal()
+    val drawn = remember { Animatable(0f) }
+    LaunchedEffect(reveal.shown) {
+        if (!reveal.shown) return@LaunchedEffect
+        delay(index * 60L)
+        drawn.animateTo(1f, tween(700, easing = Motion.EmphasizedDecelerate))
+    }
+    val percent = ((change ?: 0f).let { kotlin.math.abs(it) } * 100).toInt()
+    val shownPercent by animateIntAsState(
+        if (reveal.shown) percent else 0,
+        tween(700, delayMillis = index * 60, easing = Motion.EmphasizedDecelerate),
+        label = "trend percent",
+    )
+
+    Column(modifier = Modifier.fillMaxWidth().revealWhenSeen(reveal)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(
                 modifier = Modifier
@@ -550,8 +694,8 @@ private fun CategorySparkline(trend: CategoryTrend) {
             Text(
                 when {
                     change == null -> "new"
-                    rising -> "+${((change ?: 0f).let { kotlin.math.abs(it) } * 100).toInt()}%"
-                    falling -> "−${((change ?: 0f).let { kotlin.math.abs(it) } * 100).toInt()}%"
+                    rising -> "+$shownPercent%"
+                    falling -> "−$shownPercent%"
                     else -> "steady"
                 },
                 style = MaterialTheme.typography.labelLarge.copy(fontFeatureSettings = "tnum"),
@@ -565,7 +709,7 @@ private fun CategorySparkline(trend: CategoryTrend) {
                 .fillMaxWidth()
                 .height(28.dp),
         ) {
-            if (values.size < 2) return@Canvas
+            if (values.size < 2 || drawn.value <= 0f) return@Canvas
             val lo = values.min()
             val hi = values.max()
             val span = (hi - lo).coerceAtLeast(1L).toFloat()
@@ -576,10 +720,14 @@ private fun CategorySparkline(trend: CategoryTrend) {
                     ((v - lo) / span) * (size.height - 4.dp.toPx())
                 if (i == 0) path.moveTo(px, py) else path.lineTo(px, py)
             }
-            drawPath(path, lineColor, style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round))
+            val measure = PathMeasure().apply { setPath(path, false) }
+            val shown = Path()
+            measure.getSegment(0f, measure.length * drawn.value, shown, true)
+            drawPath(shown, lineColor, style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round))
+            val dot = ((drawn.value - 0.85f) / 0.15f).coerceIn(0f, 1f)
             val lastY = size.height - 2.dp.toPx() -
                 ((values.last() - lo) / span) * (size.height - 4.dp.toPx())
-            drawCircle(lineColor, radius = 3.dp.toPx(), center = Offset(size.width, lastY))
+            if (dot > 0f) drawCircle(lineColor, radius = 3.dp.toPx() * dot, center = Offset(size.width, lastY))
         }
         Spacer(Modifier.height(2.dp))
         Text(

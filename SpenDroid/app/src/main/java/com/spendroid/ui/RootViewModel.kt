@@ -106,6 +106,8 @@ data class RootUiState(
     val cardTiming: CardTiming = CardTiming.AT_BILL,
     /** Regular payments marked as transfers once for every occurrence. */
     val transferGroups: Set<String> = emptySet(),
+    /** "accountId|transactionId" of rows that arrived with the latest load, for a brief highlight. */
+    val newTransactionKeys: Set<String> = emptySet(),
     val ruleOverrides: Map<String, RuleOverrideEntity> = emptyMap(),
     val bankHolidays: Set<java.time.LocalDate> = emptySet(),
     /** Name of today's bank holiday, when today is one. */
@@ -644,6 +646,15 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
 
     private suspend fun loadLocal() {
         val all = repo.transactions()
+        // What this load brought that the last one did not. Empty on the first load, which is
+        // everything and so nothing worth pointing at.
+        val before = _state.value.transactions
+        val newKeys = if (before.isEmpty()) {
+            emptySet()
+        } else {
+            val seen = before.mapTo(HashSet()) { "${it.accountId}|${it.transactionId}" }
+            all.map { "${it.accountId}|${it.transactionId}" }.filterNot { it in seen }.toSet()
+        }
         val detectedRules = RecurringAnalyzer.analyze(all)
         val ignored = repo.ignoredRules.first()
         val manualRules = repo.manualRules.first()
@@ -688,6 +699,7 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
                 budgetModel = budgetModel,
                 cardTiming = cardTiming,
                 transferGroups = repo.transferGroups.first(),
+                newTransactionKeys = newKeys,
                 connections = repo.connections.first(),
                 versionName = versionName,
                 versionCode = versionCode,

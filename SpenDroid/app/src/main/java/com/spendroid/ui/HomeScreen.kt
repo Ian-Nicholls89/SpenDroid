@@ -6,6 +6,19 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathMeasure
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.text.drawText
+import androidx.compose.ui.text.rememberTextMeasurer
+import com.spendroid.ui.theme.rememberReveal
+import com.spendroid.ui.theme.revealWhenSeen
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
@@ -45,7 +58,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -249,16 +261,24 @@ private fun SpendingPaceRing(budget: BudgetSnapshot) {
  */
 @Composable
 private fun CardBillCard(bill: CreditCardEngine.CardBill) {
+    // Opens to show the card's past statements; the bar fills and a warning pulses when the
+    // panel is first seen, not while it is still below the fold.
+    var open by rememberSaveable(bill.cardAccountId) { mutableStateOf(false) }
+    val reveal = rememberReveal()
+    val hasHistory = bill.pastBills.isNotEmpty()
     Card(
+        onClick = { if (hasHistory) open = !open },
         modifier = Modifier
             .fillMaxWidth()
+            .revealWhenSeen(reveal)
             .semantics(mergeDescendants = true) {
                 contentDescription = "${bill.cardLabel}, " +
                     formatMoney(bill.outstandingMinor, bill.currency) + " owed, next payment about " +
                     formatMoney(bill.dueMinor, bill.currency)
+                if (hasHistory) stateDescription = if (open) "Past statements shown" else "Past statements hidden"
             },
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
+        Column(modifier = Modifier.padding(16.dp).animateContentSize(Motion.change())) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
                     Icons.Filled.CreditCard,
@@ -306,7 +326,11 @@ private fun CardBillCard(bill: CreditCardEngine.CardBill) {
             }
             if (bill.outstandingMinor > 0L) {
                 Spacer(Modifier.height(10.dp))
-                val billedShare = bill.billedMinor.toFloat() / bill.outstandingMinor.toFloat()
+                val billedShare by animateFloatAsState(
+                    if (reveal.shown) bill.billedMinor.toFloat() / bill.outstandingMinor.toFloat() else 0f,
+                    Motion.arrive(Motion.LONG),
+                    label = "billed share",
+                )
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -328,12 +352,32 @@ private fun CardBillCard(bill: CreditCardEngine.CardBill) {
             }
             cardPaceLine(bill)?.let { pace ->
                 Spacer(Modifier.height(10.dp))
+                // Twice, then still: enough to draw the eye once, never enough to nag.
+                val pulse = remember { Animatable(1f) }
+                LaunchedEffect(reveal.shown, pace.over) {
+                    if (!reveal.shown || !pace.over) return@LaunchedEffect
+                    repeat(2) {
+                        pulse.animateTo(0.45f, tween(420, easing = Motion.Emphasized))
+                        pulse.animateTo(1f, tween(420, easing = Motion.Emphasized))
+                    }
+                }
                 Text(
                     pace.text,
                     style = MaterialTheme.typography.bodySmall,
                     color = if (pace.over) OutColor else MaterialTheme.colorScheme.onSurfaceVariant,
                     fontWeight = if (pace.over) FontWeight.SemiBold else FontWeight.Normal,
+                    modifier = Modifier.graphicsLayer { alpha = pulse.value },
                 )
+            }
+            if (open && hasHistory) {
+                Spacer(Modifier.height(14.dp))
+                Text(
+                    "Past statements, and where this one is heading",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(6.dp))
+                StatementHistory(bill)
             }
             Spacer(Modifier.height(10.dp))
             Text(
@@ -354,9 +398,110 @@ private fun CardBillCard(bill: CreditCardEngine.CardBill) {
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            if (hasHistory) {
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    if (open) "Hide past statements ▴" else "Tap to see past statements ▾",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
         }
     }
 }
+
+/**
+ * The card's bills as a line, oldest to newest, ending in a dashed step to where the
+ * statement building now is heading. It draws itself in when the panel opens.
+ */
+@Composable
+private fun StatementHistory(bill: CreditCardEngine.CardBill) {
+    val points = bill.pastBills.map { (date, amount) -> date.format(monthFormat) to amount } +
+        listOfNotNull(
+            (bill.projectedMinor ?: bill.unbilledMinor).takeIf { it > 0L }?.let { projected ->
+                (bill.nextStatementClose?.format(monthFormat) ?: "Next") to projected
+            },
+        )
+    val projectedLast = points.size > bill.pastBills.size
+    if (points.size < 2) return
+
+    val lineColor = MaterialTheme.colorScheme.primary
+    val axisText = MaterialTheme.colorScheme.onSurfaceVariant
+    val surface = MaterialTheme.colorScheme.surfaceContainerHighest
+    val textMeasurer = rememberTextMeasurer()
+    val labelStyle = MaterialTheme.typography.labelSmall.copy(color = axisText)
+    val drawn = remember { Animatable(0f) }
+    LaunchedEffect(Unit) { drawn.animateTo(1f, Motion.arrive(700)) }
+
+    Canvas(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(96.dp)
+            .semantics {
+                contentDescription = points.joinToString("; ") { (label, amount) ->
+                    "$label ${formatMoney(amount, bill.currency)}"
+                } + if (projectedLast) " (projected)" else ""
+            },
+    ) {
+        val left = 16.dp.toPx()
+        val right = size.width - 16.dp.toPx()
+        val top = 16.dp.toPx()
+        val bottom = size.height - 18.dp.toPx()
+        val peak = points.maxOf { it.second }.coerceAtLeast(1L).toFloat()
+        fun x(i: Int) = left + i * (right - left) / (points.size - 1)
+        fun y(v: Long) = bottom - v / peak * (bottom - top)
+
+        val settled = if (projectedLast) points.size - 1 else points.size
+        val path = Path().apply {
+            (0 until settled).forEach { i -> if (i == 0) moveTo(x(i), y(points[i].second)) else lineTo(x(i), y(points[i].second)) }
+        }
+        val measure = PathMeasure().apply { setPath(path, false) }
+        val shown = Path()
+        // The settled line takes most of the draw; the projection follows it.
+        val lineShare = (drawn.value / 0.8f).coerceIn(0f, 1f)
+        measure.getSegment(0f, measure.length * lineShare, shown, true)
+        drawPath(shown, lineColor, style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round))
+
+        if (projectedLast && drawn.value > 0.8f) {
+            val step = (drawn.value - 0.8f) / 0.2f
+            val from = Offset(x(settled - 1), y(points[settled - 1].second))
+            val to = Offset(x(settled), y(points[settled].second))
+            drawLine(
+                lineColor,
+                from,
+                from + (to - from) * step,
+                strokeWidth = 2.dp.toPx(),
+                cap = StrokeCap.Round,
+                pathEffect = PathEffect.dashPathEffect(floatArrayOf(6.dp.toPx(), 5.dp.toPx())),
+            )
+        }
+        points.forEachIndexed { i, (label, amount) ->
+            val appear = ((drawn.value * points.size) - i).coerceIn(0f, 1f)
+            if (appear <= 0f) return@forEachIndexed
+            val c = Offset(x(i), y(amount))
+            val projected = projectedLast && i == points.lastIndex
+            drawCircle(surface, radius = 5.dp.toPx() * appear, center = c)
+            if (projected) {
+                drawCircle(lineColor, radius = 3.5.dp.toPx() * appear, center = c, style = Stroke(1.5.dp.toPx()))
+            } else {
+                drawCircle(lineColor, radius = 3.5.dp.toPx() * appear, center = c)
+            }
+            val labelText = textMeasurer.measure(label, labelStyle)
+            drawText(labelText, topLeft = Offset(c.x - labelText.size.width / 2f, bottom + 3.dp.toPx()))
+            // Amounts on the first and the last two points only: enough to read the trend
+            // without a number on every dot.
+            if (i == 0 || i >= points.size - 2) {
+                val amountText = textMeasurer.measure(poundsLabel(amount, bill.currency), labelStyle)
+                drawText(amountText, topLeft = Offset(c.x - amountText.size.width / 2f, c.y - amountText.size.height - 4.dp.toPx()))
+            }
+        }
+    }
+}
+
+private val monthFormat: DateTimeFormatter = DateTimeFormatter.ofPattern("MMM")
+
+private fun poundsLabel(minor: Long, currency: String): String =
+    formatMoney((minor / 100L) * 100L, currency).replace(Regex("[.,]00\\b"), "")
 
 /**
  * What is held against what is owed.
