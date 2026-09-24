@@ -747,10 +747,10 @@ private fun HeroBudgetCard(budget: BudgetSnapshot) {
                 }
                 // Counted at the bill, card spending is out of this figure by design - so say
                 // where it went, rather than let the next cycle be a surprise.
-                if (budget.cardsAfterPaydayMinor > 0L) {
+                if (budget.cardsNextCycleMinor > 0L) {
                     Text(
-                        "About ${formatMoney(budget.cardsAfterPaydayMinor, budget.baseCurrency)} on " +
-                            "cards comes out after payday",
+                        "About ${formatMoney(budget.cardsNextCycleMinor, budget.baseCurrency)} of " +
+                            "card bills fall in your next cycle",
                         style = MaterialTheme.typography.labelSmall,
                         color = Color.White.copy(alpha = 0.9f),
                     )

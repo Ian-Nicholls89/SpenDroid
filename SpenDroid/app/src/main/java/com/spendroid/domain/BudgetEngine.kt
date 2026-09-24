@@ -206,20 +206,26 @@ object BudgetEngine {
         val upcomingTotal = upcomingFixed.sumOf { it.amountMinor }
 
         /**
-         * Card spending this cycle does not pay for: owed now but due after payday, plus where
-         * the statement now building is heading. Counted at the bill it is out of sight until
-         * then, so it is said out loud - the next cycle starts that much lighter.
+         * The card bills the next pay cycle will pay: every payment falling after this payday
+         * and on or before the one after. Counted at the bill, card spending is out of sight
+         * until then, so it is said out loud - the next cycle starts that much lighter.
+         *
+         * It used to add everything owed now to where the statement building now is heading,
+         * which piles two months of bills onto one cycle: the closed statement is due next
+         * cycle, but the one building now is due the month after, in the cycle beyond.
          */
-        val cardsAfterPayday = if (atPurchase) {
+        val followingIncomeDate = if (primaryIncome != null && nextIncomeDate != null) {
+            nextFor(primaryIncome, nextIncomeDate)
+        } else {
+            null
+        }
+        val cardsNextCycle = if (atPurchase || nextIncomeDate == null || followingIncomeDate == null) {
             0L
         } else {
             cardAnalysis.bills.sumOf { bill ->
-                val thisCycle = upcomingFixed
-                    .filter { it.rule.key == "$CARD_BILL_KEY_PREFIX${bill.cardAccountId}" }
-                    .sumOf { it.amountMinor }
-                val owedLater = (bill.outstandingMinor - thisCycle).coerceAtLeast(0L)
-                val stillToCome = ((bill.projectedMinor ?: bill.unbilledMinor) - bill.unbilledMinor).coerceAtLeast(0L)
-                owedLater + stillToCome
+                CreditCardEngine.expectedPayments(bill)
+                    .filter { (date, _) -> date.isAfter(nextIncomeDate) && !date.isAfter(followingIncomeDate) }
+                    .sumOf { it.second }
             }
         }
 
@@ -342,7 +348,7 @@ object BudgetEngine {
             shortfallMinor = if (uncapped < 0L) -uncapped else 0L,
             potBalanceMinor = potBalance,
             cardTiming = cardTiming,
-            cardsAfterPaydayMinor = cardsAfterPayday,
+            cardsNextCycleMinor = cardsNextCycle,
             lastSevenDaysMinor = lastSevenDays,
             primaryIncomeDesignated = designated != null,
             designationLost = designationLost,

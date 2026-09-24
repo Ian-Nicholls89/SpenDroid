@@ -112,8 +112,8 @@ data class BudgetSnapshot(
     val potBalanceMinor: Long? = null,
     /** When card spending came off [availableToSpend]. */
     val cardTiming: CardTiming = CardTiming.AT_BILL,
-    /** Card spending owed or heading for a bill due after payday; zero when counted at the till. */
-    val cardsAfterPaydayMinor: Long = 0L,
+    /** Card bills the next pay cycle will pay; zero when card spending counts at the till. */
+    val cardsNextCycleMinor: Long = 0L,
     /** Discretionary spending on each of the last seven days, oldest first, today last. */
     val lastSevenDaysMinor: List<Long> = emptyList(),
     /** True when the user picked the income that sets the cycle, rather than it being guessed. */

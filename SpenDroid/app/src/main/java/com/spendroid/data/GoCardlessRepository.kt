@@ -446,6 +446,13 @@ class GoCardlessRepository private constructor(
         )
     }
 
+    /**
+     * Re-runs transfer and recurring detection over what is stored, without asking the bank
+     * for anything. A sync does this anyway; a refresh that skips the bank - because every
+     * account synced within the hour - still should, or a fix to detection waits a day to show.
+     */
+    suspend fun reanalyze() = analyzeTransactions()
+
     private suspend fun analyzeTransactions() {
         val allAccounts = dao.accounts()
         val allTx = allAccounts.flatMap { dao.transactionsFor(it.id) }
@@ -464,11 +471,7 @@ class GoCardlessRepository private constructor(
             }
             .map { it.id }
             .toSet()
-        // A row the user has ruled on is theirs. Pairing it anyway marked only the other leg,
-        // leaving half a transfer counted and half hidden.
-        val internalPairs = detectInternalTransfers(
-            allTx.filter { it.accountId !in excluded && !it.transferOverridden },
-        )
+        val internalPairs = detectInternalTransfers(transferCandidates(allTx, excluded))
         val recurringFlags = RecurringAnalyzer.detectRecurring(allTx)
 
         // Re-run from scratch rather than only adding: detection used to set the flag and
@@ -490,78 +493,6 @@ class GoCardlessRepository private constructor(
                 }
             }
         }
-    }
-
-    /**
-     * Pairs off the two halves of a move between the user's own accounts.
-     *
-     * The payee is deliberately not required to match. It names the *counterparty*, so the
-     * two legs of the same transfer are named differently by design - the money leaves as
-     * "JOINT ACCOUNT BILLS" and arrives as "BILLS NICHO". Insisting they agree meant genuine
-     * transfers were never paired, and the standing order into the joint account was read as
-     * a monthly salary.
-     *
-     * What is required instead is that the pairing be unambiguous. Only the user's own
-     * accounts are visible here, so an exact opposite amount within a day is already strong
-     * evidence; where more than one transaction could be the other half, the references
-     * break the tie, and if they cannot, nothing is paired. A wrong pair hides real spending,
-     * which is worse than leaving a transfer on show.
-     */
-    private fun detectInternalTransfers(
-        transactions: List<TransactionEntity>,
-    ): List<Pair<TransactionEntity, TransactionEntity>> {
-        val byAccount = transactions.groupBy { it.accountId }
-        val accountIds = byAccount.keys.toList()
-        val pairs = mutableListOf<Pair<TransactionEntity, TransactionEntity>>()
-        val used = mutableSetOf<String>()
-
-        for (i in accountIds.indices) {
-            for (j in (i + 1) until accountIds.size) {
-                val txs1 = byAccount[accountIds[i]] ?: emptyList()
-                val txs2 = byAccount[accountIds[j]] ?: emptyList()
-
-                for (tx1 in txs1) {
-                    if (transferKey(tx1) in used) continue
-                    val candidates = txs2.filter {
-                        transferKey(it) !in used && couldOffset(tx1, it)
-                    }
-                    val match = candidates.singleOrNull()
-                        ?: candidates.singleOrNull { referencesAgree(tx1, it) }
-                        ?: continue
-                    pairs.add(tx1 to match)
-                    used.add(transferKey(tx1))
-                    used.add(transferKey(match))
-                }
-            }
-        }
-        return pairs
-    }
-
-    private fun transferKey(tx: TransactionEntity) = "${tx.accountId}|${tx.transactionId}"
-
-    /** Equal and opposite, same currency, close enough in time to be one movement. */
-    private fun couldOffset(tx1: TransactionEntity, tx2: TransactionEntity): Boolean {
-        if (tx1.amountMinor != -tx2.amountMinor || tx1.currency != tx2.currency) return false
-        val date1 = try { LocalDate.parse(tx1.bookingDate) } catch (_: Exception) { return false }
-        val date2 = try { LocalDate.parse(tx2.bookingDate) } catch (_: Exception) { return false }
-        return Math.abs(date1.toEpochDay() - date2.toEpochDay()) <= 1
-    }
-
-    /** Whether the two sides name the same movement, used only to break a tie. */
-    private fun referencesAgree(tx1: TransactionEntity, tx2: TransactionEntity): Boolean {
-        val ref1 = (tx1.description ?: "").trim().lowercase()
-        val ref2 = (tx2.description ?: "").trim().lowercase()
-        val payee1 = tx1.payee.trim().lowercase()
-        val payee2 = tx2.payee.trim().lowercase()
-
-        if (ref1.isNotBlank() && ref1 == ref2) return true
-        if (payee1.isNotBlank() && payee1 == payee2) return true
-        if (ref1.isNotBlank() && ref2.isNotBlank()) {
-            val a = ref1.split("[^a-z0-9]+".toRegex()).filter { it.length > 2 }.toSet()
-            val b = ref2.split("[^a-z0-9]+".toRegex()).filter { it.length > 2 }.toSet()
-            if (a.isNotEmpty() && a == b) return true
-        }
-        return false
     }
 
     suspend fun accounts(): List<AccountEntity> = dao.accounts()
@@ -829,6 +760,95 @@ class GoCardlessRepository private constructor(
         ): String {
             val base = "$bookingDate|$minor|$payee".hashCode().toString()
             return if (occurrence <= 1) base else "$base#$occurrence"
+        }
+
+        /**
+         * The transactions transfer detection may pair.
+         *
+         * A row the user said is *not* a transfer is theirs, and pairing it anyway marked only
+         * the other leg, leaving half a transfer counted and half hidden. A row they said *is*
+         * one stays in: it is still one half of a move, and without it its other half has
+         * nothing to pair with and is counted as spending. That was 2.24's mistake - it left
+         * out every row the user had ruled on, either way, and a £500 move to savings whose
+         * receiving side had been marked by hand turned into a £500 monthly commitment.
+         */
+        internal fun transferCandidates(
+            transactions: List<TransactionEntity>,
+            excludedAccounts: Set<String>,
+        ): List<TransactionEntity> = transactions.filter {
+            it.accountId !in excludedAccounts && !(it.transferOverridden && !it.isInternalTransfer)
+        }
+
+        /**
+         * Pairs off the two halves of a move between the user's own accounts.
+         *
+         * The payee is deliberately not required to match. It names the *counterparty*, so the
+         * two legs of the same transfer are named differently by design - the money leaves as
+         * "JOINT ACCOUNT BILLS" and arrives as "BILLS NICHO". Insisting they agree meant genuine
+         * transfers were never paired, and the standing order into the joint account was read as
+         * a monthly salary.
+         *
+         * What is required instead is that the pairing be unambiguous. Only the user's own
+         * accounts are visible here, so an exact opposite amount within a day is already strong
+         * evidence; where more than one transaction could be the other half, the references
+         * break the tie, and if they cannot, nothing is paired. A wrong pair hides real spending,
+         * which is worse than leaving a transfer on show.
+         */
+        internal fun detectInternalTransfers(
+            transactions: List<TransactionEntity>,
+        ): List<Pair<TransactionEntity, TransactionEntity>> {
+            val byAccount = transactions.groupBy { it.accountId }
+            val accountIds = byAccount.keys.toList()
+            val pairs = mutableListOf<Pair<TransactionEntity, TransactionEntity>>()
+            val used = mutableSetOf<String>()
+
+            for (i in accountIds.indices) {
+                for (j in (i + 1) until accountIds.size) {
+                    val txs1 = byAccount[accountIds[i]] ?: emptyList()
+                    val txs2 = byAccount[accountIds[j]] ?: emptyList()
+
+                    for (tx1 in txs1) {
+                        if (transferKey(tx1) in used) continue
+                        val candidates = txs2.filter {
+                            transferKey(it) !in used && couldOffset(tx1, it)
+                        }
+                        val match = candidates.singleOrNull()
+                            ?: candidates.singleOrNull { referencesAgree(tx1, it) }
+                            ?: continue
+                        pairs.add(tx1 to match)
+                        used.add(transferKey(tx1))
+                        used.add(transferKey(match))
+                    }
+                }
+            }
+            return pairs
+        }
+
+        private fun transferKey(tx: TransactionEntity) = "${tx.accountId}|${tx.transactionId}"
+
+        /** Equal and opposite, same currency, close enough in time to be one movement. */
+        private fun couldOffset(tx1: TransactionEntity, tx2: TransactionEntity): Boolean {
+            if (tx1.amountMinor != -tx2.amountMinor || tx1.currency != tx2.currency) return false
+            val date1 = try { LocalDate.parse(tx1.bookingDate) } catch (_: Exception) { return false }
+            val date2 = try { LocalDate.parse(tx2.bookingDate) } catch (_: Exception) { return false }
+            return Math.abs(date1.toEpochDay() - date2.toEpochDay()) <= 1
+        }
+
+        /** Whether the two sides name the same movement, used only to break a tie. */
+        private fun referencesAgree(tx1: TransactionEntity, tx2: TransactionEntity): Boolean {
+            val ref1 = (tx1.description ?: "").trim().lowercase()
+            val ref2 = (tx2.description ?: "").trim().lowercase()
+            val payee1 = tx1.payee.trim().lowercase()
+            val payee2 = tx2.payee.trim().lowercase()
+
+            if (ref1.isNotBlank() && ref1 == ref2) return true
+            if (payee1.isNotBlank() && payee1 == payee2) return true
+            if (ref1.isNotBlank() && ref2.isNotBlank()) {
+                val a = ref1.split("[^a-z0-9]+".toRegex()).filter { it.length > 2 }.toSet()
+                val b = ref2.split("[^a-z0-9]+".toRegex()).filter { it.length > 2 }.toSet()
+                if (a.isNotEmpty() && a == b) return true
+            }
+            return false
         }
 
         internal fun preserveUserEdits(

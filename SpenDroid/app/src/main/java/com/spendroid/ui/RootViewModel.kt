@@ -572,6 +572,7 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
             _state.update { it.copy(syncing = true, error = null) }
             val reauth = mutableListOf<Connection>()
             var offline = false
+            var imported = false
             // PSD2 rations unattended calls to about four per account per day and the nightly
             // sync spends one, so an account pulled within the hour is not pulled again.
             val recent = repo.accounts()
@@ -594,6 +595,7 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
                     if (connection.accountIds.isNotEmpty()) {
                         connection.accountIds.filter { it !in recent }.forEach { id ->
                             runCatching { repo.importAccount(connection.institutionName, id) }
+                                .onSuccess { imported = true }
                                 .onFailure { e -> if (needsReauth(e) && connection !in reauth) reauth += connection }
                         }
                     } else {
@@ -604,6 +606,7 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
                             repo.saveConnection(connection.copy(accountIds = req.accounts))
                             req.accounts.forEach { id ->
                                 runCatching { repo.importAccount(connection.institutionName, id) }
+                                    .onSuccess { imported = true }
                                     .onFailure { e -> if (needsReauth(e) && connection !in reauth) reauth += connection }
                             }
                         } else if (req != null && req.status in setOf("EX", "RJ")) {
@@ -613,6 +616,9 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }
                 .onFailure { e -> _state.update { it.copy(error = e.message) } }
+            // Every account was synced recently, so nothing re-ran detection. It is local and
+            // free, so run it anyway: the figures should always reflect the current rules.
+            if (!imported) runCatching { repo.reanalyze() }
             _state.update {
                 it.copy(
                     reauthNeeded = reauth,

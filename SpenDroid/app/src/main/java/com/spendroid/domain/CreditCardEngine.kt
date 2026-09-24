@@ -87,6 +87,8 @@ object CreditCardEngine {
         val nextStatementClose: LocalDate? = null,
         /** Days since the statement closed, which is how far into the new one today is. */
         val statementDaysElapsed: Int? = null,
+        /** True once a payment has landed since the statement closed. */
+        val statementPaid: Boolean = false,
         /**
          * Where the statement now building is heading: what is on it so far, plus the recent
          * daily rate carried to its close. Null until there is enough history to have a rate.
@@ -250,6 +252,7 @@ object CreditCardEngine {
                 cycleFitErrorMinor = fit?.averageErrorMinor,
                 cycleBillsChecked = fit?.billsChecked,
                 nextStatementClose = nextClose,
+                statementPaid = statementPaid,
                 statementDaysElapsed = statementClose?.let { (today.toEpochDay() - it.toEpochDay()).toInt() },
                 projectedMinor = projected,
                 usualBillMinor = usual,
@@ -312,6 +315,23 @@ object CreditCardEngine {
         if ((bill.statementDaysElapsed ?: 0) < MIN_OWN_PACE_DAYS) return false
         val line = if (bill.capSource == CapSource.USUAL) cap + cap / 10 else cap
         return projected > line
+    }
+
+    /**
+     * The payments this card will take, as (date, amount), for as far ahead as is known.
+     *
+     * While the closed statement is unpaid, that is it on its due date, then the statement
+     * building now a month later. Once it is paid, only the building one is left. Where the
+     * cycle is unknown there is one payment of what is owed.
+     */
+    fun expectedPayments(bill: CardBill): List<Pair<LocalDate, Long>> {
+        val due = bill.dueDate ?: return emptyList()
+        val building = bill.projectedMinor ?: bill.unbilledMinor
+        return when {
+            bill.statementClose == null -> listOf(due to bill.outstandingMinor)
+            bill.statementPaid -> listOf(due to maxOf(building, bill.dueMinor))
+            else -> listOf(due to bill.billedMinor, due.plusMonths(1) to building)
+        }.filter { it.second > 0L }
     }
 
     /** The middle value, averaging the two middles of an even count. Null under two values. */

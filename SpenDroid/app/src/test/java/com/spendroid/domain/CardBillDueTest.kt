@@ -6,6 +6,7 @@ import com.spendroid.data.db.TransactionEntity
 import java.time.LocalDate
 import java.time.LocalDateTime
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -104,9 +105,31 @@ class CardBillDueTest {
         val cardBill = s.upcomingFixed.single { it.rule.key.startsWith(CARD_BILL_KEY_PREFIX) }
         assertEquals(2500L, cardBill.amountMinor)
 
-        // The £15 since the statement, and where it is heading by the 10 October close, is
-        // the next cycle's - and said so rather than left out of sight.
+        // Payday is the 6th, after this bill. The statement building now is due 1 November,
+        // inside the next cycle, so that is what the next cycle carries.
         val bill = s.cardBills.single()
-        assertEquals(1500L + (bill.projectedMinor!! - bill.unbilledMinor), s.cardsAfterPaydayMinor)
+        assertEquals(bill.projectedMinor, s.cardsNextCycleMinor)
+    }
+
+    /**
+     * The reported case: payday falls before the card's due date. The closed statement comes
+     * out of the next cycle; the one building now is due the month after, so it belongs to the
+     * cycle after that and is not piled on top. Adding both read £1,920 for two cards owing
+     * £965 between them.
+     */
+    @Test
+    fun `the next cycle carries only the card bills due inside it`() {
+        val salary = listOf("2026-06-28", "2026-07-28", "2026-08-28")
+            .map { tx(it, 250000, account = "current", payee = "ACME LTD SALARY") }
+        val all = twoCycles() + salary
+        val s = BudgetEngine.snapshot(
+            transactions = all,
+            rules = RecurringAnalyzer.analyze(all),
+            accounts = listOf(current, card(-4000)),
+            referenceTime = LocalDateTime.of(2026, 9, 23, 12, 0),
+        )
+        // Due 1 October, after payday on the 28th: not this cycle's, all next cycle's.
+        assertTrue(s.upcomingFixed.none { it.rule.key.startsWith(CARD_BILL_KEY_PREFIX) })
+        assertEquals(2500L, s.cardsNextCycleMinor)
     }
 }
