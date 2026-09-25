@@ -371,15 +371,16 @@ class GoCardlessRepository private constructor(
         val accountType = detectAccountType(metadata, info)
         val (balanceMinor, currency) = pickBalance(balances, info, accountType)
 
-        val rows = mutableListOf<TransactionEntity>()
+        val booked = mutableListOf<TransactionEntity>()
+        val pending = mutableListOf<TransactionEntity>()
         // Rows the bank sends without an id are named after their contents, and two
         // identical purchases on one day need telling apart; this counts them as they come.
         val seen = mutableMapOf<String, Int>()
         var page: TransactionsDto? =
             dataApi.accountTransactions(accountId, dateFrom = LocalDate.now().minusDays(90).toString(), dateTo = null)
         while (page != null) {
-            page.transactions.booked.forEach { toEntity(accountId, it, pending = false, seen)?.let(rows::add) }
-            page.transactions.pending.forEach { toEntity(accountId, it, pending = true, seen)?.let(rows::add) }
+            page.transactions.booked.forEach { toEntity(accountId, it, pending = false, seen)?.let(booked::add) }
+            page.transactions.pending.forEach { toEntity(accountId, it, pending = true, seen)?.let(pending::add) }
             page = page.next?.let { dataApi.transactionsPage(it) }
         }
 
@@ -387,6 +388,7 @@ class GoCardlessRepository private constructor(
         // undo the user's own decisions. REPLACE deletes the old row before inserting, so
         // every category set by hand and every transfer flagged was being wiped nightly for
         // the whole 90-day window.
+        val rows = booked + stillPendingOnly(booked, pending)
         dao.upsertTransactions(preserveUserEdits(rows, dao.transactionsFor(accountId)))
 
         // Anything still marked pending that the bank has stopped sending has either been
@@ -920,6 +922,47 @@ class GoCardlessRepository private constructor(
             }
             return false
         }
+
+        /**
+         * The pending entries the bank has not also reported as booked.
+         *
+         * Some banks go on listing a payment as pending after it has booked. Under the same id,
+         * the pending copy was written after the booked one and replaced it, every sync - and,
+         * still being listed, it was never cleared: a salary the bank showed as landed stayed
+         * pending in the app. Under a new id, the stale copy sat beside the booked one for good.
+         * A booked entry wins. A pending one is dropped when it shares the booked one's id, or
+         * is the same amount from the same payee, booked on or within a few days of it.
+         */
+        internal fun stillPendingOnly(
+            booked: List<TransactionEntity>,
+            pending: List<TransactionEntity>,
+        ): List<TransactionEntity> {
+            val bookedIds = booked.mapTo(HashSet()) { it.transactionId }
+            val claimed = mutableSetOf<String>()
+            fun payee(tx: TransactionEntity) = tx.payee.lowercase().trim().replace(Regex("\\s+"), " ")
+            return pending.filter { p ->
+                if (p.transactionId in bookedIds) return@filter false
+                val pendingDate = runCatching { LocalDate.parse(p.bookingDate) }.getOrNull()
+                val twin = booked.firstOrNull { b ->
+                    b.transactionId !in claimed &&
+                        b.amountMinor == p.amountMinor &&
+                        payee(b) == payee(p) &&
+                        runCatching { LocalDate.parse(b.bookingDate) }.getOrNull()?.let { bookedOn ->
+                            pendingDate == null ||
+                                (!bookedOn.isBefore(pendingDate.minusDays(1)) && !bookedOn.isAfter(pendingDate.plusDays(PENDING_TWIN_DAYS)))
+                        } == true
+                }
+                if (twin != null) {
+                    claimed += twin.transactionId
+                    false
+                } else {
+                    true
+                }
+            }
+        }
+
+        /** How long after a pending entry its booked version may be dated. */
+        private const val PENDING_TWIN_DAYS = 5L
 
         internal fun preserveUserEdits(
             fetched: List<TransactionEntity>,
