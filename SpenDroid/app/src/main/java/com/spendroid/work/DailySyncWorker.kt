@@ -49,7 +49,7 @@ class DailySyncWorker(
             connection.accountIds.forEach { accountId ->
                 if (accountId in syncedRecently) return@forEach
                 attempted++
-                runCatching { repo.importAccount(connection.institutionName, accountId) }
+                runCatching { repo.syncAccount(connection.institutionName, accountId) }
                     .onFailure { failures++ }
             }
         }

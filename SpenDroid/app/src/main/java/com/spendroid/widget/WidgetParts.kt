@@ -40,9 +40,16 @@ class RefreshWidgetsAction : ActionCallback {
     }
 }
 
-/** "Updated 20:14", or the date once it is no longer today, so staleness is visible. */
+/**
+ * "Updated 09:29", or the date once it is no longer today, so staleness is visible.
+ *
+ * The oldest sync among the current accounts, where salaries land and the budget is decided -
+ * not the newest of any account. The newest let a card that synced at 14:08 vouch for a
+ * current account stuck on 09:29, and the figures looked fresher than they were.
+ */
 fun updatedLabel(accounts: List<AccountEntity>, zone: ZoneId = ZoneId.systemDefault()): String? {
-    val latest = accounts.maxOfOrNull { it.lastSynced }?.takeIf { it > 0L } ?: return null
+    val current = accounts.filter { it.accountType == com.spendroid.data.db.AccountType.PERSONAL }.ifEmpty { accounts }
+    val latest = current.minOfOrNull { it.lastSynced }?.takeIf { it > 0L } ?: return null
     val at = Instant.ofEpochMilli(latest).atZone(zone)
     return if (at.toLocalDate() == LocalDate.now(zone)) {
         "Updated ${at.format(DateTimeFormatter.ofPattern("HH:mm"))}"

@@ -44,6 +44,19 @@ data class Connection(
     }
 }
 
+/**
+ * A sync that did not land, kept so the account can say so instead of quietly showing old
+ * figures under a fresher account's "Updated" time.
+ */
+data class SyncFailure(val at: Long, val reason: Reason) {
+    enum class Reason(val label: String) {
+        LIMIT("bank's daily limit reached"),
+        REAUTH("access needs renewing"),
+        OFFLINE("no connection"),
+        ERROR("the bank returned an error"),
+    }
+}
+
 class SecretsStore(private val context: Context) {
 
     private object Keys {
@@ -55,6 +68,7 @@ class SecretsStore(private val context: Context) {
         val NOTIFIED_LARGE_TRANSACTIONS = stringPreferencesKey("notified_large_transactions")
         val NOTIFIED_CARD_WARNINGS = stringPreferencesKey("notified_card_warnings")
         val TRANSFER_GROUPS = stringPreferencesKey("transfer_groups")
+        val SYNC_FAILURES = stringPreferencesKey("sync_failures")
         val REFRESH_TOKEN = stringPreferencesKey("refresh_token")
         val NOTIFICATION_TIME = stringPreferencesKey("notification_time")
         val LAST_NOTIFIED_VERSION = intPreferencesKey("last_notified_version_code")
@@ -132,6 +146,31 @@ class SecretsStore(private val context: Context) {
         val current = parseStringSet(context.dataStore.data.first()[Keys.TRANSFER_GROUPS]).toMutableSet()
         current.addAll(keys)
         context.dataStore.edit { prefs -> prefs[Keys.TRANSFER_GROUPS] = JSONArray(current.toList()).toString() }
+    }
+
+    /** The last sync that failed for each account, and why, cleared when one succeeds. */
+    val syncFailures: Flow<Map<String, SyncFailure>> = context.dataStore.data
+        .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
+        .map { prefs -> parseFailures(prefs[Keys.SYNC_FAILURES]) }
+
+    suspend fun setSyncFailure(accountId: String, failure: SyncFailure?) {
+        context.dataStore.edit { prefs ->
+            val current = parseFailures(prefs[Keys.SYNC_FAILURES]).toMutableMap()
+            if (failure == null) current.remove(accountId) else current[accountId] = failure
+            prefs[Keys.SYNC_FAILURES] = JSONObject().also { o ->
+                current.forEach { (id, f) -> o.put(id, JSONObject().put("at", f.at).put("reason", f.reason.name)) }
+            }.toString()
+        }
+    }
+
+    private fun parseFailures(json: String?): Map<String, SyncFailure> {
+        if (json.isNullOrBlank()) return emptyMap()
+        val o = JSONObject(json)
+        return o.keys().asSequence().mapNotNull { id ->
+            val f = o.optJSONObject(id) ?: return@mapNotNull null
+            val reason = runCatching { SyncFailure.Reason.valueOf(f.optString("reason")) }.getOrNull() ?: return@mapNotNull null
+            id to SyncFailure(f.optLong("at"), reason)
+        }.toMap()
     }
 
     /** Card warnings already sent, as "card|what|statementClose". */

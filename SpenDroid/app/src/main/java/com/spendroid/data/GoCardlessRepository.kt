@@ -362,6 +362,23 @@ class GoCardlessRepository private constructor(
         if (filled != stored) saveConnections(filled)
     }
 
+    val syncFailures: Flow<Map<String, SyncFailure>> = secrets.syncFailures
+
+    /**
+     * Syncs one account, recording why if the bank refuses. A failed sync used to leave the
+     * account on its old figures with nothing to say so - while the widget showed another
+     * account's newer time - so a salary could sit "pending" for hours for no visible reason.
+     */
+    suspend fun syncAccount(institutionName: String, accountId: String): AccountEntity =
+        try {
+            importAccount(institutionName, accountId).also { secrets.setSyncFailure(accountId, null) }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            secrets.setSyncFailure(accountId, SyncFailure(System.currentTimeMillis(), failureReason(e)))
+            throw e
+        }
+
     suspend fun importAccount(institutionName: String, accountId: String): AccountEntity {
         val metadata: AccountDetailsDto = dataApi.accountMetadata(accountId)
         val details: AccountInfoWrapperDto = runCatching { dataApi.accountDetails(accountId) }.getOrDefault(AccountInfoWrapperDto())
@@ -963,6 +980,14 @@ class GoCardlessRepository private constructor(
 
         /** How long after a pending entry its booked version may be dated. */
         private const val PENDING_TWIN_DAYS = 5L
+
+        /** What a refusal from the bank means, in the terms the account card uses. */
+        internal fun failureReason(e: Throwable): SyncFailure.Reason = when {
+            e is retrofit2.HttpException && e.code() == 429 -> SyncFailure.Reason.LIMIT
+            e is retrofit2.HttpException && e.code() in setOf(401, 403, 409) -> SyncFailure.Reason.REAUTH
+            e is IOException -> SyncFailure.Reason.OFFLINE
+            else -> SyncFailure.Reason.ERROR
+        }
 
         internal fun preserveUserEdits(
             fetched: List<TransactionEntity>,

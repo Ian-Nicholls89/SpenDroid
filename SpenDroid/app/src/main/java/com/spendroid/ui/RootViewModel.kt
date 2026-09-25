@@ -109,6 +109,8 @@ data class RootUiState(
     val transferGroups: Set<String> = emptySet(),
     /** "accountId|transactionId" of rows that arrived with the latest load, for a brief highlight. */
     val newTransactionKeys: Set<String> = emptySet(),
+    /** Accounts whose last sync failed, and why. */
+    val syncFailures: Map<String, com.spendroid.data.SyncFailure> = emptyMap(),
     /** How each payee has been filed by hand, for suggesting where a transaction belongs. */
     val categoryHistory: Map<String, Map<Category, Int>> = emptyMap(),
     val ruleOverrides: Map<String, RuleOverrideEntity> = emptyMap(),
@@ -620,7 +622,7 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
                 repo.connections.first().forEach { connection ->
                     if (connection.accountIds.isNotEmpty()) {
                         connection.accountIds.filter { it !in recent }.forEach { id ->
-                            runCatching { repo.importAccount(connection.institutionName, id) }
+                            runCatching { repo.syncAccount(connection.institutionName, id) }
                                 .onSuccess { imported = true }
                                 .onFailure { e -> if (needsReauth(e) && connection !in reauth) reauth += connection }
                         }
@@ -631,7 +633,7 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
                         if (req != null && req.status in setOf("SA", "LN") && req.accounts.isNotEmpty()) {
                             repo.saveConnection(connection.copy(accountIds = req.accounts))
                             req.accounts.forEach { id ->
-                                runCatching { repo.importAccount(connection.institutionName, id) }
+                                runCatching { repo.syncAccount(connection.institutionName, id) }
                                     .onSuccess { imported = true }
                                     .onFailure { e -> if (needsReauth(e) && connection !in reauth) reauth += connection }
                             }
@@ -723,6 +725,7 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
                 cardTiming = cardTiming,
                 transferGroups = repo.transferGroups.first(),
                 newTransactionKeys = newKeys,
+                syncFailures = repo.syncFailures.first(),
                 categoryHistory = CategoryEngine.history(all),
                 connections = repo.connections.first(),
                 versionName = versionName,

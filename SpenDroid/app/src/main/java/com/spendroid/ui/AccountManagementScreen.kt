@@ -90,6 +90,7 @@ fun AccountManagementScreen(
                 connection = state.connections.find { it.accountIds.contains(account.id) },
                 onClick = { editing = account },
                 onRelink = onRelink,
+                failure = state.syncFailures[account.id],
             )
         }
         item {
@@ -155,6 +156,7 @@ private fun AccountWalletCard(
     connection: Connection?,
     onClick: () -> Unit,
     onRelink: (Connection) -> Unit,
+    failure: com.spendroid.data.SyncFailure? = null,
 ) {
     val daysLeft = connection?.daysUntilExpiry()
     val isCard = account.accountType == AccountType.CREDIT_CARD
@@ -204,6 +206,15 @@ private fun AccountWalletCard(
             fontWeight = FontWeight.Bold,
             color = Color.White,
         )
+        // A failure newer than the last success means these figures are older than they look.
+        failure?.takeIf { it.at > account.lastSynced }?.let { f ->
+            Text(
+                "Couldn't sync at ${syncedAt(f.at).substringAfter(", ")} · ${f.reason.label}",
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.SemiBold,
+                color = Color.White,
+            )
+        }
         Row {
             Text(
                 if (isCard) "owed · synced ${syncedAt(account.lastSynced)}"
