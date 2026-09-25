@@ -4,6 +4,9 @@ import android.content.Context
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.spendroid.BudgetApplication
+import com.spendroid.data.GoCardlessRepository
+import com.spendroid.data.SyncAllowance
+import com.spendroid.data.SyncFailure
 import com.spendroid.widget.refreshCardWidgets
 import com.spendroid.widget.refreshWidgets
 import java.util.concurrent.TimeUnit
@@ -25,7 +28,10 @@ class DailySyncWorker(
     parameters: WorkerParameters,
 ) : CoroutineWorker(app, parameters) {
 
-    override suspend fun doWork(): Result = daily(ownSlot()) { runDay() }
+    override suspend fun doWork(): Result =
+        // A catch-up is a one-off after the bank's reset, not one of the day's slots, so it
+        // books nothing after itself.
+        if (inputData.getBoolean(DailyRoundupScheduler.CATCH_UP_KEY, false)) runDay() else daily(ownSlot()) { runDay() }
 
     /** Which of the day's three syncs this is. One booked before there were three is the evening one. */
     private fun ownSlot(): DailyRoundupScheduler.Daily =
@@ -44,15 +50,23 @@ class DailySyncWorker(
             .toSet()
 
         var failures = 0
+        var refusals = 0
         var attempted = 0
         repo.connections.first().forEach { connection ->
             connection.accountIds.forEach { accountId ->
                 if (accountId in syncedRecently) return@forEach
+                // Nothing left with the bank: asking would only be refused. It is picked up
+                // just after the reset instead - see below.
+                if (SyncAllowance.exhausted(repo.allowanceFor(accountId), System.currentTimeMillis())) return@forEach
                 attempted++
                 runCatching { repo.syncAccount(connection.institutionName, accountId) }
-                    .onFailure { failures++ }
+                    .onFailure { e ->
+                        failures++
+                        if (GoCardlessRepository.failureReason(e) == SyncFailure.Reason.LIMIT) refusals++
+                    }
             }
         }
+
 
         // The figures only move when a sync lands, so this is the moment a widget is stale.
         // Refreshing here beats the 30-minute poll on both freshness and battery.
@@ -61,9 +75,20 @@ class DailySyncWorker(
             refreshCardWidgets(applicationContext)
         }
 
+        // Any account the bank has refused is tried again just after its allowance resets, when
+        // that comes before the next scheduled sync - so a salary stuck on "pending" is fetched
+        // as soon as the bank will allow, not at whichever slot comes round next.
+        runCatching {
+            DailyRoundupScheduler.bookCatchUp(
+                applicationContext,
+                fromCatchUp = inputData.getBoolean(DailyRoundupScheduler.CATCH_UP_KEY, false),
+            )
+        }
+
         if (failures == 0) return Result.success()
-        // Everything failed and there is still time to try again before the next daily run.
-        if (failures == attempted && runAttemptCount < MAX_ATTEMPTS) return Result.retry()
+        // Everything failed and there is still time to try again before the next daily run - unless
+        // it was the bank's limit, which a retry cannot beat; the catch-up above waits it out.
+        if (failures == attempted && refusals < failures && runAttemptCount < MAX_ATTEMPTS) return Result.retry()
         // A partial failure still leaves the successful accounts stored; the accounts that
         // failed are retried on the next run, which the 90-day window still covers.
         return Result.success()

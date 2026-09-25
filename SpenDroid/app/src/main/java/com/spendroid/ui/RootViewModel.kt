@@ -12,6 +12,7 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.spendroid.BudgetApplication
 import com.spendroid.BuildConfig
 import com.spendroid.data.Connection
+import com.spendroid.data.SyncAllowance
 import com.spendroid.data.ApkInstaller
 import com.spendroid.data.UpdateChecker
 import com.spendroid.data.GoCardlessRepository
@@ -109,6 +110,12 @@ data class RootUiState(
     val transferGroups: Set<String> = emptySet(),
     /** "accountId|transactionId" of rows that arrived with the latest load, for a brief highlight. */
     val newTransactionKeys: Set<String> = emptySet(),
+    /** Each account's allowance for a full sync, as the bank last reported it. */
+    val syncAllowances: Map<String, com.spendroid.data.SyncAllowance.Account> = emptyMap(),
+    /** When the next scheduled sync is due, epoch millis. */
+    val nextSyncAt: Long? = null,
+    /** What the last refresh did about the bank's allowance, in a sentence or two. */
+    val syncNote: String? = null,
     /** Accounts whose last sync failed, and why. */
     val syncFailures: Map<String, com.spendroid.data.SyncFailure> = emptyMap(),
     /** How each payee has been filed by hand, for suggesting where a transaction belongs. */
@@ -595,8 +602,20 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
 
     fun refresh() {
         viewModelScope.launch {
-            _state.update { it.copy(syncing = true, error = null) }
+            _state.update { it.copy(syncing = true, error = null, syncNote = null) }
             val reauth = mutableListOf<Connection>()
+            val now = System.currentTimeMillis()
+            val labels = repo.accounts().associate { it.id to it.label }
+            // Accounts the bank would refuse are not asked: a refusal costs nothing against the
+            // account, but it tells you nothing either, and it counts against GoCardless's own limit.
+            val spent = mutableMapOf<String, Long>()
+            suspend fun allowed(id: String): Boolean {
+                val allowance = repo.allowanceFor(id, now)
+                if (!SyncAllowance.exhausted(allowance, now)) return true
+                spent[id] = allowance?.resetAt ?: now
+                return false
+            }
+            val synced = mutableListOf<String>()
             var offline = false
             var imported = false
             var limited = false
@@ -621,9 +640,9 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
             runCatching {
                 repo.connections.first().forEach { connection ->
                     if (connection.accountIds.isNotEmpty()) {
-                        connection.accountIds.filter { it !in recent }.forEach { id ->
+                        connection.accountIds.filter { it !in recent }.filter { allowed(it) }.forEach { id ->
                             runCatching { repo.syncAccount(connection.institutionName, id) }
-                                .onSuccess { imported = true }
+                                .onSuccess { imported = true; synced += id }
                                 .onFailure { e -> if (needsReauth(e) && connection !in reauth) reauth += connection }
                         }
                     } else {
@@ -644,6 +663,24 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }
                 .onFailure { e -> _state.update { it.copy(error = e.message) } }
+            // Say what the allowance meant for this refresh: what was not asked, and anything
+            // that has just used its last sync before the bank's reset.
+            val notes = buildList {
+                spent.forEach { (id, reset) ->
+                    add("No syncs left for ${labels[id] ?: "an account"} until ${SyncAllowance.resetLabel(reset, now)}")
+                }
+                synced.forEach { id ->
+                    val after = repo.allowanceFor(id)
+                    if (after != null && after.remaining <= 0 && after.resetAt != null) {
+                        add("That was ${labels[id] ?: "an account"}'s last sync until ${SyncAllowance.resetLabel(after.resetAt, now)}")
+                    }
+                }
+                if (spent.isEmpty() && synced.isEmpty() && recent.isNotEmpty() && !limited && !offline) {
+                    add("Everything synced within the last hour, so the bank was not asked again")
+                }
+            }
+            if (notes.isNotEmpty()) _state.update { it.copy(syncNote = notes.joinToString("\n")) }
+            if (spent.isNotEmpty() || limited) runCatching { DailyRoundupScheduler.bookCatchUp(getApplication()) }
             // Every account was synced recently, so nothing re-ran detection. It is local and
             // free, so run it anyway: the figures should always reflect the current rules.
             if (!imported) runCatching { repo.reanalyze() }
@@ -725,6 +762,10 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
                 cardTiming = cardTiming,
                 transferGroups = repo.transferGroups.first(),
                 newTransactionKeys = newKeys,
+                syncAllowances = repo.syncAllowances.first()
+                    .mapNotNull { (id, readings) -> SyncAllowance.forAccount(readings, System.currentTimeMillis())?.let { id to it } }
+                    .toMap(),
+                nextSyncAt = nextScheduledSync(),
                 syncFailures = repo.syncFailures.first(),
                 categoryHistory = CategoryEngine.history(all),
                 connections = repo.connections.first(),
@@ -732,6 +773,16 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
                 versionCode = versionCode,
             )
         }
+    }
+
+    /** The next of the day's three sync slots, from the notification time in Settings. */
+    private suspend fun nextScheduledSync(): Long {
+        val notification = runCatching { java.time.LocalTime.parse(repo.notificationTime.first()) }
+            .getOrDefault(java.time.LocalTime.of(21, 0))
+        val now = java.time.ZonedDateTime.now()
+        return DailyRoundupScheduler.syncTimes(notification)
+            .map { slot -> now.plus(DailyRoundupScheduler.delayUntilNext(now, slot)) }
+            .minOf { it.toInstant().toEpochMilli() }
     }
 
     companion object {

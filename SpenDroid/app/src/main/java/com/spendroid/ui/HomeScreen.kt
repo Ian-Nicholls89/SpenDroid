@@ -763,6 +763,11 @@ fun HomeScreen(
                     Text(progress, style = MaterialTheme.typography.bodySmall)
                 }
             }
+            // What the last pull-to-refresh did about the bank's allowance.
+            state.syncNote?.let { note ->
+                Spacer(Modifier.height(12.dp))
+                Text(note, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
             state.error?.let { error ->
                 Spacer(Modifier.height(12.dp))
                 Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)

@@ -377,7 +377,16 @@ class GoCardlessRepository private constructor(
         } catch (e: Exception) {
             secrets.setSyncFailure(accountId, SyncFailure(System.currentTimeMillis(), failureReason(e)))
             throw e
+        } finally {
+            // Whatever the bank said about the allowance on the way, success or refusal.
+            secrets.saveAllowances(accountId, AllowanceRecorder.take(accountId))
         }
+
+    val syncAllowances: Flow<Map<String, Map<SyncAllowance.Scope, SyncAllowance.Reading>>> = secrets.syncAllowances
+
+    /** An account's allowance for a full sync right now, or null until the bank has reported one. */
+    suspend fun allowanceFor(accountId: String, now: Long = System.currentTimeMillis()): SyncAllowance.Account? =
+        syncAllowances.first()[accountId]?.let { SyncAllowance.forAccount(it, now) }
 
     suspend fun importAccount(institutionName: String, accountId: String): AccountEntity {
         val metadata: AccountDetailsDto = dataApi.accountMetadata(accountId)
@@ -1126,6 +1135,20 @@ class GoCardlessRepository private constructor(
                     )
                 }
                 .addInterceptor(logging)
+                // The bank's allowance for each account, as every rationed response reports it.
+                .addInterceptor { chain ->
+                    val response = chain.proceed(chain.request())
+                    SyncAllowance.scopeFor(chain.request().url.encodedPath)?.let { (accountId, scope) ->
+                        val now = System.currentTimeMillis()
+                        val reading = when {
+                            response.isSuccessful -> SyncAllowance.fromHeaders({ response.header(it) }, now)
+                            response.code == 429 -> SyncAllowance.fromRefusal(response.peekBody(4_096).string(), now)
+                            else -> null
+                        }
+                        reading?.let { AllowanceRecorder.record(accountId, scope, it) }
+                    }
+                    response
+                }
                 .authenticator { _, response ->
                     // A 401 on a token that looked valid means it was revoked early: drop it and
                     // try once more with a fresh one. Once only, so a refusal that is about the

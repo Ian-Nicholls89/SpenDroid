@@ -13,6 +13,7 @@ import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.workDataOf
 import com.spendroid.BudgetApplication
+import com.spendroid.data.SyncAllowance
 import java.time.Duration
 import java.time.LocalTime
 import java.time.ZoneId
@@ -62,6 +63,41 @@ object DailyRoundupScheduler {
 
     /** Input key telling a sync which of the three it is, so it books its own next run. */
     const val JOB_KEY = "daily_job"
+
+    /** Input key marking a one-off sync booked for just after a bank's allowance resets. */
+    const val CATCH_UP_KEY = "catch_up"
+    private const val CATCH_UP_NAME = "sync_catch_up"
+
+    /**
+     * Books a one-off sync just after the earliest allowance reset among refused accounts, when
+     * that beats the next scheduled slot. Replaces any earlier catch-up, so there is only ever
+     * one, at the time that matters now.
+     */
+    suspend fun bookCatchUp(context: Context, fromCatchUp: Boolean = false) {
+        val app = context.applicationContext as? BudgetApplication ?: return
+        val repo = app.repository
+        val now = System.currentTimeMillis()
+        val resets = repo.accounts().mapNotNull { account ->
+            repo.allowanceFor(account.id, now)?.takeIf { SyncAllowance.exhausted(it, now) }?.resetAt
+        }
+        val zoned = ZonedDateTime.now()
+        val nextSlot = syncTimes(notificationTime(context.applicationContext))
+            .minOf { zoned.plus(delayUntilNext(zoned, it)).toInstant().toEpochMilli() }
+        val at = SyncAllowance.catchUpAt(resets, nextSlot, now) ?: return
+        val request = OneTimeWorkRequest.Builder(DailySyncWorker::class.java)
+            .setInputData(workDataOf(CATCH_UP_KEY to true))
+            .setInitialDelay(at - now, TimeUnit.MILLISECONDS)
+            .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+            .build()
+        WorkManager.getInstance(context.applicationContext)
+            // From inside a running catch-up, replacing by name would cancel the job doing the
+            // booking; appending queues the next one behind it instead.
+            .enqueueUniqueWork(
+                CATCH_UP_NAME,
+                if (fromCatchUp) androidx.work.ExistingWorkPolicy.APPEND_OR_REPLACE else androidx.work.ExistingWorkPolicy.REPLACE,
+                request,
+            )
+    }
 
     private val DAY_SLOTS = listOf(LocalTime.of(8, 0), LocalTime.of(14, 0), LocalTime.of(20, 0))
     private val QUIET_FROM: LocalTime = LocalTime.of(23, 0)

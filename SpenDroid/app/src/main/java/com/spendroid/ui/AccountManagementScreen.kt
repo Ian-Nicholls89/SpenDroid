@@ -53,6 +53,11 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.runtime.produceState
+import com.spendroid.data.SyncAllowance
+import kotlinx.coroutines.delay
 import com.spendroid.data.Connection
 import com.spendroid.data.db.AccountEntity
 import com.spendroid.data.toMajor
@@ -77,6 +82,13 @@ fun AccountManagementScreen(
 ) {
     var showLinkDialog by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<AccountEntity?>(null) }
+    // Ticks so the countdowns and reset bars move while the screen is open.
+    val now by produceState(System.currentTimeMillis()) {
+        while (true) {
+            delay(30_000)
+            value = System.currentTimeMillis()
+        }
+    }
 
     LazyColumn(
         modifier = Modifier
@@ -84,6 +96,9 @@ fun AccountManagementScreen(
             .padding(horizontal = 16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
+        item {
+            SyncHeader(nextSyncAt = state.nextSyncAt, note = state.syncNote, now = now)
+        }
         items(state.accounts, key = { it.id }) { account ->
             AccountWalletCard(
                 account = account,
@@ -91,6 +106,8 @@ fun AccountManagementScreen(
                 onClick = { editing = account },
                 onRelink = onRelink,
                 failure = state.syncFailures[account.id],
+                allowance = state.syncAllowances[account.id],
+                now = now,
             )
         }
         item {
@@ -157,6 +174,8 @@ private fun AccountWalletCard(
     onClick: () -> Unit,
     onRelink: (Connection) -> Unit,
     failure: com.spendroid.data.SyncFailure? = null,
+    allowance: SyncAllowance.Account? = null,
+    now: Long = System.currentTimeMillis(),
 ) {
     val daysLeft = connection?.daysUntilExpiry()
     val isCard = account.accountType == AccountType.CREDIT_CARD
@@ -231,6 +250,8 @@ private fun AccountWalletCard(
                 )
             }
         }
+        Spacer(Modifier.height(8.dp))
+        AllowanceRow(allowance, now)
         if (connection != null && daysLeft != null && daysLeft <= 14) {
             Spacer(Modifier.height(8.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -475,6 +496,88 @@ private fun AccountDetailSheet(
         }
     }
 }
+
+/** When the bank is next asked, and what the last refresh had to say about the allowance. */
+@Composable
+private fun SyncHeader(nextSyncAt: Long?, note: String?, now: Long) {
+    Column(modifier = Modifier.padding(top = 4.dp)) {
+        nextSyncAt?.let {
+            Text(
+                "Next scheduled sync ${SyncAllowance.resetLabel(it, now)}",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        note?.let {
+            Spacer(Modifier.height(4.dp))
+            Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface)
+        }
+    }
+}
+
+/**
+ * An account's allowance with the bank, always on show: a dot per sync (filled for each left),
+ * the count and when it refills, and a bar filling towards the reset. Banks ration syncs per
+ * account, and a spent allowance used to show only as figures that quietly stopped changing.
+ */
+@Composable
+private fun AllowanceRow(allowance: SyncAllowance.Account?, now: Long) {
+    val spent = SyncAllowance.exhausted(allowance, now)
+    Column(
+        modifier = Modifier.semantics(mergeDescendants = true) {
+            contentDescription = SyncAllowance.summary(allowance, now)
+        },
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            val limit = allowance?.limit
+            if (allowance != null && limit != null && limit in 1..10) {
+                repeat(limit) { i ->
+                    val filled = i < allowance.remaining
+                    Box(
+                        modifier = Modifier
+                            .padding(end = 4.dp)
+                            .size(8.dp)
+                            .background(
+                                when {
+                                    filled -> Color.White
+                                    spent -> Color(0xFFFFB4B0).copy(alpha = 0.55f)
+                                    else -> Color.White.copy(alpha = 0.28f)
+                                },
+                                CircleShape,
+                            ),
+                    )
+                }
+                Spacer(Modifier.width(6.dp))
+            }
+            Text(
+                SyncAllowance.summary(allowance, now),
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = if (spent) FontWeight.SemiBold else FontWeight.Normal,
+                color = if (spent) Color(0xFFFFDAD6) else Color.White.copy(alpha = 0.85f),
+            )
+        }
+        // Filling towards the reset, over the day the allowance covers.
+        allowance?.resetAt?.takeIf { it > now }?.let { reset ->
+            val fraction = (1f - (reset - now).toFloat() / DAY_MS).coerceIn(0f, 1f)
+            Spacer(Modifier.height(5.dp))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(3.dp)
+                    .background(Color.White.copy(alpha = 0.2f), RoundedCornerShape(2.dp)),
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(fraction)
+                        .height(3.dp)
+                        .background(Color.White.copy(alpha = if (spent) 0.9f else 0.6f), RoundedCornerShape(2.dp)),
+                )
+            }
+        }
+    }
+}
+
+private const val DAY_MS = 24 * 60 * 60 * 1000f
 
 private fun currencySymbol(code: String): String =
     runCatching { java.util.Currency.getInstance(code).symbol }.getOrDefault(code)

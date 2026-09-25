@@ -69,6 +69,7 @@ class SecretsStore(private val context: Context) {
         val NOTIFIED_CARD_WARNINGS = stringPreferencesKey("notified_card_warnings")
         val TRANSFER_GROUPS = stringPreferencesKey("transfer_groups")
         val SYNC_FAILURES = stringPreferencesKey("sync_failures")
+        val SYNC_ALLOWANCES = stringPreferencesKey("sync_allowances")
         val REFRESH_TOKEN = stringPreferencesKey("refresh_token")
         val NOTIFICATION_TIME = stringPreferencesKey("notification_time")
         val LAST_NOTIFIED_VERSION = intPreferencesKey("last_notified_version_code")
@@ -146,6 +147,54 @@ class SecretsStore(private val context: Context) {
         val current = parseStringSet(context.dataStore.data.first()[Keys.TRANSFER_GROUPS]).toMutableSet()
         current.addAll(keys)
         context.dataStore.edit { prefs -> prefs[Keys.TRANSFER_GROUPS] = JSONArray(current.toList()).toString() }
+    }
+
+    /** Each account's last reported allowance, per scope the bank rations. */
+    val syncAllowances: Flow<Map<String, Map<SyncAllowance.Scope, SyncAllowance.Reading>>> = context.dataStore.data
+        .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
+        .map { prefs -> parseAllowances(prefs[Keys.SYNC_ALLOWANCES]) }
+
+    /** Merges fresh readings in, keeping scopes this sync did not touch. */
+    suspend fun saveAllowances(accountId: String, readings: Map<SyncAllowance.Scope, SyncAllowance.Reading>) {
+        if (readings.isEmpty()) return
+        context.dataStore.edit { prefs ->
+            val all = parseAllowances(prefs[Keys.SYNC_ALLOWANCES]).toMutableMap()
+            all[accountId] = all[accountId].orEmpty() + readings
+            prefs[Keys.SYNC_ALLOWANCES] = JSONObject().also { root ->
+                all.forEach { (id, scopes) ->
+                    root.put(id, JSONObject().also { o ->
+                        scopes.forEach { (scope, r) ->
+                            o.put(
+                                scope.name,
+                                JSONObject()
+                                    .put("limit", r.limit ?: JSONObject.NULL)
+                                    .put("remaining", r.remaining)
+                                    .put("resetAt", r.resetAt)
+                                    .put("observedAt", r.observedAt),
+                            )
+                        }
+                    })
+                }
+            }.toString()
+        }
+    }
+
+    private fun parseAllowances(json: String?): Map<String, Map<SyncAllowance.Scope, SyncAllowance.Reading>> {
+        if (json.isNullOrBlank()) return emptyMap()
+        val root = JSONObject(json)
+        return root.keys().asSequence().associateWith { id ->
+            val o = root.optJSONObject(id) ?: JSONObject()
+            o.keys().asSequence().mapNotNull { name ->
+                val scope = runCatching { SyncAllowance.Scope.valueOf(name) }.getOrNull() ?: return@mapNotNull null
+                val r = o.optJSONObject(name) ?: return@mapNotNull null
+                scope to SyncAllowance.Reading(
+                    limit = if (r.isNull("limit")) null else r.optInt("limit"),
+                    remaining = r.optInt("remaining"),
+                    resetAt = r.optLong("resetAt"),
+                    observedAt = r.optLong("observedAt"),
+                )
+            }.toMap()
+        }
     }
 
     /** The last sync that failed for each account, and why, cleared when one succeeds. */
