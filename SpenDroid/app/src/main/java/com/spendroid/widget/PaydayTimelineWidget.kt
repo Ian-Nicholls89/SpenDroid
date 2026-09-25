@@ -144,7 +144,15 @@ class PaydayTimelineWidget : GlanceAppWidget() {
             }
             Spacer(GlanceModifier.height(if (tall) 8.dp else 2.dp))
             Image(
-                provider = ImageProvider(timelineBitmap(timeline.today, timeline.bills)),
+                // Drawn at the shape it is shown at, so the line runs the full width and the dots
+                // stay round instead of being fitted small into the middle.
+                provider = ImageProvider(
+                    timelineBitmap(
+                        timeline.today,
+                        timeline.bills,
+                        aspect = (LocalSize.current.width.value - 28f) / (if (tall) 22f else 16f),
+                    ),
+                ),
                 contentDescription = if (timeline.spoken.isBlank()) {
                     "No bills before payday on ${timeline.payday}"
                 } else {

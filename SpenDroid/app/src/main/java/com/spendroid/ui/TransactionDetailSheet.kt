@@ -55,6 +55,8 @@ fun TransactionDetailSheet(
     similarCount: Int = 1,
     /** The app's best alternatives to the category shown, best first - what a swipe offers. */
     suggestions: List<Category> = emptyList(),
+    /** When this transaction's account last synced, to say how current "pending" is. */
+    accountLastSynced: Long? = null,
     groupMarkedAsTransfer: Boolean = false,
     onMarkTransferGroup: (TransactionEntity, Boolean) -> Unit = { _, _ -> },
 ) {
@@ -100,6 +102,18 @@ fun TransactionDetailSheet(
                     style = MaterialTheme.typography.titleMedium.copy(fontFeatureSettings = "tnum"),
                     fontWeight = FontWeight.Bold,
                     color = if (transaction.amountMinor >= 0) InColor else MaterialTheme.colorScheme.onSurface,
+                )
+            }
+
+            // Pending is the bank's word at the last sync, which is worth saying: a payment the
+            // bank's own app shows as landed can still be pending in what it reports here.
+            if (transaction.isPending) {
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    "Pending, as your bank reported it at the last sync" +
+                        (accountLastSynced?.takeIf { it > 0L }?.let { " (${syncedLabel(it)})" }.orEmpty()),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
 
@@ -226,3 +240,8 @@ fun TransactionDetailSheet(
         }
     }
 }
+
+private fun syncedLabel(epochMillis: Long): String =
+    java.time.Instant.ofEpochMilli(epochMillis)
+        .atZone(java.time.ZoneId.systemDefault())
+        .format(java.time.format.DateTimeFormatter.ofPattern("d MMM, HH:mm"))

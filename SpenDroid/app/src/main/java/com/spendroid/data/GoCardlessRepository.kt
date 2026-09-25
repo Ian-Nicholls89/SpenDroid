@@ -414,18 +414,12 @@ class GoCardlessRepository private constructor(
         // undo the user's own decisions. REPLACE deletes the old row before inserting, so
         // every category set by hand and every transfer flagged was being wiped nightly for
         // the whole 90-day window.
+        // Every pending entry this account held goes, and what the bank reports as pending now
+        // comes back - so pending is always exactly the bank's current word. Edits made to a
+        // pending row are read first and carried onto whichever row replaces it.
+        val stored = dao.transactionsFor(accountId)
         val rows = booked + stillPendingOnly(booked, pending)
-        dao.upsertTransactions(preserveUserEdits(rows, dao.transactionsFor(accountId)))
-
-        // Anything still marked pending that the bank has stopped sending has either been
-        // booked under a new id or withdrawn. Either way the row is stale, and now that
-        // pending counts towards spending a stale one is a phantom that never clears.
-        val stillPending = rows.filter { it.isPending }.map { it.transactionId }
-        if (stillPending.isEmpty()) {
-            dao.expireAllPending(accountId)
-        } else {
-            dao.expirePending(accountId, stillPending)
-        }
+        dao.replaceSync(accountId, preserveUserEdits(rows, stored))
 
         // A sync refreshes the balance; it must not undo the user's own decisions. Rebuilding
         // the row from scratch reset the type, regenerated the label over any rename, and

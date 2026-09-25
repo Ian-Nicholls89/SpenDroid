@@ -440,6 +440,7 @@ fun TransactionsScreen(
             onMarkTransfer = { t, v -> onMarkTransfer(t, v); selected = null },
             similarCount = similar,
             suggestions = remember(tx) { suggestionsFor(tx).take(2) },
+            accountLastSynced = state.accounts.firstOrNull { it.id == tx.accountId }?.lastSynced,
             groupMarkedAsTransfer = group in state.transferGroups,
             onMarkTransferGroup = { t, v -> onMarkTransferGroup(t, v); selected = null },
             onMarkCardPayment = { t, v -> onMarkCardPayment(t, v); selected = null },

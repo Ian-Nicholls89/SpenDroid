@@ -115,9 +115,9 @@ fun weekBitmap(values: List<Long>): Bitmap {
  * The days until payday as a line: done in white, to come in grey, a marker for today and a
  * dot on each day a bill leaves. Card bills are blue, since their amount is still moving.
  */
-fun timelineBitmap(today: Float, bills: List<Pair<Float, Boolean>>): Bitmap {
-    val w = 600
+fun timelineBitmap(today: Float, bills: List<Pair<Float, Boolean>>, aspect: Float = 10f): Bitmap {
     val h = 60
+    val w = (h * aspect.coerceIn(2f, 30f)).toInt()
     val bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
     val canvas = Canvas(bitmap)
     val inset = 14f

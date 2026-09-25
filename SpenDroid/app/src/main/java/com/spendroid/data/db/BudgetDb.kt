@@ -214,6 +214,18 @@ interface BudgetDao {
     @Query("DELETE FROM transactions WHERE accountId = :accountId AND isPending = 1")
     suspend fun expireAllPending(accountId: String)
 
+    /**
+     * Writes a sync's rows for one account, replacing every pending entry it held. Pending is
+     * whatever the bank says is pending now: anything it no longer lists has booked or been
+     * withdrawn, and matching old pending rows to new ones by id was what let a booked salary
+     * go on showing as pending. One step, so the list never shows the account without them.
+     */
+    @Transaction
+    suspend fun replaceSync(accountId: String, rows: List<TransactionEntity>) {
+        expireAllPending(accountId)
+        upsertTransactions(rows)
+    }
+
     @Query(
         "UPDATE transactions SET isInternalTransfer = 1 " +
             "WHERE accountId = :accountId AND transactionId = :transactionId " +

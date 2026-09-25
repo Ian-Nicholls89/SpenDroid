@@ -23,6 +23,7 @@ import androidx.glance.appwidget.provideContent
 import androidx.glance.appwidget.updateAll
 import androidx.glance.background
 import androidx.glance.layout.Alignment
+import androidx.glance.layout.ContentScale
 import androidx.glance.layout.Box
 import androidx.glance.layout.Column
 import androidx.glance.layout.Row
@@ -337,6 +338,9 @@ class AvailableToSpendWidget : GlanceAppWidget() {
                 Column(modifier = GlanceModifier.defaultWeight()) {
                     Image(
                         provider = ImageProvider(weekBitmap(summary.week)),
+                        // Stretched to the row, so each bar sits over its day letter. Fitting
+                        // kept the image's shape and squeezed all seven into the middle.
+                        contentScale = ContentScale.FillBounds,
                         contentDescription = weekDescription(summary),
                         modifier = GlanceModifier.fillMaxWidth().height(17.dp),
                     )

@@ -23,6 +23,7 @@ import androidx.glance.appwidget.provideContent
 import androidx.glance.appwidget.updateAll
 import androidx.glance.background
 import androidx.glance.layout.Alignment
+import androidx.glance.layout.ContentScale
 import androidx.glance.layout.Box
 import androidx.glance.layout.Column
 import androidx.glance.layout.Row
@@ -268,6 +269,8 @@ class CardBillsWidget : GlanceAppWidget() {
                     ),
                     contentDescription = card.detail,
                     modifier = GlanceModifier.fillMaxWidth().height(9.dp),
+                    // The full width of the row, as the numbers beside it assume.
+                    contentScale = ContentScale.FillBounds,
                 )
             } else {
                 SplitBar(card.billedShare, width)
