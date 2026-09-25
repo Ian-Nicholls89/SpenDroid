@@ -137,14 +137,18 @@ object BudgetEngine {
         val designationLost = primaryIncomeKey != null && designated == null
         val chosenIncome = designated ?: incomeRules.maxByOrNull { monthlyEquivalent(it) }
 
-        // Payday is when the money lands, pending or not. Detection only learns from booked
-        // rows, so a salary still pending left the rule a month behind: the cycle ran from last
-        // payday to the next, two months long - "53% through" on day one, with last month's
-        // spending still counted. The latest arrival of this income, pending included, is
-        // where the cycle starts.
+        // The cycle turns on a confirmed salary; a pending one can still change or vanish, so it
+        // is not counted yet. Recognised by who pays it and roughly how much rather than the
+        // exact amount, or a pay rise - a new amount, grouped apart from the old - would leave
+        // the cycle waiting for a salary that has in fact arrived.
         val primaryIncome = chosenIncome?.let { rule ->
+            val payer = rule.payee.lowercase().trim().replace(Regex("\\s+"), " ")
             val landed = transactions
-                .filter { it.amountMinor > 0 && RecurringAnalyzer.matches(rule, it) }
+                .filter { tx ->
+                    !tx.isPending && tx.amountMinor > 0 &&
+                        tx.payee.lowercase().trim().replace(Regex("\\s+"), " ") == payer &&
+                        abs(tx.amountMinor - rule.amountMinor) <= abs(rule.amountMinor) / 4
+                }
                 .mapNotNull { RecurringAnalyzer.parseBookingDate(it.bookingDate) }
                 .filter { !it.isAfter(referenceTime.toLocalDate()) }
                 .maxOrNull()
@@ -158,7 +162,17 @@ object BudgetEngine {
         val fixedMonthlyOutgoings = fixedRules.sumOf { abs(monthlyEquivalent(it)) }
         val variableBudget = (averageMonthlyIncome - fixedMonthlyOutgoings).coerceAtLeast(0L)
 
-        val nextIncomeDate = primaryIncome?.let { nextFor(it, today) }
+        // The payday after the last confirmed one. Until the salary books, a payday that has come
+        // stays the one being waited for: asking for the next one after today skipped straight
+        // to next month's, and one cycle ran two months - "53% through" on its last day.
+        //
+        // Waiting has a limit. A salary a week late has probably changed or stopped rather than
+        // stalled, and the cycle moves on to the next expected payday instead of freezing.
+        val nextIncomeDate = primaryIncome?.let { rule ->
+            val due = nextFor(rule, rule.lastOccurrence)
+            val waiting = !due.isAfter(today) && !due.isBefore(today.minusDays(MAX_WAIT_FOR_INCOME_DAYS))
+            if (waiting) due else nextFor(rule, today)
+        }
         val lastIncome = primaryIncome?.lastOccurrence?.takeIf { !it.isAfter(today) }
         val cycleStart = lastIncome?.takeIf { it.isAfter(today.minusDays(45)) } ?: today.minusDays(30)
         val cycleEnd = nextIncomeDate?.minusDays(1)
@@ -364,6 +378,7 @@ object BudgetEngine {
             cardTiming = cardTiming,
             cardsNextCycleMinor = cardsNextCycle,
             lastSevenDaysMinor = lastSevenDays,
+            asOf = today,
             primaryIncomeDesignated = designated != null,
             designationLost = designationLost,
         )
@@ -387,6 +402,9 @@ object BudgetEngine {
             occurrences = 1,
             score = 1f,
         )
+
+    /** How long a late salary is waited for before the cycle moves on without it. */
+    private const val MAX_WAIT_FOR_INCOME_DAYS = 7L
 
     /** A monthly amount expressed as one cycle's worth, for a cycle of [cadence]. */
     private fun perCycle(monthly: Long, cadence: Cadence): Long = when (cadence) {

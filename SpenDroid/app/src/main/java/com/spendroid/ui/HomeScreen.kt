@@ -834,9 +834,17 @@ private fun HeroBudgetCard(budget: BudgetSnapshot, syncing: Boolean = false) {
                     SyncedTick(syncing)
                 }
                 budget.nextIncomeDate?.let { next ->
-                    val days = max(0L, ChronoUnit.DAYS.between(LocalDate.now(), next))
+                    val today = budget.asOf
+                    val days = max(0L, ChronoUnit.DAYS.between(today, next))
                     Text(
-                        "Next income ${next.format(dateFormat)} · in $days day${if (days == 1L) "" else "s"}",
+                        when {
+                            // Payday has come but the salary has not cleared: the cycle turns
+                            // when it does, so say what is being waited for.
+                            next == today -> "Income due today · the new cycle starts when it clears"
+                            next.isBefore(today) ->
+                                "Income expected ${next.format(dateFormat)} · not cleared yet"
+                            else -> "Next income ${next.format(dateFormat)} · in $days day${if (days == 1L) "" else "s"}"
+                        },
                         style = MaterialTheme.typography.bodySmall,
                         color = Color.White.copy(alpha = 0.8f),
                     )

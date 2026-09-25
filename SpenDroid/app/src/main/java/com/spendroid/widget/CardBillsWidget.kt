@@ -83,13 +83,13 @@ class CardBillsWidget : GlanceAppWidget() {
                 rows = snapshot.cardBills
                     // A card with nothing owed still has a limit worth watching once it is set.
                     .filter { it.outstandingMinor > 0L || it.capMinor != null }
-                    .map { bill -> bill.toRow() },
+                    .map { bill -> bill.toRow(snapshot.asOf) },
                 updated = updatedLabel(app.repository.accounts()),
             )
         }.getOrNull()
     }
 
-    private fun CreditCardEngine.CardBill.toRow(): CardRow {
+    private fun CreditCardEngine.CardBill.toRow(today: java.time.LocalDate): CardRow {
         val rail = WidgetGeometry.cardRail(this)
         val cap = capMinor
         if (rail != null && cap != null) {
@@ -97,7 +97,7 @@ class CardBillsWidget : GlanceAppWidget() {
             // last one's payment leaves.
             val whose = if (capSource == CreditCardEngine.CapSource.USER) "your" else "usual"
             val countdown = dueDate?.let { date ->
-                val days = java.time.temporal.ChronoUnit.DAYS.between(java.time.LocalDate.now(), date)
+                val days = java.time.temporal.ChronoUnit.DAYS.between(today, date)
                 val amount = dueMinor.takeIf { it > 0L }?.let { "${formatMoney(it, currency)} " }.orEmpty()
                 when {
                     days <= 0L -> "${amount}due today"

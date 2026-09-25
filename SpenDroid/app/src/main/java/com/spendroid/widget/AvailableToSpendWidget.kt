@@ -99,6 +99,8 @@ class AvailableToSpendWidget : GlanceAppWidget() {
         val week: List<Long> = emptyList(),
         val updated: String? = null,
         val categories: List<CategoryLine> = emptyList(),
+        /** The day the figures are for, which the week's bars end on. */
+        val asOf: java.time.LocalDate = java.time.LocalDate.now(),
         val empty: String? = null,
     )
 
@@ -150,6 +152,7 @@ class AvailableToSpendWidget : GlanceAppWidget() {
                 week = snapshot.lastSevenDaysMinor,
                 updated = updatedLabel(app.repository.accounts()),
                 categories = topCategories(app, snapshot),
+                asOf = snapshot.asOf,
             )
         }.getOrElse { empty("Open SpenDroid") }
     }
@@ -338,7 +341,7 @@ class AvailableToSpendWidget : GlanceAppWidget() {
                         modifier = GlanceModifier.fillMaxWidth().height(17.dp),
                     )
                     Row(modifier = GlanceModifier.fillMaxWidth()) {
-                        weekLetters().forEach { day ->
+                        weekLetters(summary.asOf).forEach { day ->
                             Text(
                                 day,
                                 style = caption(8.sp).copy(textAlign = TextAlign.Center),
@@ -556,8 +559,7 @@ class AvailableToSpendWidget : GlanceAppWidget() {
             summary.week.joinToString(", ") { poundsOnly(it) }
 
     /** Initials for the last seven days, ending today. */
-    private fun weekLetters(): List<String> {
-        val today = java.time.LocalDate.now()
+    private fun weekLetters(today: java.time.LocalDate): List<String> {
         return (6L downTo 0L).map { today.minusDays(it).dayOfWeek.getDisplayName(java.time.format.TextStyle.NARROW, java.util.Locale.getDefault()) }
     }
 

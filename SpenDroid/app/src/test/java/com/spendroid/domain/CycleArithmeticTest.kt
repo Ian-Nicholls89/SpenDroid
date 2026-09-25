@@ -166,33 +166,55 @@ class CycleArithmeticTest {
         assertEquals(15000L, s.fixedMonthlyOutgoings)
     }
 
-    /**
-     * The reported case: payday arrives a day early and sits pending. Recurring detection
-     * skips pending rows, so the cycle still ran from last month's payday to next month's -
-     * two months long, "53% through" on day one, with last month's spending still in it.
-     */
-    @Test
-    fun `a pending salary starts the new cycle the day it lands`() {
-        val payday = LocalDate.of(2026, 9, 25)
-        val now = payday.atTime(8, 0)
-        val history = listOf(
-            tx("UKHSA", 183689, LocalDate.of(2026, 6, 25)),
-            tx("UKHSA", 183689, LocalDate.of(2026, 7, 24)),
-            tx("UKHSA", 183689, LocalDate.of(2026, 8, 25)),
-            tx("TESCO", -5000, LocalDate.of(2026, 9, 10)),
-        )
-        val pendingSalary = tx("UKHSA", 183689, LocalDate.of(2026, 9, 24)).copy(isPending = true)
-        val all = history + pendingSalary
-        val s = BudgetEngine.snapshot(
+    private val paydayHistory = listOf(
+        tx("UKHSA", 183689, LocalDate.of(2026, 6, 25)),
+        tx("UKHSA", 183689, LocalDate.of(2026, 7, 24)),
+        tx("UKHSA", 183689, LocalDate.of(2026, 8, 25)),
+        tx("TESCO", -5000, LocalDate.of(2026, 9, 10)),
+    )
+
+    private fun onPayday(extra: List<TransactionEntity>): BudgetSnapshot {
+        val all = paydayHistory + extra
+        return BudgetEngine.snapshot(
             transactions = all,
             rules = RecurringAnalyzer.analyze(all),
             accounts = listOf(account),
-            referenceTime = now,
+            referenceTime = LocalDate.of(2026, 9, 25).atTime(8, 0),
         )
+    }
+
+    /**
+     * The reported case: payday has come and the salary is still pending. The cycle does not
+     * roll over on a pending payment, which can still change - but nor does it skip today's
+     * payday for next month's, which made one cycle two months long and read "53% through"
+     * on the first day. It is the old cycle's last day, with income due today.
+     */
+    @Test
+    fun `until the salary is confirmed, payday is due rather than skipped`() {
+        val pending = tx("UKHSA", 183689, LocalDate.of(2026, 9, 24)).copy(isPending = true)
+        val s = onPayday(listOf(pending))
+
+        assertEquals(LocalDate.of(2026, 8, 25), s.cycleStart)
+        assertEquals(LocalDate.of(2026, 9, 25), s.nextIncomeDate)
+        assertEquals(0, s.daysUntilNextIncome)
+        assertEquals(5000L, s.spentThisCycle)
+    }
+
+    /** Once it books, the new cycle starts from the day it landed, and runs a month. */
+    @Test
+    fun `a confirmed salary starts the new cycle`() {
+        val booked = tx("UKHSA", 183689, LocalDate.of(2026, 9, 24))
+        val s = onPayday(listOf(booked))
 
         assertEquals(LocalDate.of(2026, 9, 24), s.cycleStart)
-        // The next payday is a month on, not two.
         assertTrue(s.nextIncomeDate!!.isBefore(LocalDate.of(2026, 10, 27)))
         assertEquals(0L, s.spentThisCycle)
+    }
+
+    /** A pay rise is still payday: a different amount from the same employer turns the cycle. */
+    @Test
+    fun `a pay rise still counts as the salary arriving`() {
+        val raised = tx("UKHSA", 195000, LocalDate.of(2026, 9, 24))
+        assertEquals(LocalDate.of(2026, 9, 24), onPayday(listOf(raised)).cycleStart)
     }
 }

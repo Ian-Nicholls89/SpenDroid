@@ -27,7 +27,7 @@ class DailyRoundupWorker(
         // The shared builder. Assembling this here left out accounts entirely, so the
         // notification counted card spending the home screen excludes and quietly reported
         // a different figure from the one in the app.
-        val snapshot = app.repository.budgetSnapshot(java.time.LocalDateTime.now())
+        val snapshot = app.repository.budgetSnapshot()
             ?: return Result.success()
 
         val dateFormat = DateTimeFormatter.ofPattern("d MMM")

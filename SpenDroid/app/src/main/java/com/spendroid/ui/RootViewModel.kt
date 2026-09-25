@@ -686,6 +686,8 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
         val holidays = runCatching { repo.bankHolidays() }.getOrDefault(emptyMap())
         val budgetModel = BudgetModel.from(repo.budgetModel.first())
         val cardTiming = CardTiming.from(repo.cardTiming.first())
+        // The day the figures are for, which is yesterday until this morning's first sync.
+        val budgetTime = repo.budgetTime()
         val budgetGoals = repo.budgetGoals.first()
         // Compile-time constants: no PackageManager lookup to fail and fall back to a fake
         // "1.0.0" / 0 that would then be compared against the latest release.
@@ -703,6 +705,7 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
                 categoryRules = categoryRules,
                 budgetGoals = budgetGoals,
                 budget = BudgetEngine.snapshot(
+                    referenceTime = budgetTime,
                     transactions = all,
                     rules = allRules.filter { rule -> rule.key !in ignored },
                     accounts = accounts,

@@ -346,7 +346,7 @@ private fun ConfidenceBar(rule: RecurringRule) {
 
 @Composable
 private fun CycleTimeline(budget: BudgetSnapshot) {
-    val today = LocalDate.now()
+    val today = budget.asOf
     val nextIncome = budget.nextIncomeDate ?: return
     val daysLeft = ChronoUnit.DAYS.between(today, nextIncome).coerceAtLeast(0)
     val dateFormat = DateTimeFormatter.ofPattern("d MMM")

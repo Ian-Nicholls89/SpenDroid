@@ -78,7 +78,7 @@ class PaydayTimelineWidget : GlanceAppWidget() {
             val snapshot = app.repository.budgetSnapshot() ?: return null
             val payday = snapshot.nextIncomeDate ?: return null
             val start = snapshot.cycleStart
-            val today = LocalDate.now()
+            val today = snapshot.asOf
             val due = snapshot.upcomingFixed
             Timeline(
                 daysLeft = snapshot.daysUntilNextIncome ?: 0,

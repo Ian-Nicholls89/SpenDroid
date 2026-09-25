@@ -36,7 +36,7 @@ object BudgetPace {
     }
 
     /** How far through the pay cycle today is, as a fraction. */
-    fun elapsedFraction(budget: BudgetSnapshot, today: LocalDate = LocalDate.now()): Float? {
+    fun elapsedFraction(budget: BudgetSnapshot, today: LocalDate = budget.asOf): Float? {
         val end = budget.cycleEnd ?: return null
         val total = ChronoUnit.DAYS.between(budget.cycleStart, end).toFloat()
         if (total <= 0f) return null
@@ -44,7 +44,7 @@ object BudgetPace {
         return (gone / total).coerceIn(0f, 1f)
     }
 
-    fun of(budget: BudgetSnapshot, today: LocalDate = LocalDate.now()): Pace {
+    fun of(budget: BudgetSnapshot, today: LocalDate = budget.asOf): Pace {
         val used = usedFraction(budget)
         val elapsed = elapsedFraction(budget, today)
         if (used == null || elapsed == null) return Pace.ON_TRACK

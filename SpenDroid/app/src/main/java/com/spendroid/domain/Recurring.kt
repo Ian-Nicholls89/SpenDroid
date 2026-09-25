@@ -121,6 +121,11 @@ data class BudgetSnapshot(
     val cardsNextCycleMinor: Long = 0L,
     /** Discretionary spending on each of the last seven days, oldest first, today last. */
     val lastSevenDaysMinor: List<Long> = emptyList(),
+    /**
+     * The day these figures are for: today once today's first sync has landed, yesterday until
+     * then. Screens measure "today" from this, not the clock, so they agree with the figures.
+     */
+    val asOf: java.time.LocalDate = java.time.LocalDate.now(),
     /** True when the user picked the income that sets the cycle, rather than it being guessed. */
     val primaryIncomeDesignated: Boolean = false,
     /** True when a designated income no longer matches any rule and the guess took over. */

@@ -24,6 +24,7 @@ import com.spendroid.data.remote.TransactionDto
 import com.spendroid.data.remote.TransactionsDto
 import com.spendroid.domain.PayPalEngine
 import com.spendroid.domain.BudgetEngine
+import com.spendroid.domain.BudgetDay
 import com.spendroid.domain.BudgetModel
 import com.spendroid.domain.CardTiming
 import com.spendroid.domain.BudgetSnapshot
@@ -429,8 +430,24 @@ class GoCardlessRepository private constructor(
      * excludes. A screen and a notification disagreeing about the same money is the kind of
      * bug nobody reports, because both look plausible on their own.
      */
+    /**
+     * The moment the budget is worked out at: now, once the current accounts - where salaries
+     * land - have synced today; the end of yesterday until then. See [BudgetDay].
+     */
+    suspend fun budgetTime(now: java.time.LocalDateTime = java.time.LocalDateTime.now()): java.time.LocalDateTime {
+        val all = accounts()
+        val current = all.filter { it.accountType == AccountType.PERSONAL }.ifEmpty { all }
+        val lastSync = current.minOfOrNull { it.lastSynced }
+            ?.takeIf { it > 0L }
+            ?.let { java.time.Instant.ofEpochMilli(it).atZone(java.time.ZoneId.systemDefault()).toLocalDateTime() }
+        val notification = runCatching { java.time.LocalTime.parse(notificationTime.first()) }
+            .getOrDefault(java.time.LocalTime.of(21, 0))
+        val firstSync = com.spendroid.work.DailyRoundupScheduler.syncTimes(notification).first()
+        return BudgetDay.effective(now, lastSync, firstSync)
+    }
+
     suspend fun budgetSnapshot(
-        referenceTime: java.time.LocalDateTime = java.time.LocalDateTime.now(),
+        referenceTime: java.time.LocalDateTime? = null,
     ): BudgetSnapshot? {
         val all = transactions()
         if (all.isEmpty()) return null
@@ -444,7 +461,7 @@ class GoCardlessRepository private constructor(
             transactions = all,
             rules = rules,
             accounts = accounts(),
-            referenceTime = referenceTime,
+            referenceTime = referenceTime ?: budgetTime(),
             primaryIncomeKey = primaryIncomeKey.first(),
             budgetModel = BudgetModel.from(budgetModel.first()),
             calendar = WorkingDayCalendar(holidays.keys),
