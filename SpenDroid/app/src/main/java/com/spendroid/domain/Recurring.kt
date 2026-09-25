@@ -49,6 +49,11 @@ data class RecurringRule(
      * rule is not income and not an outgoing, however regular it looks.
      */
     val internalTransfer: Boolean = false,
+    /**
+     * How many identical payments make up one occurrence - two for £50 to each of two
+     * children on the same day. [amountMinor] is already the total.
+     */
+    val perOccurrence: Int = 1,
 ) {
     val isManual: Boolean get() = key.startsWith(MANUAL_KEY_PREFIX)
 }

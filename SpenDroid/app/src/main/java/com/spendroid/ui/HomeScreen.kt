@@ -967,7 +967,7 @@ private fun HeroBudgetCard(budget: BudgetSnapshot, syncing: Boolean = false) {
                                 )
                             }
                             Text(
-                                formatMoney(payment.amountMinor, payment.rule.currency),
+                                recurringAmount(payment.amountMinor, payment.rule.perOccurrence, payment.rule.currency),
                                 style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = FontWeight.SemiBold,
                                 color = Color.White,

@@ -135,7 +135,21 @@ object BudgetEngine {
         // the screen say so rather than the cycle silently moving.
         val designated = primaryIncomeKey?.let { key -> incomeRules.firstOrNull { it.key == key } }
         val designationLost = primaryIncomeKey != null && designated == null
-        val primaryIncome = designated ?: incomeRules.maxByOrNull { monthlyEquivalent(it) }
+        val chosenIncome = designated ?: incomeRules.maxByOrNull { monthlyEquivalent(it) }
+
+        // Payday is when the money lands, pending or not. Detection only learns from booked
+        // rows, so a salary still pending left the rule a month behind: the cycle ran from last
+        // payday to the next, two months long - "53% through" on day one, with last month's
+        // spending still counted. The latest arrival of this income, pending included, is
+        // where the cycle starts.
+        val primaryIncome = chosenIncome?.let { rule ->
+            val landed = transactions
+                .filter { it.amountMinor > 0 && RecurringAnalyzer.matches(rule, it) }
+                .mapNotNull { RecurringAnalyzer.parseBookingDate(it.bookingDate) }
+                .filter { !it.isAfter(referenceTime.toLocalDate()) }
+                .maxOrNull()
+            if (landed != null && landed.isAfter(rule.lastOccurrence)) rule.copy(lastOccurrence = landed) else rule
+        }
 
         // Both are reported as positive magnitudes so the subtraction below is a subtraction:
         // OUT rules carry a negative amountMinor, and summing them signed would add the

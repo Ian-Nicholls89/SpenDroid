@@ -297,7 +297,7 @@ private fun RuleRow(
         Spacer(Modifier.width(10.dp))
 
         Text(
-            formatMoney(rule.amountMinor, rule.currency),
+            recurringAmount(rule.amountMinor, rule.perOccurrence, rule.currency),
             style = MaterialTheme.typography.bodyMedium.copy(fontFeatureSettings = "tnum"),
             fontWeight = FontWeight.SemiBold,
             color = if (rule.direction == Direction.IN) InColor else MaterialTheme.colorScheme.onSurface,
@@ -407,7 +407,7 @@ private fun CycleTimeline(budget: BudgetSnapshot) {
                             )
                         }
                         Text(
-                            "−" + formatMoney(payment.amountMinor, payment.rule.currency),
+                            "−" + recurringAmount(payment.amountMinor, payment.rule.perOccurrence, payment.rule.currency),
                             style = MaterialTheme.typography.bodyMedium.copy(fontFeatureSettings = "tnum"),
                             fontWeight = FontWeight.SemiBold,
                         )

@@ -141,6 +141,16 @@ object RecurringAnalyzer {
         val accountIds = txs.mapTo(mutableSetOf()) { it.accountId }
         val internalTransfer = txs.all { it.isInternalTransfer }
 
+        // The same payment more than once on the same day - £50 to each of two children's
+        // accounts. Occurrences are counted by date, so without this the pair read as one
+        // £50 payment and the budget came up £50 short every month.
+        val perDate = txs.mapNotNull { parseBookingDate(it.bookingDate) }
+            .groupingBy { it }
+            .eachCount()
+            .values
+            .sorted()
+        val perOccurrence = perDate[perDate.size / 2].coerceAtLeast(1)
+
         return when {
             sameWeekday && medianGap in 6..9 ->
                 build(key, txs.first().payee, amount, txs.first().currency, Cadence.WEEKLY, dates.first().dayOfWeek.value, dates, gapOk = gaps.all { it in 6..9 })
@@ -155,7 +165,14 @@ object RecurringAnalyzer {
                 build(key, txs.first().payee, amount, txs.first().currency, Cadence.ANNUAL, dates.first().dayOfMonth, dates, gapOk = gapFraction(gaps, 340..385) >= 0.5)
 
             else -> monthly(key, txs.first().payee, amount, txs.first().currency, dates)
-        }?.copy(accountIds = accountIds, internalTransfer = internalTransfer)
+        }?.let { rule ->
+            rule.copy(
+                accountIds = accountIds,
+                internalTransfer = internalTransfer,
+                amountMinor = rule.amountMinor * perOccurrence,
+                perOccurrence = perOccurrence,
+            )
+        }
     }
 
     private fun monthly(key: String, payee: String, amount: Long, currency: String, dates: List<LocalDate>): RecurringRule? {
@@ -305,7 +322,8 @@ object RecurringAnalyzer {
         val rules = analyze(transactions)
         return rules.any { rule ->
             rule.payee == candidate.payee &&
-            rule.amountMinor == candidate.amountMinor &&
+            // A candidate is one payment; a rule may be several on the same day.
+            rule.amountMinor / rule.perOccurrence == candidate.amountMinor &&
             rule.currency == candidate.currency &&
             rule.cadence == candidate.cadence
         }

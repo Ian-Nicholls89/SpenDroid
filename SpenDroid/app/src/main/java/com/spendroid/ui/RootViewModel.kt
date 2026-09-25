@@ -597,6 +597,7 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
             val reauth = mutableListOf<Connection>()
             var offline = false
             var imported = false
+            var limited = false
             // PSD2 rations unattended calls to about four per account per day and the nightly
             // sync spends one, so an account pulled within the hour is not pulled again.
             val recent = repo.accounts()
@@ -611,6 +612,7 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
              */
             fun needsReauth(e: Throwable): Boolean {
                 if (e is java.io.IOException) offline = true
+                if (e is retrofit2.HttpException && e.code() == 429) limited = true
                 return e is retrofit2.HttpException && e.code() in REAUTH_CODES
             }
 
@@ -646,7 +648,13 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
             _state.update {
                 it.copy(
                     reauthNeeded = reauth,
-                    error = it.error ?: if (offline) "Couldn't reach your bank. Check your connection and try again." else null,
+                    error = it.error ?: when {
+                        // The bank allows about four syncs a day and three are scheduled, so a
+                        // second manual refresh can meet the limit. It resets on the bank's clock.
+                        limited -> "Your bank's daily limit is used up. The next scheduled sync will catch up."
+                        offline -> "Couldn't reach your bank. Check your connection and try again."
+                        else -> null
+                    },
                 )
             }
             loadLocal()

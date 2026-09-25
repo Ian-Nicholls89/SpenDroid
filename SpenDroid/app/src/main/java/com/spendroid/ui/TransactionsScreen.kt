@@ -12,6 +12,7 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Surface
 import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxState
 import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.rememberCoroutineScope
@@ -672,11 +673,24 @@ private fun SwipeToSort(
     onSort: (Category) -> Unit,
     content: @Composable () -> Unit,
 ) {
-    val right = suggestions.getOrNull(0)
-    val left = suggestions.getOrNull(1)
     val state = rememberSwipeToDismissBoxState()
     val scope = rememberCoroutineScope()
     val haptics = LocalHapticFeedback.current
+
+    // The choices are held still while a swipe is under way. Filing the transaction reloads the
+    // list, and the reloaded suggestions no longer include what it was just filed under - so
+    // right and left swap. Material calls onDismiss again whenever it is handed a new lambda
+    // before the row has settled, and with the pair swapped each call filed it under the other:
+    // the row flicked between two categories until it happened to come to rest.
+    var held by remember { mutableStateOf(suggestions) }
+    if (state.settledValue == SwipeToDismissBoxValue.Settled && !state.isAnimatingOrDragged()) {
+        held = suggestions
+    }
+    val right = held.getOrNull(0)
+    val left = held.getOrNull(1)
+    // Each swipe acts once, however many times it is reported.
+    var handling by remember { mutableStateOf(false) }
+
     val armed = state.targetValue != SwipeToDismissBoxValue.Settled
     LaunchedEffect(armed) {
         if (armed) haptics.performHapticFeedback(HapticFeedbackType.SegmentTick)
@@ -687,9 +701,17 @@ private fun SwipeToSort(
         enableDismissFromStartToEnd = right != null,
         enableDismissFromEndToStart = left != null,
         onDismiss = { value ->
-            val chosen = if (value == SwipeToDismissBoxValue.StartToEnd) right else left
-            chosen?.let(onSort)
-            scope.launch { state.reset() }
+            if (!handling) {
+                handling = true
+                val chosen = if (value == SwipeToDismissBoxValue.StartToEnd) right else left
+                scope.launch {
+                    // Back in place first, then filed: once the row has settled there is nothing
+                    // left for a second report to act on.
+                    state.reset()
+                    chosen?.let(onSort)
+                    handling = false
+                }
+            }
         },
         backgroundContent = {
             val towards = when (state.dismissDirection) {
@@ -766,3 +788,7 @@ private fun SortedBar(note: SortedNote, onUndo: () -> Unit, onAlways: () -> Unit
         }
     }
 }
+
+/** True while the row is moving, whether under a finger or springing back. */
+private fun SwipeToDismissBoxState.isAnimatingOrDragged(): Boolean =
+    currentValue != targetValue || progress in 0.001f..0.999f

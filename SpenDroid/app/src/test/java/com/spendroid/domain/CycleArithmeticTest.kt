@@ -165,4 +165,34 @@ class CycleArithmeticTest {
         )
         assertEquals(15000L, s.fixedMonthlyOutgoings)
     }
+
+    /**
+     * The reported case: payday arrives a day early and sits pending. Recurring detection
+     * skips pending rows, so the cycle still ran from last month's payday to next month's -
+     * two months long, "53% through" on day one, with last month's spending still in it.
+     */
+    @Test
+    fun `a pending salary starts the new cycle the day it lands`() {
+        val payday = LocalDate.of(2026, 9, 25)
+        val now = payday.atTime(8, 0)
+        val history = listOf(
+            tx("UKHSA", 183689, LocalDate.of(2026, 6, 25)),
+            tx("UKHSA", 183689, LocalDate.of(2026, 7, 24)),
+            tx("UKHSA", 183689, LocalDate.of(2026, 8, 25)),
+            tx("TESCO", -5000, LocalDate.of(2026, 9, 10)),
+        )
+        val pendingSalary = tx("UKHSA", 183689, LocalDate.of(2026, 9, 24)).copy(isPending = true)
+        val all = history + pendingSalary
+        val s = BudgetEngine.snapshot(
+            transactions = all,
+            rules = RecurringAnalyzer.analyze(all),
+            accounts = listOf(account),
+            referenceTime = now,
+        )
+
+        assertEquals(LocalDate.of(2026, 9, 24), s.cycleStart)
+        // The next payday is a month on, not two.
+        assertTrue(s.nextIncomeDate!!.isBefore(LocalDate.of(2026, 10, 27)))
+        assertEquals(0L, s.spentThisCycle)
+    }
 }

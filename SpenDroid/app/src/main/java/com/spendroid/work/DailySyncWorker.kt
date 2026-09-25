@@ -17,14 +17,21 @@ import kotlinx.coroutines.flow.first
  * stale data, it risks a permanent hole in the history. Failures therefore retry rather
  * than being swallowed.
  *
- * PSD2 allows about four unattended calls per account per day; this deliberately uses one.
+ * PSD2 allows about four unattended calls per account per day; the three daily syncs leave one
+ * for a manual refresh.
  */
 class DailySyncWorker(
     app: Context,
     parameters: WorkerParameters,
 ) : CoroutineWorker(app, parameters) {
 
-    override suspend fun doWork(): Result = daily(DailyRoundupScheduler.Daily.SYNC) { runDay() }
+    override suspend fun doWork(): Result = daily(ownSlot()) { runDay() }
+
+    /** Which of the day's three syncs this is. One booked before there were three is the evening one. */
+    private fun ownSlot(): DailyRoundupScheduler.Daily =
+        inputData.getString(DailyRoundupScheduler.JOB_KEY)
+            ?.let { name -> runCatching { DailyRoundupScheduler.Daily.valueOf(name) }.getOrNull() }
+            ?: DailyRoundupScheduler.Daily.SYNC_3
 
     private suspend fun runDay(): Result {
         val repo = (applicationContext as BudgetApplication).repository
@@ -64,6 +71,8 @@ class DailySyncWorker(
 
     companion object {
         private const val MAX_ATTEMPTS = 4
-        private val MIN_RESYNC_INTERVAL_MS = TimeUnit.HOURS.toMillis(6)
+        // Under the three hours that separate the day's syncs, so one running a little late never
+        // makes the next skip; long enough that a manual refresh shortly before spares it.
+        private val MIN_RESYNC_INTERVAL_MS = TimeUnit.MINUTES.toMillis(150)
     }
 }
