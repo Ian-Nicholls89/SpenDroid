@@ -53,7 +53,8 @@ import java.time.format.DateTimeFormatter
  */
 class PaydayTimelineWidget : GlanceAppWidget() {
 
-    override val sizeMode = SizeMode.Responsive(setOf(STRIP, STANDARD))
+    // Exact, so widths drawn from the size match the widget as it really is; see the balance widget.
+    override val sizeMode = SizeMode.Exact
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val timeline = load(context)

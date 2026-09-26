@@ -55,23 +55,18 @@ import java.time.format.DateTimeFormatter
  * Reads the local database directly rather than the running app: the widget updates on the
  * system's schedule, long after any Activity has gone.
  *
- * One provider covers every size through [SizeMode.Responsive]. The system picks the closest
- * declared size and the layout branches on it, so resizing a placed widget re-lays it out
- * instead of refusing - which six separate providers could not do.
+ * One provider covers every size: it is told its exact size and the layout branches on it, so
+ * resizing a placed widget re-lays it out instead of refusing - which six separate providers
+ * could not do.
  */
 class AvailableToSpendWidget : GlanceAppWidget() {
 
-    override val sizeMode = SizeMode.Responsive(
-        setOf(
-            CORNER,
-            HERO,
-            STRIP,
-            DIAL,
-            STANDARD,
-            DASHBOARD,
-            LARGE,
-        ),
-    )
+    // Exact rather than Responsive: Responsive reports the nearest declared size, not the real
+    // one, so on a widget stretched past the widest declared size every width worked out from
+    // it came up short - the bar and its pace tick drawn at three quarters of where they
+    // belonged, against a track that spanned the whole widget. The declared sizes below remain
+    // as the layout's breakpoints.
+    override val sizeMode = SizeMode.Exact
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val summary = loadSummary(context)

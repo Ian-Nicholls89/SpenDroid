@@ -55,7 +55,8 @@ import java.time.format.DateTimeFormatter
  */
 class CardBillsWidget : GlanceAppWidget() {
 
-    override val sizeMode = SizeMode.Responsive(setOf(COMPACT, STANDARD, TALL))
+    // Exact, so widths drawn from the size match the widget as it really is; see the balance widget.
+    override val sizeMode = SizeMode.Exact
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val cards = loadCards(context)
