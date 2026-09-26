@@ -2,6 +2,7 @@ package com.spendroid.work
 
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Context
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
@@ -38,18 +39,37 @@ class DailyRoundupWorker(
         }
 
         val manager = applicationContext.getSystemService(NotificationManager::class.java)
+        // High importance, so the roundup sits at the top of the shade rather than among
+        // everything else. Android never lets an app raise a channel it has already made,
+        // so this is a new channel, and the old default-importance one goes.
+        manager.deleteNotificationChannel(OLD_CHANNEL_ID)
         val channel = NotificationChannel(
             CHANNEL_ID,
             "Daily budget roundup",
-            NotificationManager.IMPORTANCE_DEFAULT,
+            NotificationManager.IMPORTANCE_HIGH,
         )
         manager.createNotificationChannel(channel)
+
+        // Tapping it opens the app, as tapping its icon would.
+        val open = applicationContext.packageManager
+            .getLaunchIntentForPackage(applicationContext.packageName)
+            ?.let {
+                PendingIntent.getActivity(
+                    applicationContext,
+                    NOTIFICATION_ID,
+                    it,
+                    PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+                )
+            }
 
         val notification = NotificationCompat.Builder(applicationContext, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setContentTitle("SpenDroid roundup")
             .setContentText(body)
             .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+            .setCategory(NotificationCompat.CATEGORY_REMINDER)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setContentIntent(open)
             .setAutoCancel(true)
             .build()
 
@@ -60,7 +80,8 @@ class DailyRoundupWorker(
     }
 
     companion object {
-        private const val CHANNEL_ID = "daily_roundup"
+        private const val CHANNEL_ID = "daily_roundup_high"
+        private const val OLD_CHANNEL_ID = "daily_roundup"
         private const val NOTIFICATION_ID = 1001
     }
 }
