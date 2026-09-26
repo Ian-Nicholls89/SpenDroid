@@ -208,8 +208,40 @@ object CreditCardEngine {
             val unbilled = chargesSince(cardTxs, statementClose, paymentIds)
 
             val bankOwed = card.balanceMinor?.let { maxOf(0L, -it) }
-            val outstanding = bankOwed ?: outstandingSince(cardTxs, paymentDates.lastOrNull())
-            val billed = (outstanding - unbilled).coerceAtLeast(0L)
+
+            // The statement, added up: every charge from the day after the previous close to this
+            // close, refunds netted off, payments left out - which is how the bank builds it. It
+            // used to be the bank's reported balance less what was spent since the close, and
+            // when that balance was stale the bill came out £503 short of the £1,294.20 the
+            // statement said. The balance is kept for when the period cannot be added up: the
+            // close is unknown, or the history does not reach back to the period's start.
+            val statementTotal = statementClose?.let { close ->
+                val previousClose = mostRecentOccurrence(statementDay, close.minusDays(1))
+                val earliest = cardTxs.mapNotNull { RecurringAnalyzer.parseBookingDate(it.bookingDate) }.minOrNull()
+                if (earliest == null || earliest.isAfter(previousClose.plusDays(1))) {
+                    null
+                } else {
+                    chargesBetween(cardTxs, previousClose, close, paymentIds)
+                }
+            }
+            // What has already gone towards that statement since it closed.
+            val paidSinceClose = statementClose?.let { close ->
+                payments
+                    .filter { (cardTx, _) ->
+                        RecurringAnalyzer.parseBookingDate(cardTx.bookingDate)?.let { it.isAfter(close) && !it.isAfter(today) } == true
+                    }
+                    .sumOf { (cardTx, _) -> maxOf(0L, cardTx.amountMinor) }
+            } ?: 0L
+
+            val billed: Long
+            val outstanding: Long
+            if (statementTotal != null) {
+                billed = (statementTotal - paidSinceClose).coerceAtLeast(0L)
+                outstanding = billed + unbilled
+            } else {
+                outstanding = bankOwed ?: outstandingSince(cardTxs, paymentDates.lastOrNull())
+                billed = (outstanding - unbilled).coerceAtLeast(0L)
+            }
 
             // Spending after the close is next month's bill, so while this statement is still
             // to be paid, the statement is all that leaves. Once a payment has landed since the
@@ -246,7 +278,7 @@ object CreditCardEngine {
                 statementDay = statementDay,
                 statementClose = statementClose,
                 cycleSource = cycleSource,
-                totalSource = if (bankOwed != null) {
+                totalSource = if (statementTotal == null && bankOwed != null) {
                     TotalSource.BANK_BALANCE
                 } else {
                     TotalSource.TRANSACTIONS
@@ -529,6 +561,23 @@ object CreditCardEngine {
     /** A payee reduced to what is stable about it, for matching one month's wording to the next. */
     private fun wording(payee: String): String =
         payee.lowercase().trim().replace(Regex("\\s+"), " ")
+
+    /** Net charges after [from] up to and including [to], ignoring bill payments. */
+    private fun chargesBetween(
+        cardTxs: List<TransactionEntity>,
+        from: LocalDate,
+        to: LocalDate,
+        paymentIds: Set<String>,
+    ): Long {
+        val net = cardTxs
+            .filter { tx ->
+                if (tx.transactionId in paymentIds) return@filter false
+                val date = RecurringAnalyzer.parseBookingDate(tx.bookingDate) ?: return@filter false
+                date.isAfter(from) && !date.isAfter(to)
+            }
+            .sumOf { it.amountMinor }
+        return maxOf(0L, -net)
+    }
 
     /**
      * What has been charged since [since], ignoring bill payments.

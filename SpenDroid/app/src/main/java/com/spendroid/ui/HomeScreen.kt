@@ -518,15 +518,23 @@ private fun poundsLabel(minor: Long, currency: String): String =
  * rather than blended into one number that answers neither cleanly.
  */
 @Composable
-private fun NetPositionCard(accounts: List<AccountEntity>) {
+private fun NetPositionCard(
+    accounts: List<AccountEntity>,
+    cardBills: List<CreditCardEngine.CardBill> = emptyList(),
+) {
     val currency = accounts.firstOrNull()?.currency ?: "GBP"
     val held = accounts
         .filter { it.accountType != AccountType.CREDIT_CARD }
         .sumOf { it.balanceMinor ?: 0L }
-    // A card balance is negative when money is owed on it; a card in credit owes nothing.
+    // What each card owes as the card panels work it out - the statement added up plus what
+    // has been spent since - so the two agree. The bank's reported balance is used only for
+    // a card with no worked-out bill; it was stale enough to be £438 short.
+    val billsByCard = cardBills.associateBy { it.cardAccountId }
     val owed = accounts
         .filter { it.accountType == AccountType.CREDIT_CARD }
-        .sumOf { maxOf(0L, -(it.balanceMinor ?: 0L)) }
+        .sumOf { card ->
+            billsByCard[card.id]?.outstandingMinor ?: maxOf(0L, -(card.balanceMinor ?: 0L))
+        }
 
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp)) {
@@ -708,7 +716,7 @@ fun HomeScreen(
             }
 
             if (state.accounts.isNotEmpty()) {
-                NetPositionCard(state.accounts)
+                NetPositionCard(state.accounts, state.budget?.cardBills.orEmpty())
                 Spacer(Modifier.height(16.dp))
             }
 

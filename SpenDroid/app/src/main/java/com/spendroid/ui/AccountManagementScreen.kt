@@ -108,6 +108,7 @@ fun AccountManagementScreen(
                 failure = state.syncFailures[account.id],
                 allowance = state.syncAllowances[account.id],
                 now = now,
+                owedOnCard = state.budget?.cardBills?.firstOrNull { it.cardAccountId == account.id }?.outstandingMinor,
             )
         }
         item {
@@ -176,10 +177,15 @@ private fun AccountWalletCard(
     failure: com.spendroid.data.SyncFailure? = null,
     allowance: SyncAllowance.Account? = null,
     now: Long = System.currentTimeMillis(),
+    /** For a card with a worked-out bill: everything owed on it, as a positive amount. */
+    owedOnCard: Long? = null,
 ) {
     val daysLeft = connection?.daysUntilExpiry()
     val isCard = account.accountType == AccountType.CREDIT_CARD
-    val balance = account.balanceMinor
+    // For a card, what is owed as worked out from its statement, not the bank's figure: NatWest
+    // sends the Nectar card's available credit (£2,150 limit less £1,294.20 owed = £855.80)
+    // where the balance should be, unmarked.
+    val balance = owedOnCard?.let { -it } ?: account.balanceMinor
     val amount = balance?.let { formatMoney(it, account.currency) } ?: "—"
 
     Column(
