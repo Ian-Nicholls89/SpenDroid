@@ -522,48 +522,41 @@ private fun SyncHeader(nextSyncAt: Long?, note: String?, now: Long) {
 }
 
 /**
- * An account's allowance with the bank, always on show: a dot per sync (filled for each left),
- * the count and when it refills, and a bar filling towards the reset. Banks ration syncs per
- * account, and a spent allowance used to show only as figures that quietly stopped changing.
+ * An account's allowance with the bank, always on show: a light and one line - refresh
+ * available, only one left, or unavailable until the reset, with a bar filling towards it.
+ * No count of calls, because once a reset passes nobody can say how many came back.
  */
 @Composable
 private fun AllowanceRow(allowance: SyncAllowance.Account?, now: Long) {
-    val spent = SyncAllowance.exhausted(allowance, now)
+    val status = SyncAllowance.status(allowance, now)
+    val spent = status == SyncAllowance.Status.UNAVAILABLE
+    val summary = SyncAllowance.summary(allowance, now)
     Column(
-        modifier = Modifier.semantics(mergeDescendants = true) {
-            contentDescription = SyncAllowance.summary(allowance, now)
-        },
+        modifier = Modifier.semantics(mergeDescendants = true) { contentDescription = summary },
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            val limit = allowance?.limit
-            if (allowance != null && limit != null && limit in 1..10) {
-                repeat(limit) { i ->
-                    val filled = i < allowance.remaining
-                    Box(
-                        modifier = Modifier
-                            .padding(end = 4.dp)
-                            .size(8.dp)
-                            .background(
-                                when {
-                                    filled -> Color.White
-                                    spent -> Color(0xFFFFB4B0).copy(alpha = 0.55f)
-                                    else -> Color.White.copy(alpha = 0.28f)
-                                },
-                                CircleShape,
-                            ),
-                    )
-                }
-                Spacer(Modifier.width(6.dp))
-            }
+            Box(
+                modifier = Modifier
+                    .size(8.dp)
+                    .background(
+                        when (status) {
+                            SyncAllowance.Status.AVAILABLE -> Color.White
+                            SyncAllowance.Status.LAST_ONE -> Color(0xFFFFD27A)
+                            SyncAllowance.Status.UNAVAILABLE -> Color(0xFFFFB4B0)
+                        },
+                        CircleShape,
+                    ),
+            )
+            Spacer(Modifier.width(6.dp))
             Text(
-                SyncAllowance.summary(allowance, now),
+                summary,
                 style = MaterialTheme.typography.labelSmall,
                 fontWeight = if (spent) FontWeight.SemiBold else FontWeight.Normal,
                 color = if (spent) Color(0xFFFFDAD6) else Color.White.copy(alpha = 0.85f),
             )
         }
         // Filling towards the reset, over the day the allowance covers.
-        allowance?.resetAt?.takeIf { it > now }?.let { reset ->
+        allowance?.resetAt?.takeIf { spent && it > now }?.let { reset ->
             val fraction = (1f - (reset - now).toFloat() / DAY_MS).coerceIn(0f, 1f)
             Spacer(Modifier.height(5.dp))
             Box(
@@ -576,7 +569,7 @@ private fun AllowanceRow(allowance: SyncAllowance.Account?, now: Long) {
                     modifier = Modifier
                         .fillMaxWidth(fraction)
                         .height(3.dp)
-                        .background(Color.White.copy(alpha = if (spent) 0.9f else 0.6f), RoundedCornerShape(2.dp)),
+                        .background(Color.White.copy(alpha = 0.9f), RoundedCornerShape(2.dp)),
                 )
             }
         }

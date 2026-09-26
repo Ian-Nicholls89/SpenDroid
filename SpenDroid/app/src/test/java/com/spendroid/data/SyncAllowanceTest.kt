@@ -60,32 +60,47 @@ class SyncAllowanceTest {
         assertEquals(SyncAllowance.Account(4, 1, at(19)), SyncAllowance.forAccount(readings, now))
     }
 
-    /** Once the reset has passed, the allowance is full again without a sync to say so. */
+    /**
+     * Once the reset has passed, one call is known to be back - whether the bank refills all at
+     * once or call by call - and a day after the reading, all of them are.
+     */
     @Test
-    fun `a spent allowance refills at its reset`() {
+    fun `a spent allowance promises one back at its reset and all a day later`() {
         val readings = mapOf(Scope.TRANSACTIONS to SyncAllowance.Reading(4, 0, at(19, 40), at(16)))
         assertTrue(SyncAllowance.exhausted(SyncAllowance.forAccount(readings, at(17)), at(17)))
         val later = SyncAllowance.forAccount(readings, at(19, 41))!!
-        assertEquals(4, later.remaining)
+        assertEquals(SyncAllowance.Account(4, 1, null), later)
         assertFalse(SyncAllowance.exhausted(later, at(19, 41)))
+        assertEquals(4, SyncAllowance.forAccount(readings, at(16, day = 26))!!.remaining)
+    }
+
+    @Test
+    fun `one back never counts past the limit`() {
+        val readings = mapOf(Scope.BALANCES to SyncAllowance.Reading(4, 4, at(19, 40), at(16)))
+        assertEquals(4, SyncAllowance.forAccount(readings, at(20))!!.remaining)
     }
 
     @Test
     fun `the line under each account`() {
         val now = at(16, 26)
-        assertEquals("Sync allowance shows after the next sync", SyncAllowance.summary(null, now, zone))
+        assertEquals("Refresh available", SyncAllowance.summary(null, now))
+        assertEquals("Refresh available", SyncAllowance.summary(SyncAllowance.Account(4, 2, at(19, 40)), now))
+        assertEquals("Only 1 refresh remaining", SyncAllowance.summary(SyncAllowance.Account(4, 1, at(19, 40)), now))
+        assertEquals("Only 1 refresh remaining", SyncAllowance.summary(SyncAllowance.Account(4, 1, null), now))
         assertEquals(
-            "2 of 4 syncs left · resets 19:40",
-            SyncAllowance.summary(SyncAllowance.Account(4, 2, at(19, 40)), now, zone),
+            "Refresh unavailable · resets in 03:14",
+            SyncAllowance.summary(SyncAllowance.Account(4, 0, at(19, 40)), now),
         )
         assertEquals(
-            "Limit reached · resets 19:40 (in 3h 14m)",
-            SyncAllowance.summary(SyncAllowance.Account(4, 0, at(19, 40)), now, zone),
+            "Refresh unavailable · resets in 14:46",
+            SyncAllowance.summary(SyncAllowance.Account(4, 0, at(7, 12, day = 26)), now),
         )
-        assertEquals(
-            "Limit reached · resets tomorrow 07:12 (in 14h 46m)",
-            SyncAllowance.summary(SyncAllowance.Account(4, 0, at(7, 12, day = 26)), now, zone),
-        )
+    }
+
+    /** The countdown rounds up, so it never reads 00:00 while refresh is still unavailable. */
+    @Test
+    fun `the countdown rounds up to the minute`() {
+        assertEquals("00:01", SyncAllowance.countdown(at(19, 40), at(19, 40) - 5_000L))
     }
 
     /** A refused account is tried again just after its reset, if that beats the schedule. */

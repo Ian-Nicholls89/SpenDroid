@@ -667,12 +667,12 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
             // that has just used its last sync before the bank's reset.
             val notes = buildList {
                 spent.forEach { (id, reset) ->
-                    add("No syncs left for ${labels[id] ?: "an account"} until ${SyncAllowance.resetLabel(reset, now)}")
+                    add("Refresh unavailable for ${labels[id] ?: "an account"} · resets in ${SyncAllowance.countdown(reset, now)}")
                 }
                 synced.forEach { id ->
                     val after = repo.allowanceFor(id)
                     if (after != null && after.remaining <= 0 && after.resetAt != null) {
-                        add("That was ${labels[id] ?: "an account"}'s last sync until ${SyncAllowance.resetLabel(after.resetAt, now)}")
+                        add("That was ${labels[id] ?: "an account"}'s last refresh · resets in ${SyncAllowance.countdown(after.resetAt, now)}")
                     }
                 }
                 if (spent.isEmpty() && synced.isEmpty() && recent.isNotEmpty() && !limited && !offline) {

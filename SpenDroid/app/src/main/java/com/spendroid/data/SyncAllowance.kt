@@ -74,15 +74,22 @@ object SyncAllowance {
     }
 
     /**
-     * An account's allowance for a full sync, now. A scope whose reset has passed is full again
-     * without waiting for a sync to say so. Null until balances or transactions has reported.
+     * An account's allowance for a full sync, now. Null until balances or transactions has reported.
+     *
+     * Nobody documents whether a bank's allowance comes back all at once or call by call, each 24
+     * hours after it was made. So a reset that has passed only promises one call back - true either
+     * way - until the next sync brings the bank's own figure. A day after the reading, every call it
+     * counted has come back whichever way the bank works.
      */
     fun forAccount(readings: Map<Scope, Reading>, now: Long): Account? {
         val needed = listOfNotNull(readings[Scope.BALANCES], readings[Scope.TRANSACTIONS])
         if (needed.isEmpty()) return null
         val current = needed.map { r ->
-            if (now >= r.resetAt) Account(r.limit, r.limit ?: maxOf(r.remaining, 1), null)
-            else Account(r.limit, r.remaining, r.resetAt)
+            when {
+                now < r.resetAt -> Account(r.limit, r.remaining, r.resetAt)
+                now >= r.observedAt + DAY_MS -> Account(r.limit, r.limit ?: maxOf(r.remaining, 1), null)
+                else -> Account(r.limit, (r.remaining + 1).coerceAtMost(r.limit ?: Int.MAX_VALUE), null)
+            }
         }
         val scarcest = current.minBy { it.remaining }
         return scarcest.copy(
@@ -108,24 +115,26 @@ object SyncAllowance {
         }
     }
 
-    /** "in 3h 14m", "in 25m". */
+    /** "03:14": hours and minutes until the reset. */
     fun countdown(resetAt: Long, now: Long): String {
-        val minutes = ((resetAt - now) / 60_000L).coerceAtLeast(0L)
-        val h = minutes / 60
-        val m = minutes % 60
-        return if (h > 0) "in ${h}h ${m}m" else "in ${m}m"
+        val minutes = ((resetAt - now + 59_999L) / 60_000L).coerceAtLeast(0L)
+        return "%02d:%02d".format(minutes / 60, minutes % 60)
     }
 
-    /** The line under an account: what is left and when it refills. */
-    fun summary(allowance: Account?, now: Long, zone: ZoneId = ZoneId.systemDefault()): String {
-        if (allowance == null) return "Sync allowance shows after the next sync"
-        val reset = allowance.resetAt?.let { resetLabel(it, now, zone) }
-        if (allowance.remaining <= 0 && reset != null) {
-            return "Limit reached · resets $reset (${countdown(allowance.resetAt, now)})"
-        }
-        val of = allowance.limit?.let { " of $it" }.orEmpty()
-        val plural = if (allowance.remaining == 1 && allowance.limit == null) "" else "s"
-        return "${allowance.remaining}$of sync$plural left" + (reset?.let { " · resets $it" }.orEmpty())
+    /** How an account stands with the bank, without counting calls whose return is a guess. */
+    enum class Status { AVAILABLE, LAST_ONE, UNAVAILABLE }
+
+    fun status(allowance: Account?, now: Long): Status = when {
+        exhausted(allowance, now) -> Status.UNAVAILABLE
+        allowance != null && allowance.remaining <= 1 -> Status.LAST_ONE
+        else -> Status.AVAILABLE
+    }
+
+    /** The line under an account. */
+    fun summary(allowance: Account?, now: Long): String = when (status(allowance, now)) {
+        Status.AVAILABLE -> "Refresh available"
+        Status.LAST_ONE -> "Only 1 refresh remaining"
+        Status.UNAVAILABLE -> "Refresh unavailable · resets in ${countdown(allowance!!.resetAt!!, now)}"
     }
 
     /**
@@ -140,4 +149,6 @@ object SyncAllowance {
 
     /** A little after the reset, so a clock a minute apart from the bank's is not refused. */
     private const val CATCH_UP_MARGIN_MS = 2 * 60_000L
+
+    private const val DAY_MS = 24 * 60 * 60_000L
 }
