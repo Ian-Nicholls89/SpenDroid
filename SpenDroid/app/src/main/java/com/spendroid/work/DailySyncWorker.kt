@@ -20,24 +20,29 @@ import kotlinx.coroutines.flow.first
  * stale data, it risks a permanent hole in the history. Failures therefore retry rather
  * than being swallowed.
  *
- * PSD2 allows about four unattended calls per account per day; the three daily syncs leave one
- * for a manual refresh.
+ * PSD2 allows about four unattended calls per account per day; the two daily syncs leave two
+ * for manual refreshes and catch-ups.
  */
 class DailySyncWorker(
     app: Context,
     parameters: WorkerParameters,
 ) : CoroutineWorker(app, parameters) {
 
-    override suspend fun doWork(): Result =
+    override suspend fun doWork(): Result = when {
         // A catch-up is a one-off after the bank's reset, not one of the day's slots, so it
         // books nothing after itself.
-        if (inputData.getBoolean(DailyRoundupScheduler.CATCH_UP_KEY, false)) runDay() else daily(ownSlot()) { runDay() }
+        inputData.getBoolean(DailyRoundupScheduler.CATCH_UP_KEY, false) -> runDay()
+        // The afternoon sync is retired. One booked before it was runs this once and books
+        // nothing, or it would book a second evening sync in its place.
+        inputData.getString(DailyRoundupScheduler.JOB_KEY) == DailyRoundupScheduler.RETIRED_AFTERNOON_JOB -> runDay()
+        else -> daily(ownSlot()) { runDay() }
+    }
 
-    /** Which of the day's three syncs this is. One booked before there were three is the evening one. */
+    /** Which of the day's two syncs this is. One booked before there were slots is the evening one. */
     private fun ownSlot(): DailyRoundupScheduler.Daily =
         inputData.getString(DailyRoundupScheduler.JOB_KEY)
             ?.let { name -> runCatching { DailyRoundupScheduler.Daily.valueOf(name) }.getOrNull() }
-            ?: DailyRoundupScheduler.Daily.SYNC_3
+            ?: DailyRoundupScheduler.Daily.SYNC_2
 
     private suspend fun runDay(): Result {
         val repo = (applicationContext as BudgetApplication).repository
@@ -96,9 +101,9 @@ class DailySyncWorker(
 
     companion object {
         private const val MAX_ATTEMPTS = 4
-        // Half the shortest gap between the day's syncs (three hours). A catch-up lands no more
-        // than halfway between two syncs, so the next still runs for that account; a manual
-        // refresh within the last hour and a half spares it.
+        // A catch-up lands no more than halfway between two syncs - at least three hours before
+        // the next - so the next still runs for that account; a manual refresh within the last
+        // hour and a half spares it.
         private val MIN_RESYNC_INTERVAL_MS = TimeUnit.MINUTES.toMillis(90)
     }
 }

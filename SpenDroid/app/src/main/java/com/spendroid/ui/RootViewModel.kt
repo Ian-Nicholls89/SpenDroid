@@ -738,7 +738,7 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
                 it.copy(
                     reauthNeeded = reauth,
                     error = it.error ?: when {
-                        // The bank allows about four syncs a day and three are scheduled, so a
+                        // The bank allows about four syncs a day and two are scheduled, so a
                         // second manual refresh can meet the limit. It resets on the bank's clock.
                         limited -> "Your bank's daily limit is used up. The next scheduled sync will catch up."
                         offline -> "Couldn't reach your bank. Check your connection and try again."
@@ -831,7 +831,7 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /** The next of the day's three sync slots, from the notification time in Settings. */
+    /** The next of the day's two sync slots, from the notification time in Settings. */
     private suspend fun nextScheduledSync(): Long {
         val notification = runCatching { java.time.LocalTime.parse(repo.notificationTime.first()) }
             .getOrDefault(java.time.LocalTime.of(21, 0))

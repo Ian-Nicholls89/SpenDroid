@@ -39,13 +39,12 @@ import kotlinx.coroutines.launch
 object DailyRoundupScheduler {
 
     /**
-     * The daily jobs. The three syncs take their times from [syncTimes]; the rest run at the
+     * The daily jobs. The two syncs take their times from [syncTimes]; the rest run at the
      * notification time itself.
      */
     enum class Daily(val tag: String, val syncSlot: Int?, val needsNetwork: Boolean) {
         SYNC_1("daily_sync_1_at", 0, needsNetwork = true),
         SYNC_2("daily_sync_2_at", 1, needsNetwork = true),
-        SYNC_3("daily_sync_3_at", 2, needsNetwork = true),
         ROUNDUP("daily_roundup_at", null, needsNetwork = false),
         ALERTS("daily_alerts_at", null, needsNetwork = false),
         REAUTH("reauth_reminders_at", null, needsNetwork = false),
@@ -58,8 +57,15 @@ object DailyRoundupScheduler {
     /** The old repeating jobs, cancelled so they cannot fire alongside the new ones. */
     private val RETIRED = listOf("daily_sync", "daily_roundup", "daily_alerts", "reauth_reminders")
 
-    /** The single evening sync these three replaced. */
-    private const val RETIRED_SYNC_TAG = "daily_sync_at"
+    /**
+     * Syncs no longer booked: the single evening one the three replaced, and the afternoon one
+     * dropped when card alerts began showing spending as it happens.
+     */
+    private val RETIRED_SYNC_TAGS = listOf("daily_sync_at", RETIRED_AFTERNOON_TAG)
+
+    /** The afternoon sync's tag. One already booked runs once more and books nothing after it. */
+    const val RETIRED_AFTERNOON_TAG = "daily_sync_3_at"
+    const val RETIRED_AFTERNOON_JOB = "SYNC_3"
 
     /** Input key telling a sync which of the three it is, so it books its own next run. */
     const val JOB_KEY = "daily_job"
@@ -100,18 +106,19 @@ object DailyRoundupScheduler {
             )
     }
 
-    private val DAY_SLOTS = listOf(LocalTime.of(8, 0), LocalTime.of(14, 0), LocalTime.of(20, 0))
+    private val DAY_SLOTS = listOf(LocalTime.of(8, 0), LocalTime.of(20, 0))
     private val QUIET_FROM: LocalTime = LocalTime.of(23, 0)
     private val QUIET_UNTIL: LocalTime = LocalTime.of(6, 0)
 
     /**
-     * When the three daily bank syncs run: morning, afternoon and evening, never overnight, when
-     * little banking happens - leaving one of the bank's four daily calls for a manual refresh.
+     * When the two daily bank syncs run: morning and evening, never overnight, when little
+     * banking happens. Card alerts show spending as it happens, so an afternoon sync is not
+     * needed, and two of the bank's four daily calls are left for refreshes and catch-ups.
      *
      * The slot nearest an hour before the roundup moves to exactly that, so the roundup reports
-     * fresh figures whatever time it is set for. The slots are six hours apart and the move is
-     * at most three, so no two syncs are ever closer than three hours. An hour before a
-     * small-hours roundup would be the middle of the night, and then nothing moves.
+     * fresh figures whatever time it is set for. The slots are twelve hours apart and the move is
+     * at most six, so the two are never closer than six hours. An hour before a small-hours
+     * roundup would be the middle of the night, and then nothing moves.
      */
     internal fun syncTimes(notification: LocalTime): List<LocalTime> {
         val slots = DAY_SLOTS.toMutableList()
@@ -143,7 +150,7 @@ object DailyRoundupScheduler {
         scope.launch {
             val manager = WorkManager.getInstance(appContext)
             RETIRED.forEach { manager.cancelUniqueWork(it) }
-            manager.cancelAllWorkByTag(RETIRED_SYNC_TAG)
+            RETIRED_SYNC_TAGS.forEach { manager.cancelAllWorkByTag(it) }
 
             val time = notificationTime(appContext)
             Daily.entries.forEach { job ->
@@ -190,7 +197,7 @@ object DailyRoundupScheduler {
     private fun request(job: Daily, time: LocalTime): OneTimeWorkRequest {
         val delay = delayUntilNext(ZonedDateTime.now(), job.at(time))
         val builder = when (job) {
-            Daily.SYNC_1, Daily.SYNC_2, Daily.SYNC_3 -> OneTimeWorkRequest.Builder(DailySyncWorker::class.java)
+            Daily.SYNC_1, Daily.SYNC_2 -> OneTimeWorkRequest.Builder(DailySyncWorker::class.java)
                 .setInputData(workDataOf(JOB_KEY to job.name))
             Daily.ROUNDUP -> OneTimeWorkRequest.Builder(DailyRoundupWorker::class.java)
             Daily.ALERTS -> OneTimeWorkRequest.Builder(AlertsWorker::class.java)
