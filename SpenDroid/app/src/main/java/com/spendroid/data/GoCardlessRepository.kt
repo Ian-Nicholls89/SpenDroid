@@ -158,7 +158,7 @@ class GoCardlessRepository private constructor(
         if (parsed == null || !spendReadingOn.first()) return false
 
         val recent = dao.seenSpends()
-        if (NotificationSpend.duplicateOf(parsed.amountMinor, postedAt, recent) != null) return false
+        if (NotificationSpend.duplicateOf(source, parsed.amountMinor, parsed.cardDigits, postedAt, recent) != null) return false
         val accounts = dao.accounts()
         val accountId = NotificationSpend.accountFor(source, parsed, spendSources.first(), accounts)
         dao.upsertSeenSpend(

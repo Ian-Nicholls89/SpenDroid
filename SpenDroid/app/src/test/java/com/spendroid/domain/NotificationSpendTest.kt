@@ -101,9 +101,21 @@ class NotificationSpendTest {
 
     @Test
     fun `wallet and the bank announcing one purchase is one spend`() {
-        val first = seen("a", 320, at(26, 12, 0))
-        assertEquals(first, NotificationSpend.duplicateOf(320, at(26, 12, 4), listOf(first)))
-        assertNull(NotificationSpend.duplicateOf(320, at(26, 12, 30), listOf(first)))
+        val wallet = seen("a", 425, at(26, 12, 0)).copy(cardDigits = "4168")
+        // NatWest a slow twenty minutes later, same card.
+        assertEquals(wallet, NotificationSpend.duplicateOf(natwest, 425, "4168", at(26, 12, 20), listOf(wallet)))
+        // No digits on one side is still the same purchase.
+        assertEquals(wallet, NotificationSpend.duplicateOf(natwest, 425, null, at(26, 12, 20), listOf(wallet)))
+        // Another card, or over half an hour, is another purchase.
+        assertNull(NotificationSpend.duplicateOf(natwest, 425, "9999", at(26, 12, 20), listOf(wallet)))
+        assertNull(NotificationSpend.duplicateOf(natwest, 425, "4168", at(26, 12, 45), listOf(wallet)))
+    }
+
+    @Test
+    fun `one app announcing the same amount twice is two purchases, unless it is a repost`() {
+        val first = seen("a", 425, at(26, 12, 0)).copy(source = natwest)
+        assertNull(NotificationSpend.duplicateOf(natwest, 425, null, at(26, 12, 5), listOf(first)))
+        assertEquals(first, NotificationSpend.duplicateOf(natwest, 425, null, at(26, 12, 0) + 30_000, listOf(first)))
     }
 
     // --- handing over to the bank ---
@@ -163,5 +175,14 @@ class NotificationSpendTest {
         assertEquals(true, row.isPending)
         assertEquals("EATING_OUT", row.categoryOverride)
         assertEquals("Seen · Google Wallet", row.description)
+    }
+
+    /** NatWest's real wording, from the user's phone (27 Sep 2026). */
+    @Test
+    fun `natwest's card notification`() {
+        val p = NotificationSpend.parse(natwest, "NatWest", "💳 £4.25 at GREGGS on your card ending 4168")!!
+        assertEquals(425L, p.amountMinor)
+        assertEquals("GREGGS", p.merchant)
+        assertEquals("4168", p.cardDigits)
     }
 }

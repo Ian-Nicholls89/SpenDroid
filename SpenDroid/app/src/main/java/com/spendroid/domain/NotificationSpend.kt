@@ -115,10 +115,31 @@ object NotificationSpend {
         return null
     }
 
-    /** Wallet and the bank both announcing one purchase: same amount within ten minutes. */
-    fun duplicateOf(amountMinor: Long, seenAt: Long, recent: List<SeenSpendEntity>): SeenSpendEntity? =
+    /**
+     * The spend this notification repeats, if any.
+     *
+     * Two apps announcing one purchase - Wallet at the till, the bank a little later - are one
+     * spend: the same amount within half an hour, and the same card when both show one. One app
+     * announcing the same amount twice is two purchases, unless it is the same notification
+     * posted again within a minute; ten minutes either way both double-counted a slow bank and
+     * merged two coffees.
+     */
+    fun duplicateOf(
+        source: String,
+        amountMinor: Long,
+        cardDigits: String?,
+        seenAt: Long,
+        recent: List<SeenSpendEntity>,
+    ): SeenSpendEntity? =
         recent.firstOrNull {
-            !it.dismissed && it.amountMinor == -amountMinor && abs(it.seenAt - seenAt) <= DUPLICATE_WINDOW_MS
+            if (it.dismissed || it.amountMinor != -amountMinor) return@firstOrNull false
+            val apart = abs(it.seenAt - seenAt)
+            if (it.source == source) {
+                apart <= REPOST_WINDOW_MS
+            } else {
+                apart <= CROSS_APP_WINDOW_MS &&
+                    (cardDigits == null || it.cardDigits == null || cardDigits == it.cardDigits)
+            }
         }
 
     /**
@@ -181,7 +202,8 @@ object NotificationSpend {
         Instant.ofEpochMilli(millis).atZone(zone).toLocalDate()
 
     const val SEEN_PREFIX = "seen:"
-    private const val DUPLICATE_WINDOW_MS = 10 * 60_000L
+    private const val CROSS_APP_WINDOW_MS = 30 * 60_000L
+    private const val REPOST_WINDOW_MS = 60_000L
     private const val HANDOVER_DAYS = 5L
     const val REVIEW_AFTER_MS = 7 * 24 * 60 * 60_000L
 }
