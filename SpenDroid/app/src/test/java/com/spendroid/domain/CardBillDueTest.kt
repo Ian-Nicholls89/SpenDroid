@@ -132,4 +132,38 @@ class CardBillDueTest {
         assertTrue(s.upcomingFixed.none { it.rule.key.startsWith(CARD_BILL_KEY_PREFIX) })
         assertEquals(2500L, s.cardsNextCycleMinor)
     }
+
+    private fun snapshotOn(date: LocalDate, extra: List<TransactionEntity> = emptyList()): BudgetSnapshot {
+        val salary = listOf("2026-07-06", "2026-08-05", "2026-09-04")
+            .map { tx(it, 250000, account = "current", payee = "ACME LTD SALARY") }
+        val all = twoCycles() + salary + extra
+        return BudgetEngine.snapshot(
+            transactions = all,
+            rules = RecurringAnalyzer.analyze(all),
+            accounts = listOf(current, card(-4000)),
+            referenceTime = date.atTime(12, 0),
+        )
+    }
+
+    /**
+     * The statement is due 1 Oct. On that day, and after it until the payment shows, it is
+     * still owed: dropping it on the day made the budget £1,294 too high until the debit booked.
+     */
+    @Test
+    fun `an unpaid statement stays due on and after its date`() {
+        for (day in listOf(LocalDate.of(2026, 10, 1), LocalDate.of(2026, 10, 3))) {
+            val s = snapshotOn(day)
+            val bill = s.cardBills.single()
+            assertEquals(LocalDate.of(2026, 10, 1), bill.dueDate)
+            assertEquals(2500L, s.upcomingFixed.single { it.rule.key.startsWith(CARD_BILL_KEY_PREFIX) }.amountMinor)
+        }
+    }
+
+    /** Once the debit has left the current account it is spending, so the bill is not held back too. */
+    @Test
+    fun `a bill whose debit has left is not counted twice`() {
+        val debit = tx("2026-10-01", -2500, account = "current", payee = "TESCO BANK")
+        val s = snapshotOn(LocalDate.of(2026, 10, 2), listOf(debit))
+        assertTrue(s.upcomingFixed.none { it.rule.key.startsWith(CARD_BILL_KEY_PREFIX) })
+    }
 }

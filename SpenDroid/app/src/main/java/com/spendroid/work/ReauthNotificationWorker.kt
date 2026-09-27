@@ -64,6 +64,8 @@ class ReauthNotificationWorker(
                 .setContentTitle(title)
                 .setContentText(body)
                 .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+                // "Open the app to reauthorise" - so a tap should.
+                .setContentIntent(openAppIntent(applicationContext, NOTIFICATION_BASE_ID + index))
                 .setAutoCancel(true)
                 .setPriority(if (daysLeft <= 3) NotificationCompat.PRIORITY_HIGH else NotificationCompat.PRIORITY_DEFAULT)
                 .build()

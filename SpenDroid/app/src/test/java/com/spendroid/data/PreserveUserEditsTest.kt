@@ -94,4 +94,19 @@ class PreserveUserEditsTest {
         assertEquals(true, merged.single().transferOverridden)
         assertEquals(false, merged.single().isInternalTransfer)
     }
+
+    /** A pending row that books under a new id keeps the category it was given while pending. */
+    @Test
+    fun `edits follow a pending row to its booked twin`() {
+        fun row(id: String, pending: Boolean, date: String, category: String? = null) = com.spendroid.data.db.TransactionEntity(
+            accountId = "a", transactionId = id, bookingDate = date, valueDate = null, amountMinor = -450,
+            currency = "GBP", payee = "COSTA  COFFEE", description = null, isPending = pending, rawJson = null,
+            categoryOverride = category,
+        )
+        val stored = listOf(row("p1", pending = true, date = "2026-09-25", category = "EATING_OUT"))
+        val fetched = listOf(row("b9", pending = false, date = "2026-09-26"))
+        val result = GoCardlessRepository.preserveUserEdits(fetched, stored).single()
+        org.junit.Assert.assertEquals("b9", result.transactionId)
+        org.junit.Assert.assertEquals("EATING_OUT", result.categoryOverride)
+    }
 }

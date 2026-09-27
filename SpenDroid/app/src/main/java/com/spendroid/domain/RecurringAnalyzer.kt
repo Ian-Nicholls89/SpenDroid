@@ -128,7 +128,10 @@ object RecurringAnalyzer {
         val medianGap = gaps.sorted()[gaps.size / 2]
         val key = groupKey(txs.first())
 
-        val sameWeekday = dates.all { it.dayOfWeek == dates.first().dayOfWeek }
+        // Mostly one weekday, not always: a bank holiday moves a weekly payment a day, and
+        // demanding every date agree meant one Easter Monday stopped it being recognised.
+        val weekday = usualWeekday(dates)
+        val sameWeekday = dates.count { it.dayOfWeek == weekday } >= dates.size * WEEKDAY_SHARE
         val minOccurrences = when {
             medianGap <= 16 -> 3
             medianGap <= 96 -> 2
@@ -153,7 +156,7 @@ object RecurringAnalyzer {
 
         return when {
             sameWeekday && medianGap in 6..9 ->
-                build(key, txs.first().payee, amount, txs.first().currency, Cadence.WEEKLY, dates.first().dayOfWeek.value, dates, gapOk = gaps.all { it in 6..9 })
+                build(key, txs.first().payee, amount, txs.first().currency, Cadence.WEEKLY, weekday.value, dates, gapOk = gaps.all { it in 6..9 })
 
             medianGap in 13..16 ->
                 build(key, txs.first().payee, amount, txs.first().currency, Cadence.FORTNIGHTLY, dates.first().dayOfMonth, dates, gapOk = gapFraction(gaps, 13..16) >= 0.5)
@@ -225,6 +228,13 @@ object RecurringAnalyzer {
         )
     }
 
+    /** The weekday most of these dates fall on. */
+    private fun usualWeekday(dates: List<LocalDate>): DayOfWeek =
+        dates.groupingBy { it.dayOfWeek }.eachCount().maxByOrNull { it.value }!!.key
+
+    /** How many of a weekly payment's dates must share a weekday: all but a holiday or two. */
+    private const val WEEKDAY_SHARE = 0.8
+
     private fun gapFraction(gaps: List<Long>, range: IntRange): Float =
         gaps.count { it in range } / gaps.size.toFloat()
 
@@ -287,7 +297,7 @@ object RecurringAnalyzer {
                 val medianGap = gaps.sorted()[gaps.size / 2]
 
                 val cadence = when {
-                    dates.all { it.dayOfWeek == dates.first().dayOfWeek } && medianGap in 6..9 -> Cadence.WEEKLY
+                    dates.count { it.dayOfWeek == usualWeekday(dates) } >= dates.size * WEEKDAY_SHARE && medianGap in 6..9 -> Cadence.WEEKLY
                     medianGap in 13..16 -> Cadence.FORTNIGHTLY
                     medianGap in 24..33 -> Cadence.MONTHLY
                     medianGap in 82..96 -> Cadence.QUARTERLY
@@ -296,7 +306,7 @@ object RecurringAnalyzer {
                 }
 
                 val anchorDay = when (cadence) {
-                    Cadence.WEEKLY -> dates.first().dayOfWeek.value
+                    Cadence.WEEKLY -> usualWeekday(dates).value
                     Cadence.FORTNIGHTLY -> dates.first().dayOfMonth
                     Cadence.MONTHLY -> dates.map { it.dayOfMonth }.groupingBy { it }.eachCount().entries.maxByOrNull { it.value }?.key ?: dates.first().dayOfMonth
                     Cadence.QUARTERLY, Cadence.ANNUAL -> dates.first().dayOfMonth
@@ -315,11 +325,14 @@ object RecurringAnalyzer {
                     sampleTransactions = txs,
                 )
             }
-            .filter { !isAlreadyRecurring(it, transactions) }
+            .let { candidates ->
+                // Once for all of them: this ran the whole analysis again for every candidate.
+                val rules = analyze(transactions)
+                candidates.filter { !isAlreadyRecurring(it, rules) }
+            }
             .distinctBy { "${it.payee}|${it.amountMinor}|${it.currency}|${it.cadence}" }
 
-    private fun isAlreadyRecurring(candidate: RecurringCandidate, transactions: List<TransactionEntity>): Boolean {
-        val rules = analyze(transactions)
+    private fun isAlreadyRecurring(candidate: RecurringCandidate, rules: List<RecurringRule>): Boolean {
         return rules.any { rule ->
             rule.payee == candidate.payee &&
             // A candidate is one payment; a rule may be several on the same day.

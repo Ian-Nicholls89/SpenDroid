@@ -2,7 +2,6 @@ package com.spendroid.work
 
 import android.app.NotificationChannel
 import android.app.NotificationManager
-import android.app.PendingIntent
 import android.content.Context
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
@@ -50,18 +49,6 @@ class DailyRoundupWorker(
         )
         manager.createNotificationChannel(channel)
 
-        // Tapping it opens the app, as tapping its icon would.
-        val open = applicationContext.packageManager
-            .getLaunchIntentForPackage(applicationContext.packageName)
-            ?.let {
-                PendingIntent.getActivity(
-                    applicationContext,
-                    NOTIFICATION_ID,
-                    it,
-                    PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
-                )
-            }
-
         val notification = NotificationCompat.Builder(applicationContext, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setContentTitle("SpenDroid roundup")
@@ -69,7 +56,7 @@ class DailyRoundupWorker(
             .setStyle(NotificationCompat.BigTextStyle().bigText(body))
             .setCategory(NotificationCompat.CATEGORY_REMINDER)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setContentIntent(open)
+            .setContentIntent(openAppIntent(applicationContext, NOTIFICATION_ID))
             .setAutoCancel(true)
             .build()
 

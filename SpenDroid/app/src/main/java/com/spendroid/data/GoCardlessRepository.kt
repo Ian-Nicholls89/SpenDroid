@@ -272,7 +272,9 @@ class GoCardlessRepository private constructor(
         var req = poll()
         var pollCount = 0
         while (req == null ||
-            (req.status != "SA" && req.status != "LN" && req.status !in setOf("EX", "RE") && req.accounts.isEmpty())
+            // GoCardless reports a refusal at the bank as RJ. This waited for "RE", which it never
+            // sends, so declining meant five minutes of waiting and then a timeout.
+            (req.status != "SA" && req.status != "LN" && req.status !in setOf("EX", "RJ") && req.accounts.isEmpty())
         ) {
             if (System.currentTimeMillis() - startTime > timeoutMs) {
                 lastNetworkError?.let {
@@ -287,8 +289,8 @@ class GoCardlessRepository private constructor(
             req = poll() ?: req
             if (req == null) continue
         }
-        if (req.status == "EX") error("Requisition expired. Status: EX, accounts: ${req.accounts.size}, polls: $pollCount")
-        if (req.status == "RE") error("Requisition rejected. Status: RE, accounts: ${req.accounts.size}, polls: $pollCount")
+        if (req.status == "EX") error("The link to the bank expired before it was approved. Try again.")
+        if (req.status == "RJ") error("Access was declined at the bank, so nothing was linked.")
         return req
     }
 
@@ -298,13 +300,12 @@ class GoCardlessRepository private constructor(
      * first. [replacing] is the consent this one renews, when it renews one.
      */
     suspend fun saveConnection(connection: Connection, replacing: Connection? = null) {
-        val existing = connections.first()
-        saveConnections(
+        secrets.updateConnections { existing ->
             existing.filter {
                 it.requisitionId != connection.requisitionId &&
                     it.requisitionId != replacing?.requisitionId
-            } + connection,
-        )
+            } + connection
+        }
     }
 
     /**
@@ -335,12 +336,12 @@ class GoCardlessRepository private constructor(
         // The old consent no longer answers for those accounts, and one left answering for
         // none is gone. A consent that never listed any is still pending and is kept.
         val adopted = pairs.map { it.first.id }.toSet()
-        saveConnections(
-            connections.first().mapNotNull { c ->
+        secrets.updateConnections { stored ->
+            stored.mapNotNull { c ->
                 if (c.requisitionId == newConnection.requisitionId || c.accountIds.isEmpty()) return@mapNotNull c
                 c.copy(accountIds = c.accountIds - adopted).takeIf { it.accountIds.isNotEmpty() }
-            },
-        )
+            }
+        }
         analyzeTransactions()
     }
 
@@ -351,15 +352,18 @@ class GoCardlessRepository private constructor(
     suspend fun backfillConnectionDates() {
         val stored = connections.first()
         if (stored.none { it.createdAt <= 0L }) return
-        val filled = stored.map { connection ->
-            if (connection.createdAt > 0L) return@map connection
-            val created = runCatching { dataApi.requisition(connection.requisitionId).created }
+        val created = stored.filter { it.createdAt <= 0L }.mapNotNull { connection ->
+            runCatching { dataApi.requisition(connection.requisitionId).created }
                 .getOrNull()
                 ?.let { runCatching { java.time.OffsetDateTime.parse(it).toInstant().toEpochMilli() }.getOrNull() }
-                ?: return@map connection
-            connection.copy(createdAt = created)
+                ?.let { connection.requisitionId to it }
+        }.toMap()
+        if (created.isEmpty()) return
+        // Applied to whatever is stored by then: the lookups take a while, and a link made
+        // meanwhile must not be written over by the list read before them.
+        secrets.updateConnections { current ->
+            current.map { c -> created[c.requisitionId]?.takeIf { c.createdAt <= 0L }?.let { c.copy(createdAt = it) } ?: c }
         }
-        if (filled != stored) saveConnections(filled)
     }
 
     val syncFailures: Flow<Map<String, SyncFailure>> = secrets.syncFailures
@@ -981,6 +985,10 @@ class GoCardlessRepository private constructor(
             }
         }
 
+        /** Whether the user has decided anything about this row that a sync must not lose. */
+        private fun TransactionEntity.hasUserEdits(): Boolean =
+            categoryOverride != null || transferOverridden || isCardPayment
+
         /** How long after a pending entry its booked version may be dated. */
         private const val PENDING_TWIN_DAYS = 5L
 
@@ -998,8 +1006,29 @@ class GoCardlessRepository private constructor(
         ): List<TransactionEntity> {
             if (existing.isEmpty()) return fetched
             val byId = existing.associateBy { it.transactionId }
+            // A pending row often books under a new id. Matched by id alone, a category set
+            // while it was pending was lost the moment it booked; its booked twin - same amount,
+            // same payee, dated within the pending window - inherits the edits instead.
+            val fetchedIds = fetched.mapTo(HashSet()) { it.transactionId }
+            val orphanedPending = existing
+                .filter { it.isPending && it.transactionId !in fetchedIds && it.hasUserEdits() }
+                .toMutableList()
+            fun normalised(tx: TransactionEntity) = tx.payee.lowercase().trim().replace(Regex("\\s+"), " ")
+            fun twinOf(row: TransactionEntity): TransactionEntity? {
+                if (row.isPending) return null
+                val bookedOn = runCatching { LocalDate.parse(row.bookingDate) }.getOrNull() ?: return null
+                val twin = orphanedPending.firstOrNull { p ->
+                    p.amountMinor == row.amountMinor && normalised(p) == normalised(row) &&
+                        runCatching { LocalDate.parse(p.bookingDate) }.getOrNull()?.let { pendingOn ->
+                            !bookedOn.isBefore(pendingOn.minusDays(1)) &&
+                                !bookedOn.isAfter(pendingOn.plusDays(PENDING_TWIN_DAYS))
+                        } ?: true
+                } ?: return null
+                orphanedPending.remove(twin)
+                return twin
+            }
             return fetched.map { row ->
-                val prior = byId[row.transactionId] ?: return@map row
+                val prior = byId[row.transactionId] ?: twinOf(row) ?: return@map row
                 row.copy(
                     isInternalTransfer = prior.isInternalTransfer,
                     isRecurring = prior.isRecurring,
@@ -1114,8 +1143,14 @@ class GoCardlessRepository private constructor(
 
             val tokenManager = TokenManager(authApi, secrets)
 
+            // Request lines name account ids, and the system log is readable by anything with
+            // debugging access to the phone - so only debug builds write them.
             val logging = HttpLoggingInterceptor().apply {
-                level = HttpLoggingInterceptor.Level.BASIC
+                level = if (com.spendroid.BuildConfig.DEBUG) {
+                    HttpLoggingInterceptor.Level.BASIC
+                } else {
+                    HttpLoggingInterceptor.Level.NONE
+                }
             }
             val dataClient = OkHttpClient.Builder()
                 .callTimeout(30, TimeUnit.SECONDS)

@@ -490,6 +490,9 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
             _secretId.value = ""
             _secretKey.value = ""
             cachedInstitutions = null
+            // Otherwise the widgets go on showing the figures that were just deleted.
+            refreshWidgets(getApplication())
+            refreshCardWidgets(getApplication())
         }
     }
 
@@ -523,7 +526,8 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
         )
     }
 
-    suspend fun getRecurringCandidates(): List<RecurringAnalyzer.RecurringCandidate> = RecurringAnalyzer.findCandidates(repo.transactions())
+    suspend fun getRecurringCandidates(): List<RecurringAnalyzer.RecurringCandidate> =
+        withContext(Dispatchers.Default) { RecurringAnalyzer.findCandidates(repo.transactions()) }
 
     /** Which balances this bank sent, and which is in use. For the account sheet. */
     fun balanceTypesFor(account: AccountEntity): List<Pair<String, Boolean>> =
@@ -703,7 +707,12 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    private suspend fun loadLocal() {
+    /**
+     * Reloads everything on screen. The analysis - recurring detection, the budget, the card
+     * cycles, category history - is real work over the whole history, and it ran on the main
+     * thread, where it held up drawing as the history grew.
+     */
+    private suspend fun loadLocal() = withContext(Dispatchers.Default) {
         val all = repo.transactions()
         // What this load brought that the last one did not. Empty on the first load, which is
         // everything and so nothing worth pointing at.

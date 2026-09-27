@@ -254,6 +254,20 @@ object CreditCardEngine {
                 else -> billed
             }
 
+            // The closed statement is due on its own payment date until a payment shows it was
+            // paid. Asking only for the next payment date after today dropped it on the day it
+            // was due - and over a weekend, until the Monday debit booked - so a £1,294 bill
+            // left the budget before it had left the account.
+            val billDue = if (nominalDay != null && statementClose != null && !statementPaid) {
+                paymentDateAfter(nominalDay, statementClose)
+                    // A statement long overdue by these dates means the cycle was misread, not
+                    // that a bill is still waiting; the next payment date is the better guess.
+                    .takeIf { !it.isBefore(today.minusDays(MAX_AWAITED_DAYS)) }
+                    ?: due
+            } else {
+                due
+            }
+
             val nextClose = statementDay?.let { day -> statementClose?.let { onDay(it.plusMonths(1), day) } }
             val usual = medianOf(payments.map { (cardTx, _) -> cardTx.amountMinor }.filter { it > 0L })
             val projected = if (statementClose != null && nextClose != null) {
@@ -271,7 +285,7 @@ object CreditCardEngine {
                 billedMinor = billed,
                 unbilledMinor = unbilled.coerceAtMost(outstanding),
                 dueMinor = dueNext,
-                dueDate = due,
+                dueDate = billDue,
                 nominalPaymentDay = nominalDay,
                 dueDateInferred = card.paymentDayOfMonth != null ||
                     paymentDates.size >= MIN_PAYMENTS_TO_INFER,
@@ -647,6 +661,16 @@ object CreditCardEngine {
         }
         return rollForwardOffWeekend(candidate)
     }
+
+    /** The first payment date after a statement closed on [close], moved off a weekend. */
+    private fun paymentDateAfter(nominalDay: Int, close: LocalDate): LocalDate {
+        var candidate = onDay(close, nominalDay)
+        if (!candidate.isAfter(close)) candidate = onDay(close.plusMonths(1), nominalDay)
+        return rollForwardOffWeekend(candidate)
+    }
+
+    /** How long past its date a statement is still taken to be waiting for its payment. */
+    private const val MAX_AWAITED_DAYS = 10L
 
     /** The latest date on or before [onOrBefore] that falls on [day] of its month. */
     private fun mostRecentOccurrence(day: Int, onOrBefore: LocalDate): LocalDate {

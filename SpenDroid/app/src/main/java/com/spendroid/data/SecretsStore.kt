@@ -135,18 +135,26 @@ class SecretsStore(private val context: Context) {
         .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
         .map { prefs -> parseStringSet(prefs[Keys.TRANSFER_GROUPS]) }
 
-    suspend fun setTransferGroup(key: String, isTransfer: Boolean) {
-        val current = parseStringSet(context.dataStore.data.first()[Keys.TRANSFER_GROUPS]).toMutableSet()
-        if (isTransfer) current.add(key) else current.remove(key)
-        context.dataStore.edit { prefs -> prefs[Keys.TRANSFER_GROUPS] = JSONArray(current.toList()).toString() }
-    }
+    suspend fun setTransferGroup(key: String, isTransfer: Boolean) =
+        updateStringSet(Keys.TRANSFER_GROUPS) { if (isTransfer) it + key else it - key }
 
     /** Adds to the set rather than replacing it, so a restore cannot undo a choice. */
     suspend fun addTransferGroups(keys: Set<String>) {
         if (keys.isEmpty()) return
-        val current = parseStringSet(context.dataStore.data.first()[Keys.TRANSFER_GROUPS]).toMutableSet()
-        current.addAll(keys)
-        context.dataStore.edit { prefs -> prefs[Keys.TRANSFER_GROUPS] = JSONArray(current.toList()).toString() }
+        updateStringSet(Keys.TRANSFER_GROUPS) { it + keys }
+    }
+
+    /**
+     * Reads and writes a stored set in one step. Read first and written after, two changes
+     * made close together each started from the same set, and the second undid the first.
+     */
+    private suspend fun updateStringSet(
+        key: androidx.datastore.preferences.core.Preferences.Key<String>,
+        change: (Set<String>) -> Set<String>,
+    ) {
+        context.dataStore.edit { prefs ->
+            prefs[key] = JSONArray(change(parseStringSet(prefs[key])).toList()).toString()
+        }
     }
 
     /** Each account's last reported allowance, per scope the bank rations. */
@@ -264,14 +272,17 @@ class SecretsStore(private val context: Context) {
         context.dataStore.edit { prefs -> prefs[Keys.CONNECTIONS] = connectionsToJson(connections) }
     }
 
+    /** Changes the stored connections in one step, so two changes at once cannot lose one. */
+    suspend fun updateConnections(change: (List<Connection>) -> List<Connection>) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.CONNECTIONS] = connectionsToJson(change(parseConnections(prefs[Keys.CONNECTIONS])))
+        }
+    }
+
     /** Adds to the ignored set rather than replacing it, so a restore cannot un-ignore. */
     suspend fun addIgnoredRules(keys: Set<String>) {
         if (keys.isEmpty()) return
-        val current = parseStringSet(context.dataStore.data.first()[Keys.IGNORED_RULES]).toMutableSet()
-        current.addAll(keys)
-        context.dataStore.edit { prefs ->
-            prefs[Keys.IGNORED_RULES] = JSONArray(current.toList()).toString()
-        }
+        updateStringSet(Keys.IGNORED_RULES) { it + keys }
     }
 
     /** Replaces the record wholesale, so keys from finished cycles fall away with it. */
@@ -281,13 +292,8 @@ class SecretsStore(private val context: Context) {
         }
     }
 
-    suspend fun setRuleIgnored(key: String, ignored: Boolean) {
-        val current = parseStringSet(context.dataStore.data.first()[Keys.IGNORED_RULES]).toMutableSet()
-        if (ignored) current.add(key) else current.remove(key)
-        context.dataStore.edit { prefs ->
-            prefs[Keys.IGNORED_RULES] = JSONArray(current.toList()).toString()
-        }
-    }
+    suspend fun setRuleIgnored(key: String, ignored: Boolean) =
+        updateStringSet(Keys.IGNORED_RULES) { if (ignored) it + key else it - key }
 
     /**
      * Wipes everything the "Clear all data" action promises to remove: credentials, tokens,
@@ -303,6 +309,9 @@ class SecretsStore(private val context: Context) {
             prefs.remove(Keys.IGNORED_RULES)
             prefs.remove(Keys.TRANSFER_GROUPS)
             prefs.remove(Keys.PRIMARY_INCOME_KEY)
+            // About accounts that are gone; left behind, they described nothing.
+            prefs.remove(Keys.SYNC_ALLOWANCES)
+            prefs.remove(Keys.SYNC_FAILURES)
         }
     }
 

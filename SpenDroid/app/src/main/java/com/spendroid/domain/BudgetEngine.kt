@@ -210,8 +210,16 @@ object BudgetEngine {
 
         val upcomingFixed = if (nextIncomeDate != null) {
             val fromRules = fixedRules.mapNotNull { rule ->
-                val due = nextFor(rule, today)
-                if (due.isAfter(today) && !due.isAfter(nextIncomeDate)) {
+                // A payment due today is still to come until it shows. Asking only for the next
+                // date after today dropped it in the morning, before the bank had taken it.
+                val dueToday = nextFor(rule, today.minusDays(1)) == today &&
+                    transactions.none { tx ->
+                        RecurringAnalyzer.matches(rule, tx) &&
+                            RecurringAnalyzer.parseBookingDate(tx.bookingDate)
+                                ?.let { !it.isBefore(today.minusDays(SEEN_EARLY_DAYS)) } == true
+                    }
+                val due = if (dueToday) today else nextFor(rule, today)
+                if (!due.isBefore(today) && !due.isAfter(nextIncomeDate)) {
                     UpcomingPayment(rule, due, abs(rule.amountMinor))
                 } else {
                     null
@@ -219,11 +227,23 @@ object BudgetEngine {
             }
             // Card bills are variable, so RecurringAnalyzer cannot detect them; they are
             // computed instead: the statement while it is unpaid, since spending after the
-            // close is next month's bill.
+            // close is next month's bill. An unpaid statement stays until its payment shows,
+            // even past its date - unless the debit has already left the paying account, where
+            // it is counted as spending and holding the bill back too would count it twice.
             val fromCards = cardAnalysis.bills.mapNotNull { bill ->
                 val due = bill.dueDate ?: return@mapNotNull null
                 if (bill.dueMinor <= 0L) return@mapNotNull null
-                if (!due.isAfter(today) || due.isAfter(nextIncomeDate)) return@mapNotNull null
+                if (due.isAfter(nextIncomeDate)) return@mapNotNull null
+                if (due.isBefore(today) || due == today) {
+                    if (bill.statementPaid) return@mapNotNull null
+                    val leaving = transactions.any { tx ->
+                        tx.amountMinor == -bill.dueMinor &&
+                            tx.accountId !in creditCardAccountIds &&
+                            RecurringAnalyzer.parseBookingDate(tx.bookingDate)
+                                ?.let { !it.isBefore(due.minusDays(SEEN_EARLY_DAYS)) } == true
+                    }
+                    if (leaving) return@mapNotNull null
+                }
                 UpcomingPayment(cardBillRule(bill, due), due, bill.dueMinor)
             }
             (fromRules + fromCards).sortedBy { it.dueDate }
@@ -402,6 +422,9 @@ object BudgetEngine {
             occurrences = 1,
             score = 1f,
         )
+
+    /** How early a payment may show and still be the one due, for payments due today or overdue. */
+    private const val SEEN_EARLY_DAYS = 3L
 
     /** How long a late salary is waited for before the cycle moves on without it. */
     private const val MAX_WAIT_FOR_INCOME_DAYS = 7L

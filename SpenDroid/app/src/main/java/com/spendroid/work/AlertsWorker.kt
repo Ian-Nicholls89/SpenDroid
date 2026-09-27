@@ -159,8 +159,10 @@ class AlertsWorker(
         alreadySent: Set<String>,
     ): LargeTransaction {
         val none = LargeTransaction(null, alreadySent)
+        // Booked only: a pending row often books under a new id, and was announced a second
+        // time when it did.
         val debits = transactions.filter {
-            !it.isInternalTransfer && it.amountMinor < 0 &&
+            !it.isPending && !it.isInternalTransfer && it.amountMinor < 0 &&
                 "${it.accountId}|${it.transactionId}" !in snapshot.cardPaymentKeys
         }
         if (debits.size < MIN_HISTORY_FOR_COMPARISON) return none
@@ -201,6 +203,7 @@ class AlertsWorker(
             .setContentTitle(if (alerts.size == 1) "SpenDroid" else "SpenDroid · ${alerts.size} things")
             .setContentText(alerts.first())
             .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+            .setContentIntent(openAppIntent(applicationContext, NOTIFICATION_ID))
             .setAutoCancel(true)
             .build()
 

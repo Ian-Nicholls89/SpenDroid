@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Android 12 and later. The transaction history is backed up: anything older than the bank's
+    90-day window exists nowhere else. The settings file is not: it holds the GoCardless secret
+    and refresh token, which do not belong in a cloud backup.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="file" path="datastore/budget_settings.preferences_pb" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="file" path="datastore/budget_settings.preferences_pb" />
+    </device-transfer>
+</data-extraction-rules>

@@ -102,7 +102,9 @@ class CardBillsWidget : GlanceAppWidget() {
                 val days = java.time.temporal.ChronoUnit.DAYS.between(today, date)
                 val amount = dueMinor.takeIf { it > 0L }?.let { "${formatMoney(it, currency)} " }.orEmpty()
                 when {
-                    days <= 0L -> "${amount}due today"
+                    // Past its date and not yet paid: the debit has not shown yet.
+                    days < 0L -> "${amount}awaiting payment"
+                    days == 0L -> "${amount}due today"
                     days == 1L -> "${amount}due tomorrow"
                     else -> "${amount}due in $days days"
                 }
