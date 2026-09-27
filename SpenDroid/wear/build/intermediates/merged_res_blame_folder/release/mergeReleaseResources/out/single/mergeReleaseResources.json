@@ -1,0 +1,6 @@
+[
+    {
+        "merged": "com.spendroid.wear-release-29:/drawable_ic_complication.xml.flat",
+        "source": "com.spendroid.wear-main-30:/drawable/ic_complication.xml"
+    }
+]

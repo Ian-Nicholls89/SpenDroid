@@ -103,6 +103,14 @@ jobs:
             echo "::error::Release APK is signed with the debug key - refusing to publish it."
             exit 1
           fi
+          # The watch app must carry the same key as the phone app, or the two cannot talk.
+          WEAR_DN=$("$APKSIGNER" verify --print-certs wear/build/outputs/apk/release/wear-release.apk \
+            | grep -m1 "certificate DN")
+          echo "$WEAR_DN"
+          if [ "$WEAR_DN" != "$DN" ]; then
+            echo "::error::The watch APK is not signed with the phone APK's key."
+            exit 1
+          fi
 
       - name: Get version info
         id: version
@@ -150,6 +158,12 @@ jobs:
           name: app-release
           path: SpenDroid/app/build/outputs/apk/release/app-release.apk
 
+      - name: Upload Watch APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: wear-release
+          path: SpenDroid/wear/build/outputs/apk/release/wear-release.apk
+
       # R8 renames everything it shrinks, so a crash report from a release build is
       # unreadable without the mapping produced by that exact build. It is generated once
       # and cannot be recreated afterwards, so it is kept with the build that made it.
@@ -183,6 +197,12 @@ jobs:
           name: app-release
           path: artifacts
 
+      - name: Download Watch APK
+        uses: actions/download-artifact@v4
+        with:
+          name: wear-release
+          path: artifacts
+
       - name: Download update manifest
         uses: actions/download-artifact@v4
         with:
@@ -201,6 +221,7 @@ jobs:
           files: |
             artifacts/app-debug.apk
             artifacts/app-release.apk
+            artifacts/wear-release.apk
             artifacts/update.json
           generate_release_notes: true
           draft: false

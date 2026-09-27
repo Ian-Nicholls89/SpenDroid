@@ -637,4 +637,6 @@ suspend fun refreshWidgets(context: Context) {
     runCatching { AvailableToSpendWidget().updateAll(context) }
     // Drawn from the same snapshot, so it moves when this one does.
     refreshTimelineWidgets(context)
+    // And the watch's complication, for the same reason.
+    WatchSync.push(context)
 }

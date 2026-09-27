@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.spendroid.wear.BudgetArcTest" tests="4" skipped="0" failures="0" errors="0" timestamp="2026-09-27T09:17:09.614Z" hostname="9ccd32615f73" time="0.015">
+  <properties/>
+  <testcase name="an unknown cycle shows the budget alone" classname="com.spendroid.wear.BudgetArcTest" time="0.014"/>
+  <testcase name="behind pace shows the gap in amber" classname="com.spendroid.wear.BudgetArcTest" time="0.0"/>
+  <testcase name="ahead of pace has no band" classname="com.spendroid.wear.BudgetArcTest" time="0.0"/>
+  <testcase name="nothing left is the gap and the spent part" classname="com.spendroid.wear.BudgetArcTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

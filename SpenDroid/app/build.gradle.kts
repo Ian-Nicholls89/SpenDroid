@@ -60,8 +60,8 @@ android {
         applicationId = "com.spendroid"
         minSdk = 26
         targetSdk = 35
-        versionCode = 81
-        versionName = "3.0-alpha1"
+        versionCode = 82
+        versionName = "3.0-alpha2"
 
         // Where the update checker looks for releases.
         buildConfigField("String", "GITHUB_OWNER", "\"Ian-Nicholls89\"")
@@ -125,6 +125,10 @@ dependencies {
     implementation(libs.androidx.work.ktx)
     implementation(libs.androidx.glance.appwidget)
     implementation(libs.androidx.glance.material3)
+    implementation(libs.play.services.wearable)
+    // Play services pulls in Fragment 1.1, which predates the activity-result API the app uses.
+    implementation(libs.androidx.fragment)
+    implementation(libs.kotlinx.coroutines.play.services)
     debugImplementation(libs.androidx.compose.ui.tooling)
     testImplementation(libs.junit)
     // Android ships org.json; a JVM unit test needs a real implementation.
