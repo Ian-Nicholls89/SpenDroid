@@ -60,8 +60,8 @@ android {
         applicationId = "com.spendroid"
         minSdk = 26
         targetSdk = 35
-        versionCode = 85
-        versionName = "3.0.1"
+        versionCode = 86
+        versionName = "3.1"
 
         // Where the update checker looks for releases.
         buildConfigField("String", "GITHUB_OWNER", "\"Ian-Nicholls89\"")
@@ -128,6 +128,11 @@ dependencies {
     implementation(libs.play.services.wearable)
     // Play services pulls in Fragment 1.1, which predates the activity-result API the app uses.
     implementation(libs.androidx.fragment)
+    // The watch installer: ADB over Wi-Fi to the watch, the certificate it pairs with, and
+    // access to the platform's TLS key export that pairing needs.
+    implementation(libs.libadb.android)
+    implementation(libs.bouncycastle.pkix)
+    implementation(libs.hiddenapibypass)
     implementation(libs.kotlinx.coroutines.play.services)
     debugImplementation(libs.androidx.compose.ui.tooling)
     testImplementation(libs.junit)

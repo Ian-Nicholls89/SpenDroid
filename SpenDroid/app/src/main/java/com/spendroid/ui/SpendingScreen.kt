@@ -44,6 +44,8 @@ fun SpendingScreen(
     onMarkCardPayment: (TransactionEntity, Boolean) -> Unit,
     onCategoryFilter: (Category?) -> Unit,
     onSetBudgetGoal: (Category, Long) -> Unit,
+    /** Questions about payments read from notifications, shown above the list. */
+    prompts: @Composable () -> Unit = {},
 ) {
     var selected by rememberSaveable { mutableIntStateOf(0) }
 
@@ -58,7 +60,9 @@ fun SpendingScreen(
             }
         }
         when (SpendingTab.entries[selected]) {
-            SpendingTab.TRANSACTIONS -> TransactionsScreen(
+            SpendingTab.TRANSACTIONS -> Column {
+                prompts()
+                TransactionsScreen(
                 state = state,
                 onRefresh = onRefresh,
                 onToggleRecurring = onToggleRecurring,
@@ -72,7 +76,8 @@ fun SpendingScreen(
                 onRestoreCategory = onRestoreCategory,
                 onMarkCardPayment = onMarkCardPayment,
                 onCategoryFilter = onCategoryFilter,
-            )
+                )
+            }
             SpendingTab.INSIGHTS -> InsightsScreen(
                 state = state,
                 onSetBudgetGoal = onSetBudgetGoal,

@@ -48,6 +48,53 @@ data class AccountEntity(
      * bank's credit limit, which is how much they could.
      */
     val spendingCapMinor: Long? = null,
+    /** Whether this account's card is in Google Wallet, so Wallet's notifications can be put on it. */
+    val walletLinked: Boolean = false,
+    /** The card's last four digits, as payment notifications show them. */
+    val cardLastFour: String? = null,
+)
+
+/**
+ * A card payment announced by a notification - Google Wallet's, or a bank app's - before the bank
+ * has reported it. Counted like a pending transaction until the bank's own row arrives and takes
+ * over. Kept apart from [TransactionEntity], which every sync rewrites.
+ */
+@Entity(tableName = "seen_spends")
+data class SeenSpendEntity(
+    @PrimaryKey val id: String,
+    /** Package of the app that posted the notification. */
+    val source: String,
+    val seenAt: Long,
+    /** Negative, like a debit. */
+    val amountMinor: Long,
+    val currency: String,
+    val merchant: String,
+    /** Last four digits of the card, when the notification showed them. */
+    val cardDigits: String? = null,
+    /** Which account it was spent from; null until known, and not counted until then. */
+    val accountId: String? = null,
+    /** The bank's transaction that took over, once one has. */
+    val matchedTransactionId: String? = null,
+    /** The user said it never happened. */
+    val dismissed: Boolean = false,
+    /** The user said to keep counting it although the bank never showed it. */
+    val keptByUser: Boolean = false,
+    val categoryOverride: String? = null,
+)
+
+/**
+ * A notification from one of the apps the user picked, kept for thirty days so the wording
+ * the parser has to read can be seen, and a missed payment explained.
+ */
+@Entity(tableName = "notification_samples")
+data class NotificationSampleEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val source: String,
+    val postedAt: Long,
+    val title: String?,
+    val text: String?,
+    /** Whether it was read as a payment. */
+    val parsed: Boolean,
 )
 
 @Entity(

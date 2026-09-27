@@ -49,6 +49,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.SharingStarted
 
 sealed interface ImportStatus {
@@ -118,6 +119,8 @@ data class RootUiState(
     val syncNote: String? = null,
     /** Accounts whose last sync failed, and why. */
     val syncFailures: Map<String, com.spendroid.data.SyncFailure> = emptyMap(),
+    /** Card payments read from notifications, newest first. */
+    val seenSpends: List<com.spendroid.data.db.SeenSpendEntity> = emptyList(),
     /** How each payee has been filed by hand, for suggesting where a transaction belongs. */
     val categoryHistory: Map<String, Map<Category, Int>> = emptyMap(),
     val ruleOverrides: Map<String, RuleOverrideEntity> = emptyMap(),
@@ -425,6 +428,49 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
             repo.setBudgetGoal(category.name, limitMinor)
             loadLocal()
         }
+    }
+
+    // --- Spending read from notifications ---
+
+    val spendSources = repo.spendSources
+        .stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.WhileSubscribed(5_000), emptyList())
+    val spendReadingOn = repo.spendReadingOn
+        .stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.WhileSubscribed(5_000), true)
+    val notificationSamples = repo.notificationSamples
+        .stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    init {
+        // A spend read while the app is open shows at once, not at the next reload.
+        viewModelScope.launch {
+            repo.seenSpends.drop(1).collect { loadLocal() }
+        }
+    }
+
+    fun saveSpendSources(sources: List<com.spendroid.domain.NotificationSpend.Source>) {
+        viewModelScope.launch { repo.saveSpendSources(sources) }
+    }
+
+    fun setSpendReadingOn(on: Boolean) {
+        viewModelScope.launch {
+            repo.setSpendReadingOn(on)
+            loadLocal()
+        }
+    }
+
+    fun clearNotificationData() {
+        viewModelScope.launch { repo.clearNotificationData() }
+    }
+
+    fun assignSeenSpend(id: String, accountId: String) {
+        viewModelScope.launch { repo.assignSeenSpend(id, accountId) }
+    }
+
+    fun dismissSeenSpend(id: String) {
+        viewModelScope.launch { repo.dismissSeenSpend(id) }
+    }
+
+    fun keepSeenSpend(id: String) {
+        viewModelScope.launch { repo.keepSeenSpend(id) }
     }
 
     fun toggleInternalTransfers() {
@@ -776,6 +822,7 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
                     .toMap(),
                 nextSyncAt = nextScheduledSync(),
                 syncFailures = repo.syncFailures.first(),
+                seenSpends = repo.seenSpends.first(),
                 categoryHistory = CategoryEngine.history(all),
                 connections = repo.connections.first(),
                 versionName = versionName,

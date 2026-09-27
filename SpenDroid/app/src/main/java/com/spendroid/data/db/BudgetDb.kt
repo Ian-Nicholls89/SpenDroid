@@ -20,8 +20,10 @@ import kotlinx.coroutines.flow.Flow
         BankHolidayEntity::class,
         RuleOverrideEntity::class,
         CategoryRuleEntity::class,
+        SeenSpendEntity::class,
+        NotificationSampleEntity::class,
     ],
-    version = 14,
+    version = 15,
     exportSchema = false,
 )
 abstract class BudgetDb : RoomDatabase() {
@@ -55,6 +57,24 @@ abstract class BudgetDb : RoomDatabase() {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE accounts ADD COLUMN accountType TEXT NOT NULL DEFAULT 'PERSONAL'")
                 db.execSQL("ALTER TABLE accounts ADD COLUMN linkedCreditCardAccountId TEXT")
+            }
+        }
+        val MIGRATION_14_15 = object : Migration(14, 15) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE accounts ADD COLUMN walletLinked INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE accounts ADD COLUMN cardLastFour TEXT")
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS seen_spends (" +
+                        "id TEXT NOT NULL PRIMARY KEY, source TEXT NOT NULL, seenAt INTEGER NOT NULL, " +
+                        "amountMinor INTEGER NOT NULL, currency TEXT NOT NULL, merchant TEXT NOT NULL, " +
+                        "cardDigits TEXT, accountId TEXT, matchedTransactionId TEXT, " +
+                        "dismissed INTEGER NOT NULL, keptByUser INTEGER NOT NULL, categoryOverride TEXT)",
+                )
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS notification_samples (" +
+                        "id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, source TEXT NOT NULL, " +
+                        "postedAt INTEGER NOT NULL, title TEXT, text TEXT, parsed INTEGER NOT NULL)",
+                )
             }
         }
         val MIGRATION_13_14 = object : Migration(13, 14) {
@@ -220,6 +240,33 @@ interface BudgetDao {
      * withdrawn, and matching old pending rows to new ones by id was what let a booked salary
      * go on showing as pending. One step, so the list never shows the account without them.
      */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertSeenSpend(spend: SeenSpendEntity)
+
+    @Query("SELECT * FROM seen_spends ORDER BY seenAt DESC")
+    suspend fun seenSpends(): List<SeenSpendEntity>
+
+    @Query("SELECT * FROM seen_spends ORDER BY seenAt DESC")
+    fun seenSpendsFlow(): Flow<List<SeenSpendEntity>>
+
+    @Query("DELETE FROM seen_spends WHERE seenAt < :before")
+    suspend fun deleteSeenSpendsBefore(before: Long)
+
+    @Query("DELETE FROM seen_spends")
+    suspend fun deleteAllSeenSpends()
+
+    @Insert
+    suspend fun insertNotificationSample(sample: NotificationSampleEntity)
+
+    @Query("SELECT * FROM notification_samples ORDER BY postedAt DESC")
+    fun notificationSamplesFlow(): Flow<List<NotificationSampleEntity>>
+
+    @Query("DELETE FROM notification_samples WHERE postedAt < :before")
+    suspend fun deleteNotificationSamplesBefore(before: Long)
+
+    @Query("DELETE FROM notification_samples")
+    suspend fun deleteAllNotificationSamples()
+
     @Transaction
     suspend fun replaceSync(accountId: String, rows: List<TransactionEntity>) {
         expireAllPending(accountId)

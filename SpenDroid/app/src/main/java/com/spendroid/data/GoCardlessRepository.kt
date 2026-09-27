@@ -9,6 +9,9 @@ import com.spendroid.data.db.CategoryRuleEntity
 import com.spendroid.data.db.RuleOverrideEntity
 import com.spendroid.data.db.ManualRecurringRuleEntity
 import com.spendroid.data.db.TransactionEntity
+import com.spendroid.data.db.SeenSpendEntity
+import com.spendroid.data.db.NotificationSampleEntity
+import com.spendroid.domain.NotificationSpend
 import com.spendroid.data.remote.AccountDetailsDto
 import com.spendroid.data.remote.AccountInfoDto
 import com.spendroid.data.remote.AccountInfoWrapperDto
@@ -116,7 +119,104 @@ class GoCardlessRepository private constructor(
     suspend fun saveCardTiming(name: String) = secrets.saveCardTiming(name)
 
     suspend fun setCategoryOverride(accountId: String, transactionId: String, category: String?) {
+        // A spend seen in a notification lives in its own table until the bank reports it.
+        if (transactionId.startsWith(NotificationSpend.SEEN_PREFIX)) {
+            val id = transactionId.removePrefix(NotificationSpend.SEEN_PREFIX)
+            dao.seenSpends().firstOrNull { it.id == id }?.let { dao.upsertSeenSpend(it.copy(categoryOverride = category)) }
+            return
+        }
         dao.setCategoryOverride(accountId, transactionId, category)
+    }
+
+    // --- Spending read from notifications ---
+
+    val spendSources: Flow<List<NotificationSpend.Source>> = secrets.spendSources
+    val spendReadingOn: Flow<Boolean> = secrets.spendReadingOn
+    val seenSpends: Flow<List<SeenSpendEntity>> = dao.seenSpendsFlow()
+    val notificationSamples: Flow<List<NotificationSampleEntity>> = dao.notificationSamplesFlow()
+
+    suspend fun saveSpendSources(sources: List<NotificationSpend.Source>) = secrets.saveSpendSources(sources)
+    suspend fun setSpendReadingOn(on: Boolean) = secrets.setSpendReadingOn(on)
+
+    /** Packages whose notifications are read: the bank apps picked, and Wallet if any card is in it. */
+    suspend fun watchedPackages(): Set<String> {
+        val apps = spendSources.first().map { it.packageName }.toSet()
+        val wallet = dao.accounts().any { it.walletLinked }
+        return if (wallet) apps + NotificationSpend.GOOGLE_WALLET else apps
+    }
+
+    /**
+     * A notification from a watched app: kept for thirty days as a sample, and when it reads as a
+     * card payment, counted - unless the same purchase was already seen, or the bank has already
+     * reported it. Returns true when the figures changed.
+     */
+    suspend fun onNotification(source: String, title: String?, text: String?, postedAt: Long): Boolean {
+        val parsed = NotificationSpend.parse(source, title, text)
+        dao.insertNotificationSample(NotificationSampleEntity(source = source, postedAt = postedAt, title = title, text = text, parsed = parsed != null))
+        dao.deleteNotificationSamplesBefore(postedAt - SAMPLE_DAYS_MS)
+        dao.deleteSeenSpendsBefore(postedAt - SEEN_SPEND_DAYS_MS)
+        if (parsed == null || !spendReadingOn.first()) return false
+
+        val recent = dao.seenSpends()
+        if (NotificationSpend.duplicateOf(parsed.amountMinor, postedAt, recent) != null) return false
+        val accounts = dao.accounts()
+        val accountId = NotificationSpend.accountFor(source, parsed, spendSources.first(), accounts)
+        dao.upsertSeenSpend(
+            SeenSpendEntity(
+                id = "$source|$postedAt",
+                source = source,
+                seenAt = postedAt,
+                amountMinor = -parsed.amountMinor,
+                currency = accounts.firstOrNull { it.id == accountId }?.currency ?: "GBP",
+                merchant = parsed.merchant,
+                cardDigits = parsed.cardDigits,
+                accountId = accountId,
+            ),
+        )
+        reconcileSeenSpends()
+        return true
+    }
+
+    /**
+     * Hands each seen spend over to the bank's row once one reports it, carrying a category set
+     * on the seen spend across. Run after every sync and every new notification.
+     */
+    suspend fun reconcileSeenSpends() {
+        val seen = dao.seenSpends()
+        if (seen.isEmpty()) return
+        val bank = dao.accounts().flatMap { dao.transactionsFor(it.id) }
+        NotificationSpend.matches(seen, bank).forEach { (id, row) ->
+            val spend = seen.first { it.id == id }
+            dao.upsertSeenSpend(spend.copy(matchedTransactionId = row.transactionId))
+            if (spend.categoryOverride != null && row.categoryOverride == null) {
+                dao.setCategoryOverride(row.accountId, row.transactionId, spend.categoryOverride)
+            }
+        }
+    }
+
+    /** The user's answer to "which card?". Remembers the card's digits for next time. */
+    suspend fun assignSeenSpend(id: String, accountId: String) {
+        val spend = dao.seenSpends().firstOrNull { it.id == id } ?: return
+        dao.upsertSeenSpend(spend.copy(accountId = accountId))
+        val digits = spend.cardDigits
+        val account = dao.accounts().firstOrNull { it.id == accountId }
+        if (digits != null && account != null && account.cardLastFour == null) {
+            dao.updateAccount(account.copy(cardLastFour = digits))
+        }
+        reconcileSeenSpends()
+    }
+
+    suspend fun dismissSeenSpend(id: String) {
+        dao.seenSpends().firstOrNull { it.id == id }?.let { dao.upsertSeenSpend(it.copy(dismissed = true)) }
+    }
+
+    suspend fun keepSeenSpend(id: String) {
+        dao.seenSpends().firstOrNull { it.id == id }?.let { dao.upsertSeenSpend(it.copy(keptByUser = true)) }
+    }
+
+    suspend fun clearNotificationData() {
+        dao.deleteAllSeenSpends()
+        dao.deleteAllNotificationSamples()
     }
 
     suspend fun setInternalTransfer(accountId: String, transactionId: String, isTransfer: Boolean) {
@@ -232,6 +332,7 @@ class GoCardlessRepository private constructor(
     }
 
     suspend fun clearAllData() {
+        clearNotificationData()
         dao.deleteAllTransactions()
         dao.deleteAllAccounts()
         dao.deleteAllManualRules()
@@ -451,6 +552,8 @@ class GoCardlessRepository private constructor(
         dao.upsertAccount(entity)
 
         analyzeTransactions()
+        // The bank may now report what a notification announced.
+        reconcileSeenSpends()
         return entity
     }
 
@@ -607,7 +710,18 @@ class GoCardlessRepository private constructor(
         val stored = dao.accounts()
             .flatMap { dao.transactionsFor(it.id) }
             .sortedByDescending { it.bookingDate }
-        return PayPalEngine.reconcile(stored, dao.accounts())
+        // Spends seen in notifications and not yet reported by the bank, counted like pending.
+        val labels = spendSources.first().associate { it.packageName to it.label } +
+            (NotificationSpend.GOOGLE_WALLET to "Google Wallet")
+        val known = dao.accounts().mapTo(HashSet()) { it.id }
+        val seen = if (spendReadingOn.first()) {
+            NotificationSpend.counted(dao.seenSpends())
+                .filter { it.accountId in known }
+                .map { NotificationSpend.asTransaction(it, labels[it.source] ?: "notification") }
+        } else {
+            emptyList()
+        }
+        return PayPalEngine.reconcile((stored + seen).sortedByDescending { it.bookingDate }, dao.accounts())
     }
 
     private fun toEntity(
@@ -1130,6 +1244,10 @@ class GoCardlessRepository private constructor(
             }
             return null
         }
+
+        private const val SAMPLE_DAYS_MS = 30L * 24 * 60 * 60_000L
+        // Long after the bank has reported them; kept until then only so a match can be made.
+        private const val SEEN_SPEND_DAYS_MS = 60L * 24 * 60 * 60_000L
 
         private const val BASE_URL = "https://bankaccountdata.gocardless.com/api/v2/"
         // A custom scheme MainActivity registers, so the bank hands control back to the

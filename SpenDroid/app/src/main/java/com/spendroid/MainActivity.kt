@@ -77,6 +77,7 @@ import com.spendroid.ui.OnboardingScreen
 import com.spendroid.ui.RecurringRulesScreen
 import com.spendroid.ui.RootViewModel
 import com.spendroid.ui.SettingsScreen
+import com.spendroid.ui.CardAlertsSection
 import com.spendroid.ui.SpendingScreen
 import com.spendroid.ui.theme.BudgetTheme
 
@@ -238,6 +239,15 @@ class MainActivity : ComponentActivity() {
                                             onMarkCardPayment = viewModel::markAsCardPayment,
                                             onCategoryFilter = viewModel::setCategoryFilter,
                                             onSetBudgetGoal = viewModel::setBudgetGoal,
+                                            prompts = {
+                                                com.spendroid.ui.SeenSpendPrompts(
+                                                    seen = state.seenSpends,
+                                                    accounts = state.accounts,
+                                                    onAssign = viewModel::assignSeenSpend,
+                                                    onKeep = viewModel::keepSeenSpend,
+                                                    onDismiss = viewModel::dismissSeenSpend,
+                                                )
+                                            },
                                         )
 
                                         AppScreen.Accounts -> AccountManagementScreen(
@@ -280,6 +290,18 @@ class MainActivity : ComponentActivity() {
                                             secretKey = viewModel.secretKeyValue.collectAsStateWithLifecycle().value,
                                             notificationTime = viewModel.notificationTime.collectAsStateWithLifecycle().value,
                                             onSaveNotificationTime = viewModel::saveNotificationTime,
+                                            cardAlerts = {
+                                                CardAlertsSection(
+                                                    accounts = state.accounts,
+                                                    sources = viewModel.spendSources.collectAsStateWithLifecycle().value,
+                                                    readingOn = viewModel.spendReadingOn.collectAsStateWithLifecycle().value,
+                                                    samples = viewModel.notificationSamples.collectAsStateWithLifecycle().value,
+                                                    onSaveSources = viewModel::saveSpendSources,
+                                                    onReadingOn = viewModel::setSpendReadingOn,
+                                                    onUpdateAccount = viewModel::updateAccount,
+                                                    onClear = viewModel::clearNotificationData,
+                                                )
+                                            },
                                         )
                                     }
                                 }

@@ -59,6 +59,8 @@ import java.time.format.DateTimeFormatter
 private enum class SettingsTab(val label: String) {
     PREFERENCES("Preferences"),
     SETUP("Setup & data"),
+    CARD_ALERTS("Card alerts"),
+    WATCH("Watch"),
     ABOUT("About"),
 }
 
@@ -85,6 +87,7 @@ fun SettingsScreen(
     secretKey: String,
     notificationTime: String,
     onSaveNotificationTime: (String) -> Unit,
+    cardAlerts: @Composable () -> Unit = {},
 ) {
     var selectedTab by rememberSaveable { mutableIntStateOf(0) }
     // A tab index saved before this row had three entries would otherwise index past the end.
@@ -169,6 +172,10 @@ fun SettingsScreen(
                         onClearData = onClearData,
                     )
                 }
+
+                SettingsTab.CARD_ALERTS -> cardAlerts()
+
+                SettingsTab.WATCH -> WatchSection()
 
                 SettingsTab.ABOUT -> UpdatesSection(
                     state = state,

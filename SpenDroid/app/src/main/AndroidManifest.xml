@@ -6,6 +6,17 @@
     <!-- A manual update check downloads the release and asks Android to install it. -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
+    <!--
+        The bank apps to read notifications from are picked from the launcher's apps. Asking only
+        for those avoids the permission to see every installed package.
+    -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+    </queries>
+
     <application
         android:name=".BudgetApplication"
         android:dataExtractionRules="@xml/data_extraction_rules"
@@ -74,6 +85,16 @@
             android:name=".data.InstallResultReceiver"
             android:exported="false" />
 
+        <!-- Card payments from Google Wallet and the bank apps the user picked. -->
+        <service
+            android:name=".work.SpendListenerService"
+            android:exported="true"
+            android:label="SpenDroid card spending"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
     </application>
 
 </manifest>

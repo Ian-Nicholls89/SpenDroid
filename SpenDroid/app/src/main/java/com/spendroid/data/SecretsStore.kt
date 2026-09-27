@@ -77,6 +77,8 @@ class SecretsStore(private val context: Context) {
         val PRIMARY_INCOME_KEY = stringPreferencesKey("primary_income_key")
         val BUDGET_MODEL = stringPreferencesKey("budget_model")
         val CARD_TIMING = stringPreferencesKey("card_timing")
+        val SPEND_SOURCES = stringPreferencesKey("spend_sources")
+        val SPEND_READING_ON = androidx.datastore.preferences.core.booleanPreferencesKey("spend_reading_on")
     }
 
     val secretId: Flow<String?> = stringFlow(Keys.SECRET_ID)
@@ -177,6 +179,49 @@ class SecretsStore(private val context: Context) {
                 }
             }.toString()
         }
+    }
+
+    /** The bank apps whose notifications are read, and the accounts each speaks for. */
+    val spendSources: Flow<List<com.spendroid.domain.NotificationSpend.Source>> = context.dataStore.data
+        .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
+        .map { prefs -> parseSpendSources(prefs[Keys.SPEND_SOURCES]) }
+
+    suspend fun saveSpendSources(sources: List<com.spendroid.domain.NotificationSpend.Source>) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.SPEND_SOURCES] = JSONArray(
+                sources.map { s ->
+                    JSONObject()
+                        .put("package", s.packageName)
+                        .put("label", s.label)
+                        .put("accounts", JSONArray(s.accountIds))
+                        .put("default", s.defaultAccountId ?: JSONObject.NULL)
+                },
+            ).toString()
+        }
+    }
+
+    private fun parseSpendSources(json: String?): List<com.spendroid.domain.NotificationSpend.Source> {
+        if (json.isNullOrBlank()) return emptyList()
+        val array = runCatching { JSONArray(json) }.getOrNull() ?: return emptyList()
+        return (0 until array.length()).mapNotNull { i ->
+            val o = array.optJSONObject(i) ?: return@mapNotNull null
+            val accounts = o.optJSONArray("accounts")
+            com.spendroid.domain.NotificationSpend.Source(
+                packageName = o.optString("package").takeIf { it.isNotBlank() } ?: return@mapNotNull null,
+                label = o.optString("label"),
+                accountIds = (0 until (accounts?.length() ?: 0)).map { accounts!!.getString(it) },
+                defaultAccountId = if (o.isNull("default")) null else o.optString("default"),
+            )
+        }
+    }
+
+    /** Whether spending read from notifications is counted. On once set up; the user can pause it. */
+    val spendReadingOn: Flow<Boolean> = context.dataStore.data
+        .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
+        .map { prefs -> prefs[Keys.SPEND_READING_ON] ?: true }
+
+    suspend fun setSpendReadingOn(on: Boolean) {
+        context.dataStore.edit { prefs -> prefs[Keys.SPEND_READING_ON] = on }
     }
 
     /** GoCardless's own limit on all calls, as last reported. */
