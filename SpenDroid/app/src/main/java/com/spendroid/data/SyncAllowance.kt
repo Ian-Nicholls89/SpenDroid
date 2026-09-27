@@ -138,13 +138,16 @@ object SyncAllowance {
     }
 
     /**
-     * When to try again for accounts the bank has refused: just after the earliest reset, when
-     * that comes before the next scheduled sync - otherwise the schedule will get there first.
+     * When to try again for accounts the bank has refused: just after the earliest reset, if
+     * that is no more than halfway from the last scheduled sync to the next. Any later and the
+     * next scheduled sync is close enough to wait for, and a catch-up just before it would
+     * spend the call that sync needs. The scheduled syncs themselves never move.
      */
-    fun catchUpAt(resets: List<Long>, nextScheduled: Long, now: Long): Long? {
+    fun catchUpAt(resets: List<Long>, previousScheduled: Long, nextScheduled: Long, now: Long): Long? {
         val earliest = resets.filter { it > now }.minOrNull() ?: return null
         val at = earliest + CATCH_UP_MARGIN_MS
-        return at.takeIf { it < nextScheduled - CATCH_UP_MARGIN_MS }
+        val halfway = previousScheduled + (nextScheduled - previousScheduled) / 2
+        return at.takeIf { it <= halfway }
     }
 
     /** A little after the reset, so a clock a minute apart from the bank's is not refused. */

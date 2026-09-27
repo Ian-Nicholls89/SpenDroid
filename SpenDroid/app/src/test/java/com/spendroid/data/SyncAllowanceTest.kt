@@ -103,12 +103,24 @@ class SyncAllowanceTest {
         assertEquals("00:01", SyncAllowance.countdown(at(19, 40), at(19, 40) - 5_000L))
     }
 
-    /** A refused account is tried again just after its reset, if that beats the schedule. */
+    /**
+     * A refused account is tried again just after its reset, if that is no more than halfway
+     * from the last scheduled sync to the next: 08:00 to 14:00 has its halfway point at 11:00.
+     */
     @Test
-    fun `a catch-up is booked only when it comes before the next scheduled sync`() {
-        val now = at(16, 26)
-        assertEquals(at(19, 42), SyncAllowance.catchUpAt(listOf(at(19, 40)), nextScheduled = at(20), now = now))
-        assertNull(SyncAllowance.catchUpAt(listOf(at(19, 59)), nextScheduled = at(20), now = now))
-        assertNull(SyncAllowance.catchUpAt(emptyList(), nextScheduled = at(20), now = now))
+    fun `a catch-up is booked only in the first half before the next scheduled sync`() {
+        val now = at(8)
+        assertEquals(at(9, 32), SyncAllowance.catchUpAt(listOf(at(9, 30)), at(8), at(14), now))
+        assertEquals(at(11), SyncAllowance.catchUpAt(listOf(at(10, 58)), at(8), at(14), now))
+        assertNull(SyncAllowance.catchUpAt(listOf(at(11, 30)), at(8), at(14), now))
+        assertNull(SyncAllowance.catchUpAt(listOf(at(13, 59)), at(8), at(14), now))
+        assertNull(SyncAllowance.catchUpAt(emptyList(), at(8), at(14), now))
+    }
+
+    /** The earliest reset decides; a reset already passed is not waited for. */
+    @Test
+    fun `the earliest reset still to come sets the catch-up`() {
+        val now = at(8)
+        assertEquals(at(9, 2), SyncAllowance.catchUpAt(listOf(at(10), at(9), at(7)), at(8), at(14), now))
     }
 }

@@ -70,8 +70,8 @@ object DailyRoundupScheduler {
 
     /**
      * Books a one-off sync just after the earliest allowance reset among refused accounts, when
-     * that beats the next scheduled slot. Replaces any earlier catch-up, so there is only ever
-     * one, at the time that matters now.
+     * that is no more than halfway to the next scheduled slot. Replaces any earlier catch-up, so
+     * there is only ever one, at the time that matters now.
      */
     suspend fun bookCatchUp(context: Context, fromCatchUp: Boolean = false) {
         val app = context.applicationContext as? BudgetApplication ?: return
@@ -81,9 +81,10 @@ object DailyRoundupScheduler {
             repo.allowanceFor(account.id, now)?.takeIf { SyncAllowance.exhausted(it, now) }?.resetAt
         }
         val zoned = ZonedDateTime.now()
-        val nextSlot = syncTimes(notificationTime(context.applicationContext))
-            .minOf { zoned.plus(delayUntilNext(zoned, it)).toInstant().toEpochMilli() }
-        val at = SyncAllowance.catchUpAt(resets, nextSlot, now) ?: return
+        val slots = syncTimes(notificationTime(context.applicationContext))
+        val nextSlot = slots.minOf { zoned.plus(delayUntilNext(zoned, it)).toInstant().toEpochMilli() }
+        val previousSlot = slots.maxOf { zoned.minus(sinceLast(zoned, it)).toInstant().toEpochMilli() }
+        val at = SyncAllowance.catchUpAt(resets, previousSlot, nextSlot, now) ?: return
         val request = OneTimeWorkRequest.Builder(DailySyncWorker::class.java)
             .setInputData(workDataOf(CATCH_UP_KEY to true))
             .setInitialDelay(at - now, TimeUnit.MILLISECONDS)
@@ -218,6 +219,13 @@ object DailyRoundupScheduler {
         var next = now.toLocalDate().atTime(at).atZone(zone)
         if (!next.isAfter(now)) next = now.toLocalDate().plusDays(1).atTime(at).atZone(zone)
         return Duration.between(now, next)
+    }
+
+    /** How long since [at] last came round: today if it has passed, otherwise yesterday. */
+    internal fun sinceLast(now: ZonedDateTime, at: LocalTime, zone: ZoneId = now.zone): Duration {
+        var last = now.toLocalDate().atTime(at).atZone(zone)
+        if (last.isAfter(now)) last = now.toLocalDate().minusDays(1).atTime(at).atZone(zone)
+        return Duration.between(last, now)
     }
 }
 

@@ -96,8 +96,9 @@ class DailySyncWorker(
 
     companion object {
         private const val MAX_ATTEMPTS = 4
-        // Under the three hours that separate the day's syncs, so one running a little late never
-        // makes the next skip; long enough that a manual refresh shortly before spares it.
-        private val MIN_RESYNC_INTERVAL_MS = TimeUnit.MINUTES.toMillis(150)
+        // Half the shortest gap between the day's syncs (three hours). A catch-up lands no more
+        // than halfway between two syncs, so the next still runs for that account; a manual
+        // refresh within the last hour and a half spares it.
+        private val MIN_RESYNC_INTERVAL_MS = TimeUnit.MINUTES.toMillis(90)
     }
 }

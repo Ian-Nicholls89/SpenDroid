@@ -76,4 +76,12 @@ class DailyScheduleTest {
             slots.forEach { assert(it.hour in 6..22) { "$roundup puts a sync at $it" } }
         }
     }
+
+    /** The last scheduled sync is today's if its time has passed, otherwise yesterday's. */
+    @Test
+    fun `the last occurrence of a time`() {
+        assertEquals(Duration.ofMinutes(5), DailyRoundupScheduler.sinceLast(at(2026, 9, 27, 8, 5), LocalTime.of(8, 0)))
+        assertEquals(Duration.ofHours(12), DailyRoundupScheduler.sinceLast(at(2026, 9, 27, 8, 0), LocalTime.of(20, 0)))
+        assertEquals(Duration.ZERO, DailyRoundupScheduler.sinceLast(at(2026, 9, 27, 14, 0), LocalTime.of(14, 0)))
+    }
 }
