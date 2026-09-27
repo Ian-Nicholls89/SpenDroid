@@ -384,13 +384,20 @@ class GoCardlessRepository private constructor(
         } finally {
             // Whatever the bank said about the allowance on the way, success or refusal.
             secrets.saveAllowances(accountId, AllowanceRecorder.take(accountId))
+            AllowanceRecorder.takeGeneral()?.let { secrets.saveGeneralAllowance(it) }
         }
 
     val syncAllowances: Flow<Map<String, Map<SyncAllowance.Scope, SyncAllowance.Reading>>> = secrets.syncAllowances
 
-    /** An account's allowance for a full sync right now, or null until the bank has reported one. */
+    /** GoCardless's own limit on all calls, as last reported. */
+    val generalAllowance: Flow<SyncAllowance.Reading?> = secrets.generalAllowance
+
+    /**
+     * An account's allowance for a full sync right now: the bank's, unless GoCardless's own
+     * limit is spent. Null until either has reported.
+     */
     suspend fun allowanceFor(accountId: String, now: Long = System.currentTimeMillis()): SyncAllowance.Account? =
-        syncAllowances.first()[accountId]?.let { SyncAllowance.forAccount(it, now) }
+        SyncAllowance.forAccount(syncAllowances.first()[accountId].orEmpty(), now, generalAllowance.first())
 
     suspend fun importAccount(institutionName: String, accountId: String): AccountEntity {
         val metadata: AccountDetailsDto = dataApi.accountMetadata(accountId)
@@ -1167,6 +1174,8 @@ class GoCardlessRepository private constructor(
                 // The bank's allowance for each account, as every rationed response reports it.
                 .addInterceptor { chain ->
                     val response = chain.proceed(chain.request())
+                    SyncAllowance.fromGeneralHeaders({ response.header(it) }, System.currentTimeMillis())
+                        ?.let { AllowanceRecorder.recordGeneral(it) }
                     SyncAllowance.scopeFor(chain.request().url.encodedPath)?.let { (accountId, scope) ->
                         val now = System.currentTimeMillis()
                         val reading = when {

@@ -15,4 +15,13 @@ internal object AllowanceRecorder {
 
     fun take(accountId: String): Map<SyncAllowance.Scope, SyncAllowance.Reading> =
         pending.remove(accountId)?.toMap().orEmpty()
+
+    /** GoCardless's own limit is one for all calls, so only the latest reading matters. */
+    @Volatile private var general: SyncAllowance.Reading? = null
+
+    fun recordGeneral(reading: SyncAllowance.Reading) {
+        general = reading
+    }
+
+    fun takeGeneral(): SyncAllowance.Reading? = general.also { general = null }
 }

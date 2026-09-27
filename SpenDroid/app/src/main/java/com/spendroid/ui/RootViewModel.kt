@@ -771,8 +771,8 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
                 cardTiming = cardTiming,
                 transferGroups = repo.transferGroups.first(),
                 newTransactionKeys = newKeys,
-                syncAllowances = repo.syncAllowances.first()
-                    .mapNotNull { (id, readings) -> SyncAllowance.forAccount(readings, System.currentTimeMillis())?.let { id to it } }
+                syncAllowances = accounts
+                    .mapNotNull { account -> repo.allowanceFor(account.id)?.let { account.id to it } }
                     .toMap(),
                 nextSyncAt = nextScheduledSync(),
                 syncFailures = repo.syncFailures.first(),

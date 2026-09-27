@@ -56,6 +56,26 @@ object SyncAllowance {
         )
     }
 
+    /**
+     * GoCardless's own limit, as any response reports it. Separate from the bank's allowance:
+     * it counts every call, refused and failed ones included, and when it runs out every call
+     * is refused - even for an account the bank would still answer.
+     */
+    fun fromGeneralHeaders(header: (String) -> String?, now: Long): Reading? {
+        fun read(name: String): String? =
+            header("HTTP_X_RATELIMIT_$name")
+                ?: header("X_RATELIMIT_$name")
+                ?: header("X-RateLimit-" + name.lowercase().replaceFirstChar { it.uppercase() })
+        val remaining = read("REMAINING")?.trim()?.toIntOrNull() ?: return null
+        val resetSeconds = read("RESET")?.trim()?.toLongOrNull() ?: return null
+        return Reading(
+            limit = read("LIMIT")?.trim()?.toIntOrNull(),
+            remaining = remaining,
+            resetAt = now + resetSeconds * 1000L,
+            observedAt = now,
+        )
+    }
+
     private val TRY_AGAIN = Regex("""try again in (\d+) seconds""", RegexOption.IGNORE_CASE)
     private val LIMIT_IS = Regex("""rate limit for this resource is (\d+)""", RegexOption.IGNORE_CASE)
 
@@ -81,7 +101,11 @@ object SyncAllowance {
      * way - until the next sync brings the bank's own figure. A day after the reading, every call it
      * counted has come back whichever way the bank works.
      */
-    fun forAccount(readings: Map<Scope, Reading>, now: Long): Account? {
+    fun forAccount(readings: Map<Scope, Reading>, now: Long, general: Reading? = null): Account? {
+        // GoCardless's own limit, spent, stops every account whatever the bank would allow.
+        if (general != null && general.remaining <= 0 && now < general.resetAt) {
+            return Account(general.limit, 0, general.resetAt)
+        }
         val needed = listOfNotNull(readings[Scope.BALANCES], readings[Scope.TRANSACTIONS])
         if (needed.isEmpty()) return null
         val current = needed.map { r ->

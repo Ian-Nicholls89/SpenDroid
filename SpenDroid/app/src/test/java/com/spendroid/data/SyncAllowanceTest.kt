@@ -123,4 +123,35 @@ class SyncAllowanceTest {
         val now = at(8)
         assertEquals(at(9, 2), SyncAllowance.catchUpAt(listOf(at(10), at(9), at(7)), at(8), at(14), now))
     }
+
+    /** GoCardless's general limit has its own headers, and the account ones are not mistaken for them. */
+    @Test
+    fun `the general limit is read from its own headers`() {
+        val now = at(14)
+        val headers = mapOf(
+            "HTTP_X_RATELIMIT_LIMIT" to "100",
+            "HTTP_X_RATELIMIT_REMAINING" to "7",
+            "HTTP_X_RATELIMIT_RESET" to "600",
+            "HTTP_X_RATELIMIT_ACCOUNT_SUCCESS_REMAINING" to "2",
+        )
+        assertEquals(SyncAllowance.Reading(100, 7, now + 600_000L, now), SyncAllowance.fromGeneralHeaders({ headers[it] }, now))
+        val accountOnly = mapOf(
+            "HTTP_X_RATELIMIT_ACCOUNT_SUCCESS_REMAINING" to "2",
+            "HTTP_X_RATELIMIT_ACCOUNT_SUCCESS_RESET" to "60",
+        )
+        assertNull(SyncAllowance.fromGeneralHeaders({ accountOnly[it] }, now))
+    }
+
+    /** With GoCardless's own limit spent, no account can sync until it resets, whatever the bank allows. */
+    @Test
+    fun `a spent general limit stops every account until it resets`() {
+        val readings = mapOf(Scope.TRANSACTIONS to SyncAllowance.Reading(4, 3, at(20), at(14)))
+        val general = SyncAllowance.Reading(100, 0, at(15), at(14))
+        val during = SyncAllowance.forAccount(readings, at(14, 30), general)!!
+        assertTrue(SyncAllowance.exhausted(during, at(14, 30)))
+        assertEquals(at(15), during.resetAt)
+        assertEquals(3, SyncAllowance.forAccount(readings, at(15, 1), general)!!.remaining)
+        // An account the bank has not reported on is still stopped.
+        assertTrue(SyncAllowance.exhausted(SyncAllowance.forAccount(emptyMap(), at(14, 30), general), at(14, 30)))
+    }
 }

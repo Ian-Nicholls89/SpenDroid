@@ -70,6 +70,7 @@ class SecretsStore(private val context: Context) {
         val TRANSFER_GROUPS = stringPreferencesKey("transfer_groups")
         val SYNC_FAILURES = stringPreferencesKey("sync_failures")
         val SYNC_ALLOWANCES = stringPreferencesKey("sync_allowances")
+        val GENERAL_ALLOWANCE = stringPreferencesKey("general_allowance")
         val REFRESH_TOKEN = stringPreferencesKey("refresh_token")
         val NOTIFICATION_TIME = stringPreferencesKey("notification_time")
         val LAST_NOTIFIED_VERSION = intPreferencesKey("last_notified_version_code")
@@ -171,21 +172,36 @@ class SecretsStore(private val context: Context) {
             prefs[Keys.SYNC_ALLOWANCES] = JSONObject().also { root ->
                 all.forEach { (id, scopes) ->
                     root.put(id, JSONObject().also { o ->
-                        scopes.forEach { (scope, r) ->
-                            o.put(
-                                scope.name,
-                                JSONObject()
-                                    .put("limit", r.limit ?: JSONObject.NULL)
-                                    .put("remaining", r.remaining)
-                                    .put("resetAt", r.resetAt)
-                                    .put("observedAt", r.observedAt),
-                            )
-                        }
+                        scopes.forEach { (scope, r) -> o.put(scope.name, readingJson(r)) }
                     })
                 }
             }.toString()
         }
     }
+
+    /** GoCardless's own limit on all calls, as last reported. */
+    val generalAllowance: Flow<SyncAllowance.Reading?> = context.dataStore.data
+        .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
+        .map { prefs -> prefs[Keys.GENERAL_ALLOWANCE]?.let { runCatching { readingFrom(JSONObject(it)) }.getOrNull() } }
+
+    suspend fun saveGeneralAllowance(reading: SyncAllowance.Reading) {
+        context.dataStore.edit { prefs -> prefs[Keys.GENERAL_ALLOWANCE] = readingJson(reading).toString() }
+    }
+
+    private fun readingJson(r: SyncAllowance.Reading): JSONObject =
+        JSONObject()
+            .put("limit", r.limit ?: JSONObject.NULL)
+            .put("remaining", r.remaining)
+            .put("resetAt", r.resetAt)
+            .put("observedAt", r.observedAt)
+
+    private fun readingFrom(r: JSONObject): SyncAllowance.Reading =
+        SyncAllowance.Reading(
+            limit = if (r.isNull("limit")) null else r.optInt("limit"),
+            remaining = r.optInt("remaining"),
+            resetAt = r.optLong("resetAt"),
+            observedAt = r.optLong("observedAt"),
+        )
 
     private fun parseAllowances(json: String?): Map<String, Map<SyncAllowance.Scope, SyncAllowance.Reading>> {
         if (json.isNullOrBlank()) return emptyMap()
@@ -195,12 +211,7 @@ class SecretsStore(private val context: Context) {
             o.keys().asSequence().mapNotNull { name ->
                 val scope = runCatching { SyncAllowance.Scope.valueOf(name) }.getOrNull() ?: return@mapNotNull null
                 val r = o.optJSONObject(name) ?: return@mapNotNull null
-                scope to SyncAllowance.Reading(
-                    limit = if (r.isNull("limit")) null else r.optInt("limit"),
-                    remaining = r.optInt("remaining"),
-                    resetAt = r.optLong("resetAt"),
-                    observedAt = r.optLong("observedAt"),
-                )
+                scope to readingFrom(r)
             }.toMap()
         }
     }
@@ -311,6 +322,7 @@ class SecretsStore(private val context: Context) {
             prefs.remove(Keys.PRIMARY_INCOME_KEY)
             // About accounts that are gone; left behind, they described nothing.
             prefs.remove(Keys.SYNC_ALLOWANCES)
+            prefs.remove(Keys.GENERAL_ALLOWANCE)
             prefs.remove(Keys.SYNC_FAILURES)
         }
     }
