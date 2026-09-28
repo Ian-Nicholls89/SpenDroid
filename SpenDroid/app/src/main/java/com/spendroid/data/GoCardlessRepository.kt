@@ -43,6 +43,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.sync.withLock
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
@@ -151,27 +152,40 @@ class GoCardlessRepository private constructor(
      * card payment, counted - unless the same purchase was already seen, or the bank has already
      * reported it. Returns true when the figures changed.
      */
-    suspend fun onNotification(source: String, title: String?, text: String?, postedAt: Long): Boolean {
-        val parsed = NotificationSpend.parse(source, title, text, spendLearned.first())
-        dao.insertNotificationSample(NotificationSampleEntity(source = source, postedAt = postedAt, title = title, text = text, parsed = parsed != null))
-        dao.deleteNotificationSamplesBefore(postedAt - SAMPLE_DAYS_MS)
-        dao.deleteSeenSpendsBefore(postedAt - SEEN_SPEND_DAYS_MS)
-        if (parsed == null) return false
-        return countSeen(source, parsed, postedAt)
-    }
+    /**
+     * One notification at a time. Wallet and the bank announce a purchase within the same
+     * second, and handled side by side each checked for a duplicate before the others were
+     * saved - so one lunch could count three times.
+     */
+    private val notificationLock = kotlinx.coroutines.sync.Mutex()
+
+    suspend fun onNotification(source: String, title: String?, text: String?, postedAt: Long): Boolean =
+        notificationLock.withLock {
+            val parsed = NotificationSpend.parse(source, title, text, spendLearned.first())
+            val sampleId = dao.insertNotificationSample(
+                NotificationSampleEntity(source = source, postedAt = postedAt, title = title, text = text, parsed = parsed != null),
+            )
+            dao.deleteNotificationSamplesBefore(postedAt - SAMPLE_DAYS_MS)
+            dao.deleteSeenSpendsBefore(postedAt - SEEN_SPEND_DAYS_MS)
+            val outcome = parsed?.let { countSeen(source, it, postedAt) } ?: NotificationSpend.Outcome.NOT_A_PAYMENT
+            dao.setNotificationOutcome(sampleId, outcome.name)
+            outcome == NotificationSpend.Outcome.COUNTED
+        }
 
     /**
      * Counts a payment read from a notification - unless it repeats one already seen, or the
      * budget already accounts for it as a transfer or a regular bill.
      */
-    private suspend fun countSeen(source: String, parsed: NotificationSpend.Parsed, postedAt: Long): Boolean {
-        if (!spendReadingOn.first()) return false
+    private suspend fun countSeen(source: String, parsed: NotificationSpend.Parsed, postedAt: Long): NotificationSpend.Outcome {
+        if (!spendReadingOn.first()) return NotificationSpend.Outcome.PAUSED
         val recent = dao.seenSpends()
-        if (NotificationSpend.duplicateOf(source, parsed.amountMinor, parsed.cardDigits, postedAt, recent) != null) return false
+        if (NotificationSpend.duplicateOf(source, parsed.amountMinor, parsed.cardDigits, postedAt, recent) != null) {
+            return NotificationSpend.Outcome.DUPLICATE
+        }
         val accounts = dao.accounts()
         val history = accounts.flatMap { dao.transactionsFor(it.id) }
         val rules = RecurringAnalyzer.analyze(history) + manualRules.first().mapNotNull { it.toRecurringRule() }
-        if (NotificationSpend.alreadyAccountedFor(parsed, history, rules)) return false
+        if (NotificationSpend.alreadyAccountedFor(parsed, history, rules)) return NotificationSpend.Outcome.ACCOUNTED_FOR
         val placement = NotificationSpend.placementFor(source, parsed, spendSources.first(), accounts, history)
         val accountId = placement?.accountId
         dao.upsertSeenSpend(
@@ -188,7 +202,7 @@ class GoCardlessRepository private constructor(
             ),
         )
         reconcileSeenSpends()
-        return true
+        return NotificationSpend.Outcome.COUNTED
     }
 
     /**
@@ -202,9 +216,13 @@ class GoCardlessRepository private constructor(
         secrets.updateSpendLearned { current -> current.filterNot { it.source == learned.source && it.pattern == learned.pattern } + learned }
         dao.markNotificationSampleParsed(sampleId, count)
         if (count) {
-            NotificationSpend.parse(sample.source, sample.title, sample.text, listOf(learned))
-                ?.let { countSeen(sample.source, it, sample.postedAt) }
+            val outcome = notificationLock.withLock {
+                NotificationSpend.parse(sample.source, sample.title, sample.text, listOf(learned))
+                    ?.let { countSeen(sample.source, it, sample.postedAt) }
+            }
+            outcome?.let { dao.setNotificationOutcome(sampleId, it.name) }
         } else {
+            dao.setNotificationOutcome(sampleId, NotificationSpend.Outcome.NOT_A_PAYMENT.name)
             // Anything already counted from notifications worded like it goes.
             val seen = dao.seenSpends().filter { it.source == sample.source && it.matchedTransactionId == null && !it.dismissed }
             val ignored = dao.notificationSamples()
@@ -223,6 +241,9 @@ class GoCardlessRepository private constructor(
      * on the seen spend across. Run after every sync and every new notification.
      */
     suspend fun reconcileSeenSpends() {
+        // Any purchase counted more than once - as the race before 3.2.1 could - is one again.
+        NotificationSpend.repeats(dao.seenSpends().filter { it.matchedTransactionId == null })
+            .forEach { dao.upsertSeenSpend(it.copy(dismissed = true)) }
         val seen = dao.seenSpends()
         if (seen.isEmpty()) return
         val bank = dao.accounts().flatMap { dao.transactionsFor(it.id) }

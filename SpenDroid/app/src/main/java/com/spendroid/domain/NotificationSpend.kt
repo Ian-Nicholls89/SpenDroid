@@ -20,6 +20,29 @@ object NotificationSpend {
 
     const val GOOGLE_WALLET = "com.google.android.apps.walletnfcrel"
 
+    /** What became of a notification, for the log. */
+    enum class Outcome(val label: String) {
+        COUNTED("counted"),
+        DUPLICATE("same purchase as another"),
+        ACCOUNTED_FOR("already a bill or transfer"),
+        NOT_A_PAYMENT("not a payment"),
+        PAUSED("not counted: card alerts paused"),
+    }
+
+    /**
+     * Seen spends that repeat an earlier one, by the same rule as [duplicateOf] - for tidying up
+     * after the fact. Oldest first, so the first announcement is the one kept.
+     */
+    fun repeats(seen: List<SeenSpendEntity>): List<SeenSpendEntity> {
+        val kept = mutableListOf<SeenSpendEntity>()
+        val repeats = mutableListOf<SeenSpendEntity>()
+        seen.filter { !it.dismissed }.sortedBy { it.seenAt }.forEach { spend ->
+            if (duplicateOf(spend.source, -spend.amountMinor, spend.cardDigits, spend.seenAt, kept) != null) repeats += spend
+            else kept += spend
+        }
+        return repeats
+    }
+
     /** One bank app the user picked, and the accounts it speaks for. */
     data class Source(
         val packageName: String,

@@ -380,7 +380,10 @@ private fun SamplesDialog(
                         Text(
                             (labels[s.source] ?: if (s.source == NotificationSpend.GOOGLE_WALLET) "Google Wallet" else s.source) +
                                 " · " + Instant.ofEpochMilli(s.postedAt).atZone(ZoneId.systemDefault()).format(SAMPLE_TIME) +
-                                if (s.parsed) " · read as a payment" else " · not a payment",
+                                " · " + (
+                                    s.outcome?.let { o -> runCatching { NotificationSpend.Outcome.valueOf(o).label }.getOrNull() }
+                                        ?: if (s.parsed) "read as a payment" else "not a payment"
+                                    ),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )

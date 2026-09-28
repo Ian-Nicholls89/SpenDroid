@@ -97,6 +97,8 @@ data class NotificationSampleEntity(
     val text: String?,
     /** Whether it was read as a payment. */
     val parsed: Boolean,
+    /** What became of it: a [com.spendroid.domain.NotificationSpend.Outcome] by name. */
+    val outcome: String? = null,
 )
 
 @Entity(

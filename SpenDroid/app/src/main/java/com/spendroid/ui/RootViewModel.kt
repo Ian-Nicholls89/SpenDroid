@@ -179,6 +179,8 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
         _state.update { it.copy(hasCredentials = hasCredentials) }
         if (hasCredentials) {
             loadInstitutions("")
+            // Merges any purchase counted more than once from notifications, straight away.
+            runCatching { repo.reconcileSeenSpends() }
             loadLocal()
         }
     }

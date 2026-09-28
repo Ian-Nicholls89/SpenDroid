@@ -185,4 +185,28 @@ class NotificationSpendTest {
         assertEquals("GREGGS", p.merchant)
         assertEquals("4168", p.cardDigits)
     }
+
+    /**
+     * The user's lunch (28 Sep 2026): Wallet posted twice and NatWest once, in the same second.
+     * Read, each is £35.65 on ••4168; counted, it is one purchase.
+     */
+    @Test
+    fun `one lunch announced three times is one spend`() {
+        val wallet = NotificationSpend.parse(GOOGLE_WALLET, "SALT DELI KITCHEN LIMI", "£35.65 with NatWest Nectar Credit Card ••4168")!!
+        assertEquals(3565L, wallet.amountMinor)
+        assertEquals("SALT DELI KITCHEN LIMI", wallet.merchant)
+        assertEquals("4168", wallet.cardDigits)
+        val bank = NotificationSpend.parse(natwest, "NatWest", "💳 £35.65 at SALT DELI KITCHEN LIMI on your card ending 4168")!!
+        assertEquals(3565L, bank.amountMinor)
+
+        val t = at(28, 12, 33)
+        val three = listOf(
+            seen("w1", 3565, t).copy(cardDigits = "4168"),
+            seen("w2", 3565, t + 400).copy(cardDigits = "4168"),
+            seen("n1", 3565, t + 900).copy(source = natwest, cardDigits = "4168"),
+        )
+        assertEquals(listOf("w2", "n1"), NotificationSpend.repeats(three).map { it.id })
+        // Two lunches an hour apart on the same card stay two.
+        assertEquals(emptyList<String>(), NotificationSpend.repeats(listOf(three[0], three[2].copy(seenAt = t + 3_600_000))).map { it.id })
+    }
 }
