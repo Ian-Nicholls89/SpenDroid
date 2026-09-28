@@ -18,6 +18,16 @@ class BudgetArcTest {
         )
     }
 
+    /** Spent, then behind, then left: on a face that paints by position, green lands on money left. */
+    @Test
+    fun `drawn spent first and what is left last`() {
+        assertEquals(
+            listOf(Kind.SPENT, Kind.BEHIND, Kind.LEFT),
+            BudgetArc.drawOrder(BudgetArc.segments(0.52f, 0.60f)).map { it.kind },
+        )
+        assertEquals(listOf(Kind.SPENT, Kind.LEFT), BudgetArc.drawOrder(BudgetArc.segments(0.70f, 0.50f)).map { it.kind })
+    }
+
     @Test
     fun `ahead of pace has no band`() {
         assertEquals(listOf(Kind.LEFT to "0.70", Kind.SPENT to "0.30"), kinds(0.70f, 0.50f))

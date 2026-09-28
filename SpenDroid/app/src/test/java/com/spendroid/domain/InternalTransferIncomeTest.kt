@@ -87,13 +87,18 @@ class InternalTransferIncomeTest {
         assertEquals(183669L, budget.averageMonthlyIncome)
     }
 
-    /** And not an outgoing either - the money is still the user's. */
+    /**
+     * But the other leg is a fixed outgoing. This used to say it was not - "the money is still
+     * the user's" - and on carry-over the £500 was then reserved nowhere, so the figure stood
+     * £500 high all month and dropped the morning it left. Money moved into the joint pot is
+     * money this budget can no longer spend: a commitment like any bill. (Decided 28 Sep 2026.)
+     */
     @Test
-    fun `nor is the other leg a fixed outgoing`() {
+    fun `the other leg is a fixed outgoing`() {
         val budget = snapshot(history(transfersFlagged = true))
 
-        assertEquals(emptyList<String>(), budget.fixedRules.map { it.payee })
-        assertEquals(0L, budget.fixedMonthlyOutgoings)
+        assertEquals(listOf("JOINT ACCOUNT BILLS"), budget.fixedRules.map { it.payee })
+        assertEquals(50000L, budget.fixedMonthlyOutgoings)
     }
 
     /**
@@ -113,12 +118,13 @@ class InternalTransferIncomeTest {
     }
 
     /**
-     * The transfer rule filter itself, on two accounts neither of which is a shared pot.
-     * Both legs cancelled in the variable budget, which is why this hid for so long: the
-     * headline income and fixed figures were both £500 out, and their difference was right.
+     * The transfer rule filter itself, into savings rather than a shared pot. Recognised as a
+     * transfer, the money in is not income; the money out is still committed each month,
+     * since the budget does not spend from savings. Unrecognised, the savings credit reads
+     * as a second income - the reason recognising transfers matters.
      */
     @Test
-    fun `a transfer between two ordinary accounts is wrong in the headline figures only`() {
+    fun `a transfer into savings is committed, and its other leg is not income`() {
         val ordinary = accounts.map {
             if (it.id == "joint") it.copy(accountType = AccountType.SAVINGS) else it
         }
@@ -137,7 +143,8 @@ class InternalTransferIncomeTest {
 
         assertEquals(233669L, unflagged.averageMonthlyIncome)
         assertEquals(50000L, unflagged.fixedMonthlyOutgoings)
-        assertEquals(flagged.variableMonthlyBudget, unflagged.variableMonthlyBudget)
+        assertEquals(183669L, flagged.averageMonthlyIncome)
+        assertEquals(50000L, flagged.fixedMonthlyOutgoings)
         assertTrue(flagged.averageMonthlyIncome < unflagged.averageMonthlyIncome)
     }
 }

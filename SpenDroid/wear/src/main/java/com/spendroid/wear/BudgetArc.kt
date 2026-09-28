@@ -30,6 +30,19 @@ object BudgetArc {
             .ifEmpty { listOf(Segment(Kind.SPENT, 1f)) }
     }
 
+    /**
+     * The order the segments are drawn in, clockwise from the gap: spent, the gap behind pace,
+     * then what is left, ending at the arc's far end like a gauge running down.
+     *
+     * Some faces - the user's Pixel face among them - ignore the colours given and paint the
+     * segments from their own palette by position: light blue, red, green. In this order that
+     * reads green for money left and red for behind. The first order read green for spent.
+     */
+    fun drawOrder(segments: List<Segment>): List<Segment> {
+        val rank = mapOf(Kind.SPENT to 0, Kind.BEHIND to 1, Kind.LEFT to 2)
+        return segments.sortedBy { rank.getValue(it.kind) }
+    }
+
     /** The colour for the single-colour arc faces without segments fall back to. */
     enum class Pace { ON_TRACK, TIGHT, OVER }
 

@@ -103,12 +103,46 @@ object BudgetEngine {
             .filter { "${it.accountId}|${it.transactionId}" in cardAnalysis.cardPaymentKeys }
             .mapTo(mutableSetOf()) { RecurringAnalyzer.groupKey(it) }
 
+        val personalAccountIds = accounts.filter { it.accountType == AccountType.PERSONAL }.map { it.id }.toSet()
+        val cardOrPayPalIds = accounts
+            .filter { it.accountType == AccountType.CREDIT_CARD || it.accountType == AccountType.PAYPAL }
+            .map { it.id }
+            .toSet()
+
+        /**
+         * Whether a regular transfer out takes money the budget can no longer spend: out of a
+         * personal account and into one the budget does not spend from - the joint pot,
+         * savings, Premium Bonds, anywhere not linked. Only a move between two personal
+         * accounts is money staying put. Card bills and PayPal top-ups have their own handling.
+         *
+         * Treated as a plain transfer, a monthly £500 into the joint account was reserved
+         * nowhere: on carry-over the figure stood £500 too high all month and dropped the
+         * morning it left.
+         */
+        fun leavesTheBudget(rule: RecurringRule): Boolean {
+            if (rule.direction != Direction.OUT || rule.isManual) return false
+            if (rule.accountIds.isEmpty() || !rule.accountIds.all { it in personalAccountIds }) return false
+            val outgoing = transactions.filter { RecurringAnalyzer.groupKey(it) == rule.key }
+            // Where each occurrence landed, where its other half can be seen.
+            val landedIn = outgoing.mapNotNull { out ->
+                val day = RecurringAnalyzer.parseBookingDate(out.bookingDate) ?: return@mapNotNull null
+                transactions.firstOrNull { inTx ->
+                    inTx.amountMinor == -out.amountMinor && inTx.accountId != out.accountId &&
+                        RecurringAnalyzer.parseBookingDate(inTx.bookingDate)
+                            ?.let { abs(ChronoUnit.DAYS.between(day, it)) <= 1 } == true
+                }?.accountId
+            }.toSet()
+            if (landedIn.any { it in cardOrPayPalIds }) return false
+            return landedIn.isEmpty() || !landedIn.all { it in personalAccountIds }
+        }
+
         val cashRules = rules.filter { rule ->
             // Moving your own money between your own accounts is neither earning nor
             // spending, however monthly it looks. Excluding the transactions was not enough:
             // the rule built from them still reached income and fixed outgoings, so a
-            // standing order into a joint account was counted as a salary.
-            if (rule.internalTransfer) return@filter false
+            // standing order into a joint account was counted as a salary. A regular transfer
+            // out of the budget's reach is the exception: it is a commitment like any bill.
+            if (rule.internalTransfer && !leavesTheBudget(rule)) return@filter false
             // History is kept long after the API's window has passed, so a job that ended
             // or a subscription that was cancelled is still detected from its old rows.
             // Counted, it is income that never arrives and a bill that is never taken.
