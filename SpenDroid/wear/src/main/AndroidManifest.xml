@@ -12,6 +12,18 @@
             android:name="com.google.android.wearable.standalone"
             android:value="false" />
 
+        <activity
+            android:name=".BudgetActivity"
+            android:exported="true"
+            android:label="SpenDroid"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.DeviceDefault">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
         <service
             android:name=".BudgetComplicationService"
             android:exported="true"

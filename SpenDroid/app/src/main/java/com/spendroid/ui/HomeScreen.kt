@@ -329,6 +329,13 @@ private fun CardBillCard(bill: CreditCardEngine.CardBill) {
                         formatMoney(bill.unbilledMinor, bill.currency),
                         style = MaterialTheme.typography.titleSmall.copy(fontFeatureSettings = "tnum"),
                     )
+                    if (bill.pendingMinor > 0L) {
+                        Text(
+                            "incl. ${formatMoney(bill.pendingMinor, bill.currency)} pending",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
             }
             if (bill.outstandingMinor > 0L) {
@@ -903,7 +910,11 @@ private fun HeroBudgetCard(budget: BudgetSnapshot, syncing: Boolean = false) {
                 }
                 Spacer(Modifier.height(12.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
-                    HeroStat("Spent today", budget.spentToday, budget.baseCurrency)
+                    HeroStat(
+                        "Spent today",
+                        budget.spentTodayFromAccountsMinor + budget.spentTodayOnCardsMinor,
+                        budget.baseCurrency,
+                    )
                     HeroStat("This cycle", budget.spentThisCycle, budget.baseCurrency)
                     // Deliberately beside the budget rather than folded into it: the two
                     // answer different questions and the gap between them is the point.
@@ -912,6 +923,11 @@ private fun HeroBudgetCard(budget: BudgetSnapshot, syncing: Boolean = false) {
                             HeroStat("In the account", pot, budget.baseCurrency)
                         }
                     }
+                }
+                // Today's figure is everything spent, cards included, so say what is in it: card
+                // spending that the budget counts only at the bill, and anything still pending.
+                todayNote(budget)?.let { note ->
+                    Text(note, style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.8f))
                 }
                 if (budget.budgetModel == BudgetModel.ROLLOVER) {
                     budget.potBalanceMinor?.let { pot ->
@@ -1097,3 +1113,12 @@ private fun SyncedTick(syncing: Boolean) {
     }
 }
 
+
+/** "Today incl. £39.90 on cards · £39.90 pending", or null when today is all booked account spending. */
+internal fun todayNote(budget: BudgetSnapshot): String? {
+    val parts = buildList {
+        if (budget.spentTodayOnCardsMinor > 0L) add("${formatMoney(budget.spentTodayOnCardsMinor, budget.baseCurrency)} on cards")
+        if (budget.spentTodayPendingMinor > 0L) add("${formatMoney(budget.spentTodayPendingMinor, budget.baseCurrency)} pending")
+    }
+    return parts.takeIf { it.isNotEmpty() }?.joinToString(" · ", prefix = "Today incl. ")
+}

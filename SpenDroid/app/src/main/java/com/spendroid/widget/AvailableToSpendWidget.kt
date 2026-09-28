@@ -91,7 +91,10 @@ class AvailableToSpendWidget : GlanceAppWidget() {
         /** Fraction of the budget used, and of the cycle gone, for the ring and the pace tick. */
         val used: Float? = null,
         val elapsed: Float? = null,
+        /** Everything spent today, cards included. */
         val spentToday: String? = null,
+        /** Whether some of it is still pending, which the figure says. */
+        val spentTodayPending: Boolean = false,
         val week: List<Long> = emptyList(),
         val updated: String? = null,
         val categories: List<CategoryLine> = emptyList(),
@@ -144,7 +147,11 @@ class AvailableToSpendWidget : GlanceAppWidget() {
                 lines = (bills + fixed).take(4),
                 used = BudgetPace.usedFraction(snapshot),
                 elapsed = BudgetPace.elapsedFraction(snapshot),
-                spentToday = formatMoney(snapshot.spentToday, snapshot.baseCurrency),
+                spentToday = formatMoney(
+                    snapshot.spentTodayFromAccountsMinor + snapshot.spentTodayOnCardsMinor,
+                    snapshot.baseCurrency,
+                ),
+                spentTodayPending = snapshot.spentTodayPendingMinor > 0L,
                 week = snapshot.lastSevenDaysMinor,
                 updated = updatedLabel(app.repository.accounts()),
                 categories = topCategories(app, snapshot),
@@ -356,6 +363,7 @@ class AvailableToSpendWidget : GlanceAppWidget() {
                             Text("Today ", style = caption(10.sp))
                             Text(it, style = figure(13.sp))
                         }
+                        if (summary.spentTodayPending) Text("incl. pending", style = caption(8.sp))
                     }
                     Footer(summary)
                 }

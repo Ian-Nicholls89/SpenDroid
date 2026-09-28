@@ -45,6 +45,14 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="spendroid" android:host="link-complete" />
             </intent-filter>
+
+            <!-- The watch app's "Open on phone": opens the app as it is. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="spendroid" android:host="open" />
+            </intent-filter>
         </activity>
 
         <receiver

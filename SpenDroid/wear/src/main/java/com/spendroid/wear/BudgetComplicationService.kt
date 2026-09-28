@@ -31,8 +31,7 @@ class BudgetComplicationService : SuspendingComplicationDataSourceService() {
         return build(request.complicationType, reading)
     }
 
-    override fun getPreviewData(type: ComplicationType): ComplicationData? =
-        build(type, BudgetReading("£430", budgetLeft = 0.52f, cycleLeft = 0.60f, pace = "TIGHT", updatedAt = 0L))
+    override fun getPreviewData(type: ComplicationType): ComplicationData? = build(type, BudgetReading.preview())
 
     /**
      * The phone's last figures, asked for directly when nothing has arrived here yet - on a
@@ -48,6 +47,16 @@ class BudgetComplicationService : SuspendingComplicationDataSourceService() {
             items.release()
         }
     }.getOrNull()
+
+    /** A tap opens the watch app's screens. */
+    private fun openApp(): android.app.PendingIntent =
+        android.app.PendingIntent.getActivity(
+            this,
+            0,
+            android.content.Intent(this, BudgetActivity::class.java)
+                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP),
+            android.app.PendingIntent.FLAG_IMMUTABLE or android.app.PendingIntent.FLAG_UPDATE_CURRENT,
+        )
 
     private fun build(type: ComplicationType, reading: BudgetReading): ComplicationData? {
         val text = PlainComplicationText.Builder(reading.available).build()
@@ -65,6 +74,7 @@ class BudgetComplicationService : SuspendingComplicationDataSourceService() {
                     contentDescription = description,
                 )
                     .setText(text)
+                    .setTapAction(openApp())
                     .apply {
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                             val colour = paceColour(BudgetArc.pace(reading.pace))
@@ -76,6 +86,7 @@ class BudgetComplicationService : SuspendingComplicationDataSourceService() {
             ComplicationType.SHORT_TEXT ->
                 ShortTextComplicationData.Builder(text, description)
                     .setTitle(PlainComplicationText.Builder("left").build())
+                    .setTapAction(openApp())
                     .build()
 
             else -> null
@@ -103,6 +114,7 @@ class BudgetComplicationService : SuspendingComplicationDataSourceService() {
             }
         return WeightedElementsComplicationData.Builder(elements, description)
             .setText(text)
+            .setTapAction(openApp())
             .build()
     }
 

@@ -242,6 +242,16 @@ object BudgetEngine {
             .filter { tx -> RecurringAnalyzer.parseBookingDate(tx.bookingDate) == today }
             .sumOf { -it.amountMinor }
 
+        // Today, wherever it was paid. From the accounts is the budget's own figure; on the cards
+        // is every charge on them today, whether or not the budget counts it yet.
+        val todayFromAccounts = variableDebits.filter { tx ->
+            tx.accountId !in creditCardAccountIds && RecurringAnalyzer.parseBookingDate(tx.bookingDate) == today
+        }
+        val todayOnCards = transactions.filter { tx ->
+            tx.accountId in creditCardAccountIds && tx.amountMinor < 0 && !tx.isInternalTransfer &&
+                RecurringAnalyzer.parseBookingDate(tx.bookingDate) == today
+        }
+
         val upcomingFixed = if (nextIncomeDate != null) {
             val fromRules = fixedRules.mapNotNull { rule ->
                 // A payment due today is still to come until it shows. Asking only for the next
@@ -401,6 +411,10 @@ object BudgetEngine {
             cycleEnd = cycleEnd,
             spentThisCycle = spentThisCycle,
             spentToday = spentToday,
+            spentTodayFromAccountsMinor = todayFromAccounts.sumOf { -it.amountMinor },
+            spentTodayOnCardsMinor = todayOnCards.sumOf { -it.amountMinor },
+            spentTodayPendingMinor = (todayFromAccounts + todayOnCards).filter { it.isPending }.sumOf { -it.amountMinor },
+            spentTodayOnCardsPendingMinor = todayOnCards.filter { it.isPending }.sumOf { -it.amountMinor },
             upcomingFixed = upcomingFixed,
             availableToSpend = availableToSpend,
             incomeRules = incomeRules,

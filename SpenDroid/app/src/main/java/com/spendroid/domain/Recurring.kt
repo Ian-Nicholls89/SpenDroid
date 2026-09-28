@@ -122,6 +122,17 @@ data class BudgetSnapshot(
     /** Discretionary spending on each of the last seven days, oldest first, today last. */
     val lastSevenDaysMinor: List<Long> = emptyList(),
     /**
+     * Today's spending as it happened, wherever it was paid: from the accounts, and on credit
+     * cards. With card spending counted at the bill, [spentToday] leaves cards out - right for
+     * the budget, but a lunch on the card read as nothing spent. These are for saying so.
+     */
+    val spentTodayFromAccountsMinor: Long = 0L,
+    val spentTodayOnCardsMinor: Long = 0L,
+    /** How much of today's spending, accounts and cards together, is still pending. */
+    val spentTodayPendingMinor: Long = 0L,
+    /** The part of [spentTodayOnCardsMinor] still pending. */
+    val spentTodayOnCardsPendingMinor: Long = 0L,
+    /**
      * The day these figures are for: today once today's first sync has landed, yesterday until
      * then. Screens measure "today" from this, not the clock, so they agree with the figures.
      */

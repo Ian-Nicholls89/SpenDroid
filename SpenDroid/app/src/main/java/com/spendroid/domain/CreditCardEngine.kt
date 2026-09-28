@@ -57,8 +57,10 @@ object CreditCardEngine {
         val outstandingMinor: Long,
         /** The part already on a closed statement, so its amount is settled. */
         val billedMinor: Long,
-        /** Charged since the statement closed; will land on the following bill. */
+        /** Charged since the statement closed; will land on the following bill. Pending included. */
         val unbilledMinor: Long,
+        /** The part of [unbilledMinor] still pending - with the bank, or seen in a notification. */
+        val pendingMinor: Long = 0L,
         /**
          * What the next payment will take, paid as the statement balance: the closed statement
          * while it is unpaid, and once it is settled, whatever is owed and still accruing.
@@ -205,7 +207,18 @@ object CreditCardEngine {
 
             // A payment is not a charge, so it must not reduce what is still accruing -
             // clearing the statement leaves the post-close charges untouched.
-            val unbilled = chargesSince(cardTxs, statementClose, paymentIds)
+            // Pending charges are on the card as surely as booked ones - a lunch paid on it an hour
+            // ago - and leaving them out showed "£0.00 since statement" with two purchases made.
+            // Only charges: a pending credit is not yet a refund or a payment worth counting.
+            val pendingCharges = byAccount[card.id].orEmpty()
+                .filter { it.isPending && it.amountMinor < 0 }
+                .filter { tx ->
+                    statementClose == null ||
+                        RecurringAnalyzer.parseBookingDate(tx.bookingDate)?.isAfter(statementClose) != false
+                }
+                .sumOf { -it.amountMinor }
+            val unbilledBooked = chargesSince(cardTxs, statementClose, paymentIds)
+            val unbilled = unbilledBooked + pendingCharges
 
             val bankOwed = card.balanceMinor?.let { maxOf(0L, -it) }
 
@@ -239,7 +252,7 @@ object CreditCardEngine {
                 billed = (statementTotal - paidSinceClose).coerceAtLeast(0L)
                 outstanding = billed + unbilled
             } else {
-                outstanding = bankOwed ?: outstandingSince(cardTxs, paymentDates.lastOrNull())
+                outstanding = (bankOwed ?: outstandingSince(cardTxs, paymentDates.lastOrNull())) + pendingCharges
                 billed = (outstanding - unbilled).coerceAtLeast(0L)
             }
 
@@ -284,6 +297,7 @@ object CreditCardEngine {
                 outstandingMinor = outstanding,
                 billedMinor = billed,
                 unbilledMinor = unbilled.coerceAtMost(outstanding),
+                pendingMinor = pendingCharges.coerceAtMost(unbilled),
                 dueMinor = dueNext,
                 dueDate = billDue,
                 nominalPaymentDay = nominalDay,
