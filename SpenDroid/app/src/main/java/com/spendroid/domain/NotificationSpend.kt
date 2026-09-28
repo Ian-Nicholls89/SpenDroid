@@ -373,7 +373,8 @@ object NotificationSpend {
             amountMinor = spend.amountMinor,
             currency = spend.currency,
             payee = spend.merchant,
-            description = "Seen · $sourceLabel",
+            description = "Seen · $sourceLabel · " +
+                Instant.ofEpochMilli(spend.seenAt).atZone(zone).format(java.time.format.DateTimeFormatter.ofPattern("HH:mm")),
             isPending = true,
             rawJson = null,
             categoryOverride = spend.categoryOverride,

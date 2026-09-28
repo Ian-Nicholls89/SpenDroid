@@ -174,7 +174,7 @@ class NotificationSpendTest {
         assertEquals(-320L, row.amountMinor)
         assertEquals(true, row.isPending)
         assertEquals("EATING_OUT", row.categoryOverride)
-        assertEquals("Seen · Google Wallet", row.description)
+        assertEquals("Seen · Google Wallet · 09:00", row.description)
     }
 
     /** NatWest's real wording, from the user's phone (27 Sep 2026). */

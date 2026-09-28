@@ -108,9 +108,23 @@ fun TransactionDetailSheet(
                 )
             }
 
+            // A payment seen in a notification has not come from the bank at all yet: say where it
+            // was seen and when, not "as your bank reported it", which it was not.
+            val seen = transaction.transactionId.startsWith(com.spendroid.domain.NotificationSpend.SEEN_PREFIX)
+            if (seen) {
+                val parts = transaction.description.orEmpty().removePrefix("Seen · ").split(" · ")
+                val from = parts.firstOrNull()?.takeIf { it.isNotBlank() } ?: "a"
+                val at = parts.getOrNull(1)?.let { " at $it" }.orEmpty()
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    "Seen in a $from notification$at. Counted as pending until your bank reports it; " +
+                        "then the bank's own record takes over.",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else if (transaction.isPending) {
             // Pending is the bank's word at the last sync, which is worth saying: a payment the
             // bank's own app shows as landed can still be pending in what it reports here.
-            if (transaction.isPending) {
                 Spacer(Modifier.height(10.dp))
                 Text(
                     "Pending, as your bank reported it at the last sync" +
@@ -120,7 +134,7 @@ fun TransactionDetailSheet(
                 )
             }
 
-            transaction.description?.takeIf { it.isNotBlank() }?.let { description ->
+            transaction.description?.takeIf { it.isNotBlank() && !seen }?.let { description ->
                 Spacer(Modifier.height(12.dp))
                 Text(
                     "As your bank sent it",
@@ -188,6 +202,9 @@ fun TransactionDetailSheet(
                 )
             }
 
+            // Transfers and card payments are the bank's rows to decide about; a seen payment is
+            // only a stand-in until one arrives, and its category carries over to it.
+            if (!seen) {
             Spacer(Modifier.height(18.dp))
             Text("Mark as", style = MaterialTheme.typography.labelLarge)
             Spacer(Modifier.height(6.dp))
@@ -263,6 +280,7 @@ fun TransactionDetailSheet(
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+            }
             }
         }
     }
