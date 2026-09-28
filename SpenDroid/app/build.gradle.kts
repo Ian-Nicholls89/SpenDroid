@@ -60,12 +60,15 @@ android {
         applicationId = "com.spendroid"
         minSdk = 26
         targetSdk = 35
-        versionCode = 93
-        versionName = "3.2.2"
+        versionCode = 94
+        versionName = "3.2.3"
 
         // Where the update checker looks for releases.
         buildConfigField("String", "GITHUB_OWNER", "\"Ian-Nicholls89\"")
         buildConfigField("String", "GITHUB_REPO", "\"SpenDroid\"")
+        // The watch app published with this build, so an install can be checked for it.
+        buildConfigField("int", "WEAR_VERSION_CODE", providers.gradleProperty("wearVersionCode").get())
+        buildConfigField("String", "WEAR_VERSION_NAME", "\"${providers.gradleProperty("wearVersionName").get()}\"")
     }
 
     buildTypes {

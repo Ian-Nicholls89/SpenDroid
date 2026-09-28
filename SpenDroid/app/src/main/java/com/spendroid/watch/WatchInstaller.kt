@@ -95,6 +95,7 @@ internal object WatchInstaller {
         },
     )
 
+    private const val READ_WAIT_MS = 60_000L
     private const val PAIR_TIMEOUT_MS = 30_000L
     private const val INSTALL_TIMEOUT_MS = 180_000L
     private const val REACH_TIMEOUT_MS = 5_000
@@ -123,9 +124,20 @@ internal object WatchInstaller {
                 return@withBlockingTimeout Result.Failed("The watch refused the connection. Pair it again, then try.")
             }
             try {
-                val output = push(adb, apk)
-                if (output.contains("Success")) Result.Done
-                else Result.Failed("The watch said: ${output.trim().ifBlank { "nothing" }}")
+                val (output, sendError) = push(adb, apk)
+                val refusal = Regex("""Failure \[[^\]]*\]""").find(output)?.value
+                when {
+                    refusal != null -> Result.Failed("The watch refused it: $refusal")
+                    // Whatever was said, and however the connection ended, the watch is asked.
+                    installedVersion(adb) == BuildConfig.WEAR_VERSION_CODE -> Result.Done
+                    output.contains("Success") -> Result.Done
+                    sendError != null -> Result.Failed(
+                        "The connection closed before the watch confirmed it (${sendError.message}). Check the " +
+                            "version under Settings → Apps → SpenDroid on the watch; if it isn't " +
+                            "${BuildConfig.WEAR_VERSION_NAME}, try again with the watch awake.",
+                    )
+                    else -> Result.Failed("The watch said: ${output.trim().ifBlank { "nothing" }}")
+                }
             } finally {
                 runCatching { adb.disconnect() }
             }
@@ -141,15 +153,55 @@ internal object WatchInstaller {
         return target
     }
 
-    /** `pm install` reading the APK from the stream, as `adb install` does on Android 7 and later. */
-    private fun push(adb: WatchAdb, apk: File): String {
+    /**
+     * `pm install` reading the APK from the stream, as `adb install` does on Android 7 and later.
+     *
+     * The watch's reply is read all the while, not after: the installer can finish and hang up
+     * the moment the last byte arrives, and the final flush then met a closed stream - reported
+     * as "Stream closed" with the watch's own answer, success or refusal, never read.
+     * Returns what the watch said, and the error sending hit, if any.
+     */
+    private fun push(adb: WatchAdb, apk: File): Pair<String, java.io.IOException?> {
         val stream = adb.openStream("exec:cmd package install -S ${apk.length()}")
-        stream.openOutputStream().use { out ->
+        val output = StringBuffer()
+        val reader = Thread({
+            runCatching {
+                val input = stream.openInputStream()
+                val buffer = ByteArray(1024)
+                while (true) {
+                    val n = input.read(buffer)
+                    if (n < 0) break
+                    output.append(String(buffer, 0, n))
+                }
+            }
+        }, "watch-install-output").apply { isDaemon = true; start() }
+        val sendError = try {
+            val out = stream.openOutputStream()
             apk.inputStream().use { it.copyTo(out) }
             out.flush()
-            return stream.openInputStream().bufferedReader().readText()
+            null
+        } catch (e: java.io.IOException) {
+            e
         }
+        reader.join(READ_WAIT_MS)
+        return output.toString() to sendError
     }
+
+    /** The versionCode of SpenDroid on the watch now, or null if it can't be told. */
+    private fun installedVersion(adb: WatchAdb): Int? = runCatching {
+        val stream = adb.openStream("shell:dumpsys package com.spendroid | grep versionCode")
+        val text = StringBuilder()
+        val input = stream.openInputStream()
+        val buffer = ByteArray(1024)
+        runCatching {
+            while (true) {
+                val n = input.read(buffer)
+                if (n < 0) break
+                text.append(String(buffer, 0, n))
+            }
+        }
+        Regex("""versionCode=(\d+)""").find(text)?.groupValues?.get(1)?.toInt()
+    }.getOrNull()
 
     /**
      * Pairing needs a TLS key export that Android only offers through its own copy of Conscrypt,
