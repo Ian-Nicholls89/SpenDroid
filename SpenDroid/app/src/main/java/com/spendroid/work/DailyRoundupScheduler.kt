@@ -168,6 +168,14 @@ object DailyRoundupScheduler {
                 .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.MINUTES)
                 .build()
             manager.enqueueUniquePeriodicWork(UPDATE_CHECK_UNIQUE_NAME, ExistingPeriodicWorkPolicy.KEEP, updateRequest)
+
+            // The widgets and the watch, redrawn hourly from what is already here; the worker
+            // itself keeps to the day. No bank call and no network needed.
+            manager.enqueueUniquePeriodicWork(
+                WatchUpdateWorker.UNIQUE_NAME,
+                ExistingPeriodicWorkPolicy.KEEP,
+                PeriodicWorkRequestBuilder<WatchUpdateWorker>(1, TimeUnit.HOURS).build(),
+            )
         }
     }
 

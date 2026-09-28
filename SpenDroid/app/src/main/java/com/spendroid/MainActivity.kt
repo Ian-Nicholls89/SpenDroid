@@ -21,6 +21,8 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.togetherWith
 import androidx.compose.runtime.LaunchedEffect
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.graphics.graphicsLayer
 import com.spendroid.ui.theme.Motion
@@ -375,6 +377,19 @@ class MainActivity : ComponentActivity() {
             checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
         ) {
             requestNotificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+
+    /**
+     * Each time the app comes to the front, the widgets are redrawn and the watch sent what is on
+     * the phone - free, since nothing is fetched - so both are current whenever the app has been
+     * looked at.
+     */
+    override fun onStart() {
+        super.onStart()
+        lifecycleScope.launch {
+            com.spendroid.widget.refreshWidgets(applicationContext)
+            com.spendroid.widget.refreshCardWidgets(applicationContext)
         }
     }
 

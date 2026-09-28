@@ -23,6 +23,8 @@ import kotlinx.coroutines.tasks.await
  * with the watch app's BudgetReading by value - the two are separate apps - so a key renamed
  * here must be renamed there. With no watch, or no Play services, this does nothing.
  */
+// The data layer only tells the watch when the item changes, so nothing in it changes by itself
+// (no timestamp): an hourly push with nothing new costs the watch nothing.
 internal object WatchSync {
 
     private const val PATH = "/spendroid/budget"
@@ -45,7 +47,6 @@ internal object WatchSync {
                     putFloat("budgetLeft", BudgetPace.remainingFraction(s))
                     putFloat("cycleLeft", elapsed?.let { 1f - it } ?: -1f)
                     putString("pace", BudgetPace.of(s).name)
-                    putLong("updatedAt", System.currentTimeMillis())
 
                     // Screen 1.
                     putString("availableFull", money(s.availableToSpend))
