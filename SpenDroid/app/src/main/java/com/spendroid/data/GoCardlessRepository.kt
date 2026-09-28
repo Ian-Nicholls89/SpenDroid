@@ -1191,18 +1191,26 @@ class GoCardlessRepository private constructor(
             val bookedIds = booked.mapTo(HashSet()) { it.transactionId }
             val claimed = mutableSetOf<String>()
             fun payee(tx: TransactionEntity) = tx.payee.lowercase().trim().replace(Regex("\\s+"), " ")
+            // The words a name is made of, less digits and short fragments: "GREGGS 4168" and
+            // "GREGGS PLC AMESBURY" share "greggs".
+            fun words(tx: TransactionEntity) = payee(tx).split(Regex("[^a-z]+")).filter { it.length >= 3 }.toSet()
+            fun inWindow(p: TransactionEntity, b: TransactionEntity): Boolean {
+                val pendingDate = runCatching { LocalDate.parse(p.bookingDate) }.getOrNull() ?: return true
+                val bookedOn = runCatching { LocalDate.parse(b.bookingDate) }.getOrNull() ?: return false
+                return !bookedOn.isBefore(pendingDate.minusDays(1)) && !bookedOn.isAfter(pendingDate.plusDays(PENDING_TWIN_DAYS))
+            }
             return pending.filter { p ->
                 if (p.transactionId in bookedIds) return@filter false
-                val pendingDate = runCatching { LocalDate.parse(p.bookingDate) }.getOrNull()
-                val twin = booked.firstOrNull { b ->
-                    b.transactionId !in claimed &&
-                        b.amountMinor == p.amountMinor &&
-                        payee(b) == payee(p) &&
-                        runCatching { LocalDate.parse(b.bookingDate) }.getOrNull()?.let { bookedOn ->
-                            pendingDate == null ||
-                                (!bookedOn.isBefore(pendingDate.minusDays(1)) && !bookedOn.isAfter(pendingDate.plusDays(PENDING_TWIN_DAYS)))
-                        } == true
-                }
+                val candidates = booked.filter { b -> b.transactionId !in claimed && b.amountMinor == p.amountMinor && inWindow(p, b) }
+                // The same name; else a name sharing a word - NatWest lists a card payment pending
+                // as "GREGGS 4168" and books it as "GREGGS PLC AMESBURY", and went on listing
+                // the pending one too, so a £4.25 counted twice; else the only pairing there is -
+                // one pending, one booked, same amount, in the window.
+                val twin = candidates.firstOrNull { payee(it) == payee(p) }
+                    ?: candidates.firstOrNull { (words(it) intersect words(p)).isNotEmpty() }
+                    ?: candidates.singleOrNull()?.takeIf {
+                        pending.count { other -> other.amountMinor == p.amountMinor && inWindow(other, it) } == 1
+                    }
                 if (twin != null) {
                     claimed += twin.transactionId
                     false

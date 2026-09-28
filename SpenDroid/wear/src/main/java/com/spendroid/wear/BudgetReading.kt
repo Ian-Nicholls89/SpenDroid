@@ -44,6 +44,53 @@ class BudgetReading(val map: DataMap) {
 
     val week: LongArray get() = map.getLongArray("week") ?: LongArray(0)
 
+    /** A recent payment, recategorisable from the wrist. */
+    data class Recent(val id: String, val payee: String, val amount: String, val category: String, val colour: Int, val pending: Boolean)
+
+    val recent: List<Recent>
+        get() = map.getDataMapArrayList("recent").orEmpty().map {
+            Recent(
+                it.getString("id").orEmpty(),
+                it.getString("payee").orEmpty(),
+                it.getString("amount").orEmpty(),
+                it.getString("category").orEmpty(),
+                it.getInt("colour"),
+                it.getBoolean("pending"),
+            )
+        }
+
+    /** A category a payment can be put in: its name for the phone, its label and colour to show. */
+    data class Option(val name: String, val label: String, val colour: Int)
+
+    val categoryOptions: List<Option>
+        get() = map.getDataMapArrayList("categoryOptions").orEmpty().map {
+            Option(it.getString("name").orEmpty(), it.getString("label").orEmpty(), it.getInt("colour"))
+        }
+
+    /** This cycle's spending in one category, against the user's limit where there is one. */
+    data class CategorySpend(
+        val label: String,
+        val spent: String,
+        val limit: String,
+        val share: Float?,
+        val over: Boolean,
+        val colour: Int,
+        val minor: Long,
+    )
+
+    val categories: List<CategorySpend>
+        get() = map.getDataMapArrayList("categories").orEmpty().map {
+            CategorySpend(
+                it.getString("label").orEmpty(),
+                it.getString("spent").orEmpty(),
+                it.getString("limit").orEmpty(),
+                it.getFloat("share", -1f).takeIf { s -> s >= 0f },
+                it.getBoolean("over"),
+                it.getInt("colour"),
+                it.getLong("minor"),
+            )
+        }
+
     fun save(context: Context) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit {
             putString(KEY_MAP, Base64.encodeToString(map.toByteArray(), Base64.NO_WRAP))

@@ -5,7 +5,14 @@ import com.google.android.gms.wearable.DataMap
 import com.google.android.gms.wearable.PutDataMapRequest
 import com.google.android.gms.wearable.Wearable
 import com.spendroid.BudgetApplication
+import androidx.compose.ui.graphics.toArgb
 import com.spendroid.domain.BudgetModel
+import com.spendroid.domain.Category
+import com.spendroid.domain.CategoryEngine
+import com.spendroid.domain.RecurringAnalyzer
+import com.spendroid.ui.visual
+import com.spendroid.ui.tidyPayee
+import kotlinx.coroutines.flow.first
 import com.spendroid.domain.BudgetPace
 import com.spendroid.domain.CARD_BILL_KEY_PREFIX
 import com.spendroid.domain.CreditCardEngine
@@ -28,6 +35,11 @@ import kotlinx.coroutines.tasks.await
 internal object WatchSync {
 
     private const val PATH = "/spendroid/budget"
+    /** Between the account and the transaction in a recent payment's id. */
+    const val SEP = "\u001F"
+    private const val RECENT = 8
+    /** Money in, and money moving between accounts: not categories anyone spends in. */
+    private val NOT_SPENDING = setOf(Category.SALARY, Category.TRANSFERS, Category.CARD_BILL)
     private val DAY = DateTimeFormatter.ofPattern("EEE d MMM")
     private val SHORT_DAY = DateTimeFormatter.ofPattern("d MMM")
 
@@ -71,6 +83,69 @@ internal object WatchSync {
 
                     // Screens 4 on: one per card.
                     putDataMapArrayList("cards", ArrayList(s.cardBills.map { card(it, money) }))
+
+                    // Recent spending, newest first, to recategorise from the wrist.
+                    val rules = repo.categoryRules.first()
+                    val all = repo.transactions()
+                    putDataMapArrayList(
+                        "recent",
+                        ArrayList(
+                            all.asSequence()
+                                .filter { it.amountMinor < 0 && !it.isInternalTransfer }
+                                .sortedWith(compareByDescending<com.spendroid.data.db.TransactionEntity> { it.bookingDate }.thenByDescending { it.isPending })
+                                .take(RECENT)
+                                .map { tx ->
+                                    val category = CategoryEngine.classify(tx, rules, s.cardPaymentKeys, s.creditCardAccountIds)
+                                    DataMap().apply {
+                                        putString("id", tx.accountId + SEP + tx.transactionId)
+                                        putString("payee", tx.payee.tidyPayee())
+                                        putString("amount", money(-tx.amountMinor))
+                                        putString("category", category.label)
+                                        putInt("colour", category.visual.color.toArgb())
+                                        putBoolean("pending", tx.isPending)
+                                    }
+                                }
+                                .toList(),
+                        ),
+                    )
+                    putDataMapArrayList(
+                        "categoryOptions",
+                        ArrayList(
+                            Category.entries.filter { it !in NOT_SPENDING }.map {
+                                DataMap().apply {
+                                    putString("name", it.name)
+                                    putString("label", it.label)
+                                    putInt("colour", it.visual.color.toArgb())
+                                }
+                            },
+                        ),
+                    )
+
+                    // This cycle by category, against the user's limits where set - the Insights
+                    // tab's figures, as the balance widget draws them.
+                    val cycle = all.filter { tx ->
+                        RecurringAnalyzer.parseBookingDate(tx.bookingDate)?.let { !it.isBefore(s.cycleStart) } == true
+                    }
+                    val goals = repo.budgetGoals.first().associateBy { it.category }
+                    putDataMapArrayList(
+                        "categories",
+                        ArrayList(
+                            CategoryEngine.spendingBreakdown(cycle, rules, s.cardPaymentKeys, s.creditCardAccountIds)
+                                .filter { it.category !in NOT_SPENDING }
+                                .map { total ->
+                                    val limit = goals[total.category.name]?.limitMinor?.takeIf { it > 0L }
+                                    DataMap().apply {
+                                        putString("label", total.category.label)
+                                        putString("spent", money(total.amountMinor))
+                                        putString("limit", limit?.let(money).orEmpty())
+                                        putFloat("share", limit?.let { (total.amountMinor.toFloat() / it).coerceIn(0f, 1f) } ?: -1f)
+                                        putBoolean("over", limit != null && total.amountMinor > limit)
+                                        putInt("colour", total.category.visual.color.toArgb())
+                                        putLong("minor", total.amountMinor)
+                                    }
+                                },
+                        ),
+                    )
 
                     // The last screen but one.
                     putDataMapArrayList(

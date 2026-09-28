@@ -23,6 +23,7 @@ class BudgetListenerService : WearableListenerService() {
         }
         if (changed) {
             requestRedraw(this)
+            SpenDroidTileService.requestUpdates(this)
             // An open watch app shows the new figures at once.
             sendBroadcast(android.content.Intent(ACTION_UPDATED).setPackage(packageName))
         }

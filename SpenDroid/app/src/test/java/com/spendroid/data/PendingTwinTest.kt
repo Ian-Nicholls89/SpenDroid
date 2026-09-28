@@ -62,4 +62,32 @@ class PendingTwinTest {
         )
         assertEquals(1, GoCardlessRepository.stillPendingOnly(booked, pending).size)
     }
+
+    /** The user's Nectar card (28 Sep 2026): pending "GREGGS 4168", booked "GREGGS PLC AMESBURY". */
+    @Test
+    fun `a pending payment booked under a fuller name is dropped`() {
+        val booked = listOf(tx("b", "2026-09-28", amount = -425, payee = "GREGGS PLC AMESBURY", pending = false))
+        val pending = listOf(tx("p", "2026-09-28", amount = -425, payee = "GREGGS 4168", pending = true))
+        assertTrue(GoCardlessRepository.stillPendingOnly(booked, pending).isEmpty())
+    }
+
+    /** Names that share nothing, but only one pairing is possible: still the same payment. */
+    @Test
+    fun `the only possible pairing is taken`() {
+        val booked = listOf(tx("b", "2026-09-28", amount = -6480, payee = "LONGLEAT ENTERPRISES", pending = false))
+        val pending = listOf(tx("p", "2026-09-25", amount = -6480, payee = "LEP WARMINSTER", pending = true))
+        assertTrue(GoCardlessRepository.stillPendingOnly(booked, pending).isEmpty())
+    }
+
+    /** Two coffees of the same price, differently named, and one booked: which is which is not
+     *  known, so neither pending one is dropped by guesswork. */
+    @Test
+    fun `an ambiguous pairing is left alone`() {
+        val booked = listOf(tx("b", "2026-09-28", amount = -320, payee = "PRET", pending = false))
+        val pending = listOf(
+            tx("p1", "2026-09-28", amount = -320, payee = "COSTA", pending = true),
+            tx("p2", "2026-09-28", amount = -320, payee = "NERO", pending = true),
+        )
+        assertEquals(2, GoCardlessRepository.stillPendingOnly(booked, pending).size)
+    }
 }

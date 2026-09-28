@@ -49,12 +49,15 @@ class BudgetActivity : ComponentActivity() {
         super.onStop()
     }
 
-    /** Opens SpenDroid on the phone, through the link the phone app answers to. */
-    private fun openOnPhone() {
+    /**
+     * Opens SpenDroid on the phone, through the link the phone app answers to. True when the request
+     * went, so the standard "Open on phone" animation plays; a failure says so instead.
+     */
+    private fun openOnPhone(): Boolean {
         val intent = Intent(Intent.ACTION_VIEW, Uri.parse("spendroid://open"))
             .addCategory(Intent.CATEGORY_BROWSABLE)
-        runCatching { RemoteActivityHelper(this).startRemoteActivity(intent) }
-            .onSuccess { Toast.makeText(this, "Opening on your phone", Toast.LENGTH_SHORT).show() }
+        return runCatching { RemoteActivityHelper(this).startRemoteActivity(intent) }
             .onFailure { Toast.makeText(this, "Couldn't reach your phone", Toast.LENGTH_SHORT).show() }
+            .isSuccess
     }
 }

@@ -96,7 +96,12 @@ dependencies {
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.compose.ui)
     implementation(libs.wear.compose.foundation)
-    implementation(libs.wear.compose.material)
+    implementation(libs.wear.compose.material3)
+    // Tiles: the budget and this cycle's categories, a swipe from the watch face.
+    implementation(libs.wear.tiles)
+    implementation(libs.wear.protolayout)
+    implementation(libs.wear.protolayout.material3)
+    implementation(libs.concurrent.futures.ktx)
     implementation(libs.wear.remote.interactions)
     testImplementation(libs.junit)
 }

@@ -42,6 +42,35 @@
                 android:value="0" />
         </service>
 
+        <!-- Tiles: a swipe from the watch face. -->
+        <service
+            android:name=".BudgetTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_complication"
+            android:label="SpenDroid: budget"
+            android:permission="com.google.android.wearable.permission.BIND_TILE_PROVIDER">
+            <intent-filter>
+                <action android:name="androidx.wear.tiles.action.BIND_TILE_PROVIDER" />
+            </intent-filter>
+            <meta-data
+                android:name="androidx.wear.tiles.PREVIEW"
+                android:resource="@drawable/tile_preview_budget" />
+        </service>
+
+        <service
+            android:name=".CategoriesTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_complication"
+            android:label="SpenDroid: categories"
+            android:permission="com.google.android.wearable.permission.BIND_TILE_PROVIDER">
+            <intent-filter>
+                <action android:name="androidx.wear.tiles.action.BIND_TILE_PROVIDER" />
+            </intent-filter>
+            <meta-data
+                android:name="androidx.wear.tiles.PREVIEW"
+                android:resource="@drawable/tile_preview_categories" />
+        </service>
+
         <service
             android:name=".BudgetListenerService"
             android:exported="true">
