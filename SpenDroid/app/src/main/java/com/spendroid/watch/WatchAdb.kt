@@ -37,12 +37,13 @@ internal class WatchAdb private constructor(
     override fun getDeviceName(): String = "SpenDroid"
 
     companion object {
-        @Volatile private var instance: WatchAdb? = null
-
-        fun get(context: Context): WatchAdb =
-            instance ?: synchronized(this) {
-                instance ?: load(context).also { instance = it }
-            }
+        /**
+         * A fresh connection manager for each attempt. The library holds a lock for the whole of
+         * a pairing, and its socket has no time limit, so one attempt stuck on a watch that had
+         * gone to sleep kept every later attempt waiting behind it until the app restarted.
+         * The key is the same each time, read from the app's files.
+         */
+        fun fresh(context: Context): WatchAdb = load(context)
 
         private fun load(context: Context): WatchAdb {
             val dir = File(context.filesDir, "watch_adb").apply { mkdirs() }

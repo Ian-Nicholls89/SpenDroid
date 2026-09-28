@@ -25,6 +25,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.core.content.edit
+import com.spendroid.watch.WatchFinder
 import com.spendroid.watch.WatchInstaller
 import kotlinx.coroutines.launch
 
@@ -63,10 +64,31 @@ internal fun WatchSection() {
             style = MaterialTheme.typography.labelLarge,
         )
         Text(
-            "On the watch: Wireless debugging → Pair new device. Enter the address and code it shows.",
+            "On the watch: Wireless debugging → Pair new device, and keep that screen open and awake - " +
+                "the watch turns Wi-Fi off when its screen sleeps. Tap Find, or enter the address, then the code.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        Spacer(Modifier.height(8.dp))
+        OutlinedButton(
+            enabled = !busy,
+            onClick = {
+                busy = true
+                status = "Looking for the watch on your Wi-Fi…"
+                scope.launch {
+                    val found = WatchFinder.find(context, WatchFinder.PAIRING)
+                    if (found != null) pairAddress = found
+                    WatchFinder.find(context, WatchFinder.CONNECT, 4_000)?.let { address = it }
+                    status = if (found != null) {
+                        "Found the watch. Now enter the code it shows."
+                    } else {
+                        "Couldn't find it. Check Pair new device is open on the watch and both are on the same " +
+                            "Wi-Fi - or type the address it shows."
+                    }
+                    busy = false
+                }
+            },
+        ) { Text("Find my watch") }
         Spacer(Modifier.height(8.dp))
         Row {
             OutlinedTextField(
@@ -90,9 +112,18 @@ internal fun WatchSection() {
         }
         Spacer(Modifier.height(8.dp))
         OutlinedButton(
-            enabled = !busy && hostPort(pairAddress) != null && code.length == 6,
+            enabled = !busy,
             onClick = {
-                val (host, port) = hostPort(pairAddress) ?: return@OutlinedButton
+                val target = hostPort(pairAddress)
+                if (target == null) {
+                    status = "The pairing address should look like 192.168.1.20:37099."
+                    return@OutlinedButton
+                }
+                if (code.length != 6) {
+                    status = "The pairing code is the six digits the watch shows."
+                    return@OutlinedButton
+                }
+                val (host, port) = target
                 busy = true
                 status = "Pairing…"
                 scope.launch {
@@ -132,9 +163,13 @@ internal fun WatchSection() {
         )
         Spacer(Modifier.height(8.dp))
         Button(
-            enabled = !busy && hostPort(address) != null,
+            enabled = !busy,
             onClick = {
-                val (host, port) = hostPort(address) ?: return@Button
+                val (host, port) = hostPort(address) ?: run {
+                    status = "The address should look like 192.168.1.20:41555 - the one on the Wireless " +
+                        "debugging screen itself, not the pairing one."
+                    return@Button
+                }
                 busy = true
                 scope.launch {
                     val result = WatchInstaller.install(context, host, port) { status = it }
