@@ -80,7 +80,7 @@ class CardBillsWidget : GlanceAppWidget() {
     private suspend fun loadCards(context: Context): Cards? {
         val app = context.applicationContext as? BudgetApplication ?: return null
         return runCatching {
-            val snapshot = app.repository.budgetSnapshot() ?: return Cards(emptyList(), null)
+            val snapshot = SharedSnapshot.get(context) ?: return Cards(emptyList(), null)
             Cards(
                 rows = snapshot.cardBills
                     // A card with nothing owed still has a limit worth watching once it is set.

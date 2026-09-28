@@ -50,6 +50,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.SharingStarted
 
 sealed interface ImportStatus {
@@ -444,7 +445,9 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
     init {
         // A spend read while the app is open shows at once, not at the next reload.
         viewModelScope.launch {
-            repo.seenSpends.drop(1).collect { loadLocal() }
+            // Once a burst is over: a sync hands several over in a row, and each redid everything.
+            @OptIn(kotlinx.coroutines.FlowPreview::class)
+            repo.seenSpends.drop(1).debounce(400).collect { loadLocal() }
         }
     }
 

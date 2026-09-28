@@ -109,7 +109,7 @@ class AvailableToSpendWidget : GlanceAppWidget() {
         return runCatching {
             // The shared builder, so the widget cannot disagree with the home screen about
             // the budget model, the designated income or the bank holiday calendar.
-            val snapshot = app.repository.budgetSnapshot() ?: return empty("No transactions yet")
+            val snapshot = SharedSnapshot.get(context) ?: return empty("No transactions yet")
 
             val days = snapshot.daysUntilNextIncome
             val bills = snapshot.cardBills
@@ -642,9 +642,12 @@ class AvailableToSpendWidgetReceiver : GlanceAppWidgetReceiver() {
 
 /** Refreshes every placed widget. Called after a sync, when the figures have actually moved. */
 suspend fun refreshWidgets(context: Context) {
+    // Worked out once, fresh, for everything this refresh draws.
+    runCatching { SharedSnapshot.fresh(context) }
     runCatching { AvailableToSpendWidget().updateAll(context) }
     // Drawn from the same snapshot, so it moves when this one does.
     refreshTimelineWidgets(context)
+    refreshPeriodWidgets(context)
     // And the watch's complication, for the same reason.
     WatchSync.push(context)
 }

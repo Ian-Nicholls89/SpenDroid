@@ -175,3 +175,28 @@ fun cardRailBitmap(rail: WidgetGeometry.CardRail, fill: Int, track: Int, tick: I
     }
     return bitmap
 }
+
+/**
+ * A period's line: [share] of the bar filled, from the left, in [fill], and a tick at [tick].
+ * Filling up it is what has gone and how far through the period; draining down, what is left
+ * and how much of the period is still to come - the same reading, turned round.
+ */
+fun periodBarBitmap(share: Float?, tick: Float?, fill: Int, track: Int, tickColour: Int): Bitmap {
+    val w = 600
+    val h = 36
+    val bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(bitmap)
+    val top = 11f
+    val bottom = 25f
+    val r = 7f
+    canvas.drawRoundRect(RectF(0f, top, w.toFloat(), bottom), r, r, paint(track))
+    share?.let {
+        val end = w * it.coerceIn(0f, 1f)
+        if (end > 0f) canvas.drawRoundRect(RectF(0f, top, maxOf(end, r * 2), bottom), r, r, paint(fill))
+    }
+    tick?.let {
+        val x = (w * it).coerceIn(3f, w - 3f)
+        canvas.drawLine(x, 2f, x, h - 2f, paint(tickColour, 6f))
+    }
+    return bitmap
+}

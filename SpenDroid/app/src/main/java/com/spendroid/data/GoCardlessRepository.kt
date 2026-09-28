@@ -137,15 +137,26 @@ class GoCardlessRepository private constructor(
     val seenSpends: Flow<List<SeenSpendEntity>> = dao.seenSpendsFlow()
     val notificationSamples: Flow<List<NotificationSampleEntity>> = dao.notificationSamplesFlow()
 
-    suspend fun saveSpendSources(sources: List<NotificationSpend.Source>) = secrets.saveSpendSources(sources)
+    suspend fun saveSpendSources(sources: List<NotificationSpend.Source>) {
+        secrets.saveSpendSources(sources)
+        watched = null
+    }
     suspend fun setSpendReadingOn(on: Boolean) = secrets.setSpendReadingOn(on)
 
-    /** Packages whose notifications are read: the bank apps picked, and Wallet if any card is in it. */
+    /**
+     * Packages whose notifications are read: the bank apps picked, and Wallet if any card is in
+     * it. Asked for every notification the phone shows - every message, every app - so it is
+     * kept rather than read from settings and the database each time, and dropped when either
+     * of the things it comes from changes.
+     */
     suspend fun watchedPackages(): Set<String> {
+        watched?.let { return it }
         val apps = spendSources.first().map { it.packageName }.toSet()
         val wallet = dao.accounts().any { it.walletLinked }
-        return if (wallet) apps + NotificationSpend.GOOGLE_WALLET else apps
+        return (if (wallet) apps + NotificationSpend.GOOGLE_WALLET else apps).also { watched = it }
     }
+
+    @Volatile private var watched: Set<String>? = null
 
     /**
      * A notification from a watched app: kept for thirty days as a sample, and when it reads as a
@@ -376,6 +387,8 @@ class GoCardlessRepository private constructor(
      * it was still a current account, until the next sync came round.
      */
     suspend fun updateAccount(account: AccountEntity) {
+        // "In Google Wallet" may have changed, which changes the apps whose notifications are read.
+        watched = null
         val previous = dao.accounts().firstOrNull { it.id == account.id }
         if (previous == null || previous.accountType == account.accountType) {
             dao.updateAccount(account)
@@ -424,6 +437,7 @@ class GoCardlessRepository private constructor(
     }
 
     suspend fun clearAllData() {
+        watched = null
         clearNotificationData()
         dao.deleteAllTransactions()
         dao.deleteAllAccounts()

@@ -76,7 +76,7 @@ class PaydayTimelineWidget : GlanceAppWidget() {
     private suspend fun load(context: Context): Timeline? {
         val app = context.applicationContext as? BudgetApplication ?: return null
         return runCatching {
-            val snapshot = app.repository.budgetSnapshot() ?: return null
+            val snapshot = SharedSnapshot.get(context) ?: return null
             val payday = snapshot.nextIncomeDate ?: return null
             val start = snapshot.cycleStart
             val today = snapshot.asOf

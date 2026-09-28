@@ -35,7 +35,7 @@ internal object WatchSync {
         runCatching {
             val app = context.applicationContext as? BudgetApplication ?: return
             val repo = app.repository
-            val s = repo.budgetSnapshot() ?: return
+            val s = SharedSnapshot.get(context) ?: return
             val money = { minor: Long -> formatMoney(minor, s.baseCurrency) }
             val elapsed = BudgetPace.elapsedFraction(s)
             val days = s.daysUntilNextIncome
