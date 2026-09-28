@@ -46,6 +46,7 @@ fun SpendingScreen(
     onSetBudgetGoal: (Category, Long) -> Unit,
     /** Questions about payments read from notifications, shown above the list. */
     prompts: @Composable () -> Unit = {},
+    onTreatAsBill: ((TransactionEntity) -> Unit)? = null,
 ) {
     var selected by rememberSaveable { mutableIntStateOf(0) }
 
@@ -76,6 +77,7 @@ fun SpendingScreen(
                 onRestoreCategory = onRestoreCategory,
                 onMarkCardPayment = onMarkCardPayment,
                 onCategoryFilter = onCategoryFilter,
+                onTreatAsBill = onTreatAsBill,
                 )
             }
             SpendingTab.INSIGHTS -> InsightsScreen(

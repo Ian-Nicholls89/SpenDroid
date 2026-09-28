@@ -132,6 +132,7 @@ class GoCardlessRepository private constructor(
 
     val spendSources: Flow<List<NotificationSpend.Source>> = secrets.spendSources
     val spendReadingOn: Flow<Boolean> = secrets.spendReadingOn
+    val spendLearned: Flow<List<NotificationSpend.Learned>> = secrets.spendLearned
     val seenSpends: Flow<List<SeenSpendEntity>> = dao.seenSpendsFlow()
     val notificationSamples: Flow<List<NotificationSampleEntity>> = dao.notificationSamplesFlow()
 
@@ -151,16 +152,28 @@ class GoCardlessRepository private constructor(
      * reported it. Returns true when the figures changed.
      */
     suspend fun onNotification(source: String, title: String?, text: String?, postedAt: Long): Boolean {
-        val parsed = NotificationSpend.parse(source, title, text)
+        val parsed = NotificationSpend.parse(source, title, text, spendLearned.first())
         dao.insertNotificationSample(NotificationSampleEntity(source = source, postedAt = postedAt, title = title, text = text, parsed = parsed != null))
         dao.deleteNotificationSamplesBefore(postedAt - SAMPLE_DAYS_MS)
         dao.deleteSeenSpendsBefore(postedAt - SEEN_SPEND_DAYS_MS)
-        if (parsed == null || !spendReadingOn.first()) return false
+        if (parsed == null) return false
+        return countSeen(source, parsed, postedAt)
+    }
 
+    /**
+     * Counts a payment read from a notification - unless it repeats one already seen, or the
+     * budget already accounts for it as a transfer or a regular bill.
+     */
+    private suspend fun countSeen(source: String, parsed: NotificationSpend.Parsed, postedAt: Long): Boolean {
+        if (!spendReadingOn.first()) return false
         val recent = dao.seenSpends()
         if (NotificationSpend.duplicateOf(source, parsed.amountMinor, parsed.cardDigits, postedAt, recent) != null) return false
         val accounts = dao.accounts()
-        val accountId = NotificationSpend.accountFor(source, parsed, spendSources.first(), accounts)
+        val history = accounts.flatMap { dao.transactionsFor(it.id) }
+        val rules = RecurringAnalyzer.analyze(history) + manualRules.first().mapNotNull { it.toRecurringRule() }
+        if (NotificationSpend.alreadyAccountedFor(parsed, history, rules)) return false
+        val placement = NotificationSpend.placementFor(source, parsed, spendSources.first(), accounts, history)
+        val accountId = placement?.accountId
         dao.upsertSeenSpend(
             SeenSpendEntity(
                 id = "$source|$postedAt",
@@ -171,11 +184,39 @@ class GoCardlessRepository private constructor(
                 merchant = parsed.merchant,
                 cardDigits = parsed.cardDigits,
                 accountId = accountId,
+                accountGuessed = placement?.guessed == true,
             ),
         )
         reconcileSeenSpends()
         return true
     }
+
+    /**
+     * Learns from one of the notifications seen: count ones worded like it, or ignore them. A
+     * "count" also counts that notification now, as it would have been had the app known.
+     * Returns false when there is nothing in it to learn around - no single amount.
+     */
+    suspend fun teachNotification(sampleId: Long, count: Boolean): Boolean {
+        val sample = dao.notificationSamples().firstOrNull { it.id == sampleId } ?: return false
+        val learned = NotificationSpend.learn(sample.source, sample.title, sample.text, count) ?: return false
+        secrets.updateSpendLearned { current -> current.filterNot { it.source == learned.source && it.pattern == learned.pattern } + learned }
+        dao.markNotificationSampleParsed(sampleId, count)
+        if (count) {
+            NotificationSpend.parse(sample.source, sample.title, sample.text, listOf(learned))
+                ?.let { countSeen(sample.source, it, sample.postedAt) }
+        } else {
+            // Anything already counted from notifications worded like it goes.
+            val seen = dao.seenSpends().filter { it.source == sample.source && it.matchedTransactionId == null && !it.dismissed }
+            val ignored = dao.notificationSamples()
+                .filter { it.source == sample.source && Regex(learned.pattern).containsMatchIn(NotificationSpend.bodyOf(it.title, it.text)) }
+                .map { it.postedAt }
+                .toSet()
+            seen.filter { it.seenAt in ignored }.forEach { dao.upsertSeenSpend(it.copy(dismissed = true)) }
+        }
+        return true
+    }
+
+    suspend fun forgetLearned() = secrets.updateSpendLearned { emptyList() }
 
     /**
      * Hands each seen spend over to the bank's row once one reports it, carrying a category set
@@ -185,9 +226,16 @@ class GoCardlessRepository private constructor(
         val seen = dao.seenSpends()
         if (seen.isEmpty()) return
         val bank = dao.accounts().flatMap { dao.transactionsFor(it.id) }
-        NotificationSpend.matches(seen, bank).forEach { (id, row) ->
+        val sources = spendSources.first().associateBy { it.packageName }
+        val walletAccounts = dao.accounts().filter { it.walletLinked }.map { it.id }.toSet()
+        val alternatives = { spend: SeenSpendEntity ->
+            if (spend.source == NotificationSpend.GOOGLE_WALLET) walletAccounts
+            else sources[spend.source]?.accountIds?.toSet().orEmpty()
+        }
+        NotificationSpend.matches(seen, bank, alternatives = alternatives).forEach { (id, row) ->
             val spend = seen.first { it.id == id }
-            dao.upsertSeenSpend(spend.copy(matchedTransactionId = row.transactionId))
+            // A guess the bank has now settled: the account is whichever it reported it on.
+            dao.upsertSeenSpend(spend.copy(matchedTransactionId = row.transactionId, accountId = row.accountId, accountGuessed = false))
             if (spend.categoryOverride != null && row.categoryOverride == null) {
                 dao.setCategoryOverride(row.accountId, row.transactionId, spend.categoryOverride)
             }
@@ -258,6 +306,29 @@ class GoCardlessRepository private constructor(
 
     suspend fun addManualRule(rule: ManualRecurringRuleEntity) {
         dao.upsertManualRule(rule)
+    }
+
+    /**
+     * Makes a payment a regular bill: a monthly rule of its own, so it comes off the budget from
+     * the start of each cycle rather than as spending the day it leaves - whether it looked like
+     * spending or like money moved between the user's accounts. A rule detected for the same
+     * payment is set aside, so the bill is counted once.
+     */
+    suspend fun treatAsBill(tx: TransactionEntity) {
+        val date = runCatching { LocalDate.parse(tx.bookingDate) }.getOrElse { LocalDate.now() }
+        dao.upsertManualRule(
+            ManualRecurringRuleEntity(
+                id = "manual-${System.currentTimeMillis()}",
+                payee = tx.payee.trim().replace(Regex("\\s+"), " "),
+                direction = "OUT",
+                amountMinor = kotlin.math.abs(tx.amountMinor),
+                currency = tx.currency,
+                cadence = "MONTHLY",
+                anchorDay = date.dayOfMonth,
+                startDate = date.toString(),
+            ),
+        )
+        secrets.setRuleIgnored(RecurringAnalyzer.groupKey(tx), true)
     }
 
     suspend fun deleteManualRule(id: String) {

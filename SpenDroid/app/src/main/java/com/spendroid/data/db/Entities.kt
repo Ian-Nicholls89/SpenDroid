@@ -80,6 +80,8 @@ data class SeenSpendEntity(
     /** The user said to keep counting it although the bank never showed it. */
     val keptByUser: Boolean = false,
     val categoryOverride: String? = null,
+    /** The notification named no account, so [accountId] is the likeliest one, not a certainty. */
+    val accountGuessed: Boolean = false,
 )
 
 /**

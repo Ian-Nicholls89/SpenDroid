@@ -239,6 +239,7 @@ class MainActivity : ComponentActivity() {
                                             onMarkCardPayment = viewModel::markAsCardPayment,
                                             onCategoryFilter = viewModel::setCategoryFilter,
                                             onSetBudgetGoal = viewModel::setBudgetGoal,
+                                            onTreatAsBill = viewModel::treatAsBill,
                                             prompts = {
                                                 com.spendroid.ui.SeenSpendPrompts(
                                                     seen = state.seenSpends,
@@ -300,6 +301,9 @@ class MainActivity : ComponentActivity() {
                                                     onReadingOn = viewModel::setSpendReadingOn,
                                                     onUpdateAccount = viewModel::updateAccount,
                                                     onClear = viewModel::clearNotificationData,
+                                                    learned = viewModel.spendLearned.collectAsStateWithLifecycle().value,
+                                                    onTeach = viewModel::teachNotification,
+                                                    onForgetLearned = viewModel::forgetLearnedNotifications,
                                                 )
                                             },
                                         )

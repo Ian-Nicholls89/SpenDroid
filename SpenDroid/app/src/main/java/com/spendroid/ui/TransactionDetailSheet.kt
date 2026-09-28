@@ -59,6 +59,9 @@ fun TransactionDetailSheet(
     accountLastSynced: Long? = null,
     groupMarkedAsTransfer: Boolean = false,
     onMarkTransferGroup: (TransactionEntity, Boolean) -> Unit = { _, _ -> },
+    /** Whether a regular bill already covers this payment. */
+    isRegularBill: Boolean = false,
+    onTreatAsBill: ((TransactionEntity) -> Unit)? = null,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val current =
@@ -218,6 +221,30 @@ fun TransactionDetailSheet(
                 )
             }
 
+            // A payment out can be made a regular bill: set aside from the start of each cycle,
+            // rather than counted as spending - or not at all, as a transfer - the day it leaves.
+            if (onTreatAsBill != null && transaction.amountMinor < 0 && !transaction.transactionId.startsWith("seen:")) {
+                Spacer(Modifier.height(12.dp))
+                if (isRegularBill) {
+                    Text(
+                        "A regular bill: set aside from the start of each cycle. Change it under Rules.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                } else {
+                    androidx.compose.material3.OutlinedButton(onClick = { onTreatAsBill(transaction) }) {
+                        Text("Treat as a regular bill")
+                    }
+                    Text(
+                        "Takes ${formatMoney(kotlin.math.abs(transaction.amountMinor), transaction.currency)} off " +
+                            "your budget on the ${ordinal(transaction.bookingDate)} of every month, from the start of " +
+                            "each cycle, instead of counting it when it leaves.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+
             // Only a credit on a card raises the question, and only when its other leg was
             // never found - a payment from an account the app can see is matched already.
             if (transaction.accountId in creditCardAccountIds && transaction.amountMinor > 0) {
@@ -245,3 +272,16 @@ private fun syncedLabel(epochMillis: Long): String =
     java.time.Instant.ofEpochMilli(epochMillis)
         .atZone(java.time.ZoneId.systemDefault())
         .format(java.time.format.DateTimeFormatter.ofPattern("d MMM, HH:mm"))
+
+/** "28th" for a booking date of the 28th. */
+private fun ordinal(bookingDate: String): String {
+    val day = runCatching { java.time.LocalDate.parse(bookingDate).dayOfMonth }.getOrElse { return "same day" }
+    val suffix = when {
+        day in 11..13 -> "th"
+        day % 10 == 1 -> "st"
+        day % 10 == 2 -> "nd"
+        day % 10 == 3 -> "rd"
+        else -> "th"
+    }
+    return "$day$suffix"
+}

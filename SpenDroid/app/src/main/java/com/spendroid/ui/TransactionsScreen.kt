@@ -101,6 +101,7 @@ fun TransactionsScreen(
     onRestoreCategory: (TransactionEntity, String?) -> Unit = { _, _ -> },
     onMarkCardPayment: (TransactionEntity, Boolean) -> Unit,
     onCategoryFilter: (Category?) -> Unit,
+    onTreatAsBill: ((TransactionEntity) -> Unit)? = null,
 ) {
     var selected by remember { mutableStateOf<TransactionEntity?>(null) }
     // The last swipe, kept long enough to undo it or make it stick for the payee.
@@ -444,6 +445,8 @@ fun TransactionsScreen(
             groupMarkedAsTransfer = group in state.transferGroups,
             onMarkTransferGroup = { t, v -> onMarkTransferGroup(t, v); selected = null },
             onMarkCardPayment = { t, v -> onMarkCardPayment(t, v); selected = null },
+            isRegularBill = state.budget?.fixedRules.orEmpty().any { com.spendroid.domain.RecurringAnalyzer.matches(it, tx) },
+            onTreatAsBill = onTreatAsBill?.let { treat -> { t: TransactionEntity -> treat(t); selected = null } },
         )
     }
 }

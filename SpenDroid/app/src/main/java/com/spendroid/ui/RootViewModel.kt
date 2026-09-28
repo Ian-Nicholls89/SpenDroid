@@ -473,6 +473,28 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch { repo.keepSeenSpend(id) }
     }
 
+    fun treatAsBill(tx: TransactionEntity) {
+        viewModelScope.launch {
+            repo.treatAsBill(tx)
+            loadLocal()
+        }
+    }
+
+    fun teachNotification(sampleId: Long, count: Boolean) {
+        viewModelScope.launch {
+            val ok = repo.teachNotification(sampleId, count)
+            if (!ok) _state.update { it.copy(error = "That notification has no single amount to learn from.") }
+            loadLocal()
+        }
+    }
+
+    fun forgetLearnedNotifications() {
+        viewModelScope.launch { repo.forgetLearned() }
+    }
+
+    val spendLearned = repo.spendLearned
+        .stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.WhileSubscribed(5_000), emptyList())
+
     fun toggleInternalTransfers() {
         _state.update { it.copy(showInternalTransfers = !it.showInternalTransfers) }
     }

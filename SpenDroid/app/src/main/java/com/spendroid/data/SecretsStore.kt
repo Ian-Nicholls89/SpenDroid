@@ -78,6 +78,7 @@ class SecretsStore(private val context: Context) {
         val BUDGET_MODEL = stringPreferencesKey("budget_model")
         val CARD_TIMING = stringPreferencesKey("card_timing")
         val SPEND_SOURCES = stringPreferencesKey("spend_sources")
+        val SPEND_LEARNED = stringPreferencesKey("spend_learned")
         val SPEND_READING_ON = androidx.datastore.preferences.core.booleanPreferencesKey("spend_reading_on")
     }
 
@@ -212,6 +213,30 @@ class SecretsStore(private val context: Context) {
                 accountIds = (0 until (accounts?.length() ?: 0)).map { accounts!!.getString(it) },
                 defaultAccountId = if (o.isNull("default")) null else o.optString("default"),
             )
+        }
+    }
+
+    /** Wordings the user taught from their own notifications. */
+    val spendLearned: Flow<List<com.spendroid.domain.NotificationSpend.Learned>> = context.dataStore.data
+        .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
+        .map { prefs ->
+            val array = prefs[Keys.SPEND_LEARNED]?.let { runCatching { JSONArray(it) }.getOrNull() } ?: JSONArray()
+            (0 until array.length()).mapNotNull { i ->
+                val o = array.optJSONObject(i) ?: return@mapNotNull null
+                com.spendroid.domain.NotificationSpend.Learned(o.optString("source"), o.optString("pattern"), o.optBoolean("count"))
+            }
+        }
+
+    suspend fun updateSpendLearned(change: (List<com.spendroid.domain.NotificationSpend.Learned>) -> List<com.spendroid.domain.NotificationSpend.Learned>) {
+        context.dataStore.edit { prefs ->
+            val array = prefs[Keys.SPEND_LEARNED]?.let { runCatching { JSONArray(it) }.getOrNull() } ?: JSONArray()
+            val current = (0 until array.length()).mapNotNull { i ->
+                val o = array.optJSONObject(i) ?: return@mapNotNull null
+                com.spendroid.domain.NotificationSpend.Learned(o.optString("source"), o.optString("pattern"), o.optBoolean("count"))
+            }
+            prefs[Keys.SPEND_LEARNED] = JSONArray(
+                change(current).map { JSONObject().put("source", it.source).put("pattern", it.pattern).put("count", it.count) },
+            ).toString()
         }
     }
 

@@ -86,6 +86,9 @@ internal fun CardAlertsSection(
     onReadingOn: (Boolean) -> Unit,
     onUpdateAccount: (AccountEntity) -> Unit,
     onClear: () -> Unit,
+    learned: List<NotificationSpend.Learned> = emptyList(),
+    onTeach: (Long, Boolean) -> Unit = { _, _ -> },
+    onForgetLearned: () -> Unit = {},
 ) {
     val context = LocalContext.current
     var access by remember { mutableStateOf(hasAccess(context)) }
@@ -241,6 +244,21 @@ internal fun CardAlertsSection(
             TextButton(onClick = { showSamples = true }, enabled = samples.isNotEmpty()) { Text("View") }
             TextButton(onClick = onClear, enabled = samples.isNotEmpty()) { Text("Clear") }
         }
+        Text(
+            "Tap one to teach SpenDroid: count notifications worded like it, or ignore them.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        if (learned.isNotEmpty()) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "Wordings learned: ${learned.count { it.count }} counted, ${learned.count { !it.count }} ignored",
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(onClick = onForgetLearned) { Text("Forget all") }
+            }
+        }
     }
 
     if (picking) {
@@ -254,7 +272,13 @@ internal fun CardAlertsSection(
         )
     }
     if (showSamples) {
-        SamplesDialog(samples, labels = apps.associate { it.packageName to it.label }, onDismiss = { showSamples = false })
+        SamplesDialog(
+            samples,
+            labels = apps.associate { it.packageName to it.label },
+            learned = learned,
+            onTeach = onTeach,
+            onDismiss = { showSamples = false },
+        )
     }
 }
 
@@ -306,14 +330,53 @@ private fun AppPicker(apps: List<LauncherApp>, onPick: (LauncherApp) -> Unit, on
 private val SAMPLE_TIME = DateTimeFormatter.ofPattern("d MMM HH:mm")
 
 @Composable
-private fun SamplesDialog(samples: List<NotificationSampleEntity>, labels: Map<String, String>, onDismiss: () -> Unit) {
+private fun SamplesDialog(
+    samples: List<NotificationSampleEntity>,
+    labels: Map<String, String>,
+    learned: List<NotificationSpend.Learned>,
+    onTeach: (Long, Boolean) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var teaching by remember { mutableStateOf<NotificationSampleEntity?>(null) }
+    teaching?.let { sample ->
+        val reads = remember(sample, learned) { NotificationSpend.parse(sample.source, sample.title, sample.text, learned) }
+        AlertDialog(
+            onDismissRequest = { teaching = null },
+            title = { Text("Teach SpenDroid") },
+            text = {
+                Column {
+                    sample.title?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
+                    sample.text?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        reads?.let { "Reads now as: ${formatMoney(it.amountMinor, "GBP")} · ${it.merchant}" }
+                            ?: "Not read as a payment now.",
+                        style = MaterialTheme.typography.labelLarge,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "Counting learns this wording - any amount, any payee - and counts this one too. " +
+                            "Ignoring stops ones like it for this payee, whatever the amount, from counting.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { onTeach(sample.id, true); teaching = null }) { Text("Count ones like this") }
+            },
+            dismissButton = {
+                TextButton(onClick = { onTeach(sample.id, false); teaching = null }) { Text("Ignore ones like this") }
+            },
+        )
+    }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Notifications seen") },
         text = {
             LazyColumn(modifier = Modifier.heightIn(max = 460.dp)) {
                 items(samples, key = { it.id }) { s ->
-                    Column(Modifier.padding(vertical = 6.dp)) {
+                    Column(Modifier.fillMaxWidth().clickable { teaching = s }.padding(vertical = 6.dp)) {
                         Text(
                             (labels[s.source] ?: if (s.source == NotificationSpend.GOOGLE_WALLET) "Google Wallet" else s.source) +
                                 " · " + Instant.ofEpochMilli(s.postedAt).atZone(ZoneId.systemDefault()).format(SAMPLE_TIME) +

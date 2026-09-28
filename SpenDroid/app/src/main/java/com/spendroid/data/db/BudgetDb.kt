@@ -23,7 +23,7 @@ import kotlinx.coroutines.flow.Flow
         SeenSpendEntity::class,
         NotificationSampleEntity::class,
     ],
-    version = 15,
+    version = 16,
     exportSchema = false,
 )
 abstract class BudgetDb : RoomDatabase() {
@@ -57,6 +57,11 @@ abstract class BudgetDb : RoomDatabase() {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE accounts ADD COLUMN accountType TEXT NOT NULL DEFAULT 'PERSONAL'")
                 db.execSQL("ALTER TABLE accounts ADD COLUMN linkedCreditCardAccountId TEXT")
+            }
+        }
+        val MIGRATION_15_16 = object : Migration(15, 16) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE seen_spends ADD COLUMN accountGuessed INTEGER NOT NULL DEFAULT 0")
             }
         }
         val MIGRATION_14_15 = object : Migration(14, 15) {
@@ -260,6 +265,12 @@ interface BudgetDao {
 
     @Query("SELECT * FROM notification_samples ORDER BY postedAt DESC")
     fun notificationSamplesFlow(): Flow<List<NotificationSampleEntity>>
+
+    @Query("SELECT * FROM notification_samples ORDER BY postedAt DESC")
+    suspend fun notificationSamples(): List<NotificationSampleEntity>
+
+    @Query("UPDATE notification_samples SET parsed = :parsed WHERE id = :id")
+    suspend fun markNotificationSampleParsed(id: Long, parsed: Boolean)
 
     @Query("DELETE FROM notification_samples WHERE postedAt < :before")
     suspend fun deleteNotificationSamplesBefore(before: Long)
