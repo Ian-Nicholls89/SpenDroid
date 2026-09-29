@@ -2,6 +2,11 @@ package com.spendroid.wear
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.draw.clip
+import androidx.wear.compose.navigation.SwipeDismissableNavHost
+import androidx.wear.compose.navigation.composable
+import androidx.wear.compose.navigation.rememberSwipeDismissableNavController
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -111,57 +116,94 @@ fun BudgetScreens(reading: BudgetReading?, onOpenPhone: () -> Boolean) {
                 }
                 return@AppScaffold
             }
-            var picking by remember { mutableStateOf<BudgetReading.Recent?>(null) }
-            picking?.let { recent ->
-                CategoryPicker(reading, recent, onDone = { picking = null })
-                return@AppScaffold
+            // The pages turn with the crown; a list long enough to scroll opens on a screen of its
+            // own, where the crown scrolls it, and a swipe to the right comes back.
+            val nav = rememberSwipeDismissableNavController()
+            SwipeDismissableNavHost(navController = nav, startDestination = "pages") {
+                composable("pages") {
+                    Pages(
+                        reading,
+                        onSeeRecent = { nav.navigate("recent") },
+                        onSeeUpcoming = { nav.navigate("upcoming") },
+                        onOpenPhone = onOpenPhone,
+                    )
+                }
+                composable("recent") { RecentList(reading) { index -> nav.navigate("pick/$index") } }
+                composable("upcoming") { UpcomingList(reading) }
+                composable("pick/{index}") { entry ->
+                    val recent = entry.arguments?.getString("index")?.toIntOrNull()?.let { reading.recent.getOrNull(it) }
+                    if (recent == null) {
+                        nav.popBackStack()
+                    } else {
+                        CategoryPicker(reading, recent, onDone = { nav.popBackStack() })
+                    }
+                }
             }
-            var openedOnPhone by remember { mutableStateOf(false) }
-            val pages = buildList {
-                add(Page.Hero)
-                add(Page.Today)
-                if (reading.categories.isNotEmpty()) add(Page.Categories)
-                if (reading.recent.isNotEmpty()) add(Page.Recent)
-                add(Page.Week)
-                reading.cards.forEach { add(Page.Card(it)) }
-                add(Page.Upcoming)
-                add(Page.Phone)
-            }
-            val state = rememberPagerState(pageCount = { pages.size })
-            VerticalPagerScaffold(pagerState = state) {
-                VerticalPager(state = state, modifier = Modifier.fillMaxSize()) { index ->
-                    AnimatedPage(pageIndex = index, pagerState = state) {
-                        ScreenScaffold {
-                            when (val page = pages[index]) {
-                                Page.Hero -> Hero(reading)
-                                Page.Today -> Today(reading)
-                                Page.Categories -> Categories(reading)
-                                Page.Recent -> Recent(reading) { picking = it }
-                                Page.Week -> Week(reading)
-                                is Page.Card -> CardScreen(page.card)
-                                Page.Upcoming -> Upcoming(reading)
-                                Page.Phone -> Box(Modifier.fillMaxSize()) {
-                                    // Only the button, as asked: nothing else on this page.
-                                    EdgeButton(
-                                        onClick = { if (onOpenPhone()) openedOnPhone = true },
-                                        buttonSize = EdgeButtonSize.Medium,
-                                        modifier = Modifier.align(Alignment.BottomCenter),
-                                    ) { Text("Open on phone", maxLines = 1) }
-                                }
+        }
+    }
+}
+
+@Composable
+private fun Pages(
+    reading: BudgetReading,
+    onSeeRecent: () -> Unit,
+    onSeeUpcoming: () -> Unit,
+    onOpenPhone: () -> Boolean,
+) {
+    var openedOnPhone by remember { mutableStateOf(false) }
+    val pages = buildList {
+        add(Page.Hero)
+        add(Page.Today)
+        if (reading.categories.isNotEmpty()) add(Page.Categories)
+        if (reading.recent.isNotEmpty()) add(Page.Recent)
+        add(Page.Week)
+        reading.cards.forEach { add(Page.Card(it)) }
+        add(Page.Upcoming)
+        add(Page.Phone)
+    }
+    val state = rememberPagerState(pageCount = { pages.size })
+    VerticalPagerScaffold(pagerState = state) {
+        VerticalPager(state = state, modifier = Modifier.fillMaxSize()) { index ->
+            AnimatedPage(pageIndex = index, pagerState = state) {
+                ScreenScaffold {
+                    when (val page = pages[index]) {
+                        Page.Hero -> Hero(reading)
+                        Page.Today -> Today(reading)
+                        Page.Categories -> Categories(reading)
+                        Page.Recent -> RecentSummary(reading, onSeeRecent)
+                        Page.Week -> Week(reading)
+                        is Page.Card -> CardScreen(page.card)
+                        Page.Upcoming -> UpcomingSummary(reading, onSeeUpcoming)
+                        Page.Phone -> Box(Modifier.fillMaxSize().padding(8.dp), contentAlignment = Alignment.Center) {
+                            // Only the button, as asked: a circle filling the screen, its label centred.
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.primary)
+                                    .clickable { if (onOpenPhone()) openedOnPhone = true },
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text(
+                                    "Open on phone",
+                                    style = MaterialTheme.typography.titleLarge,
+                                    color = MaterialTheme.colorScheme.onPrimary,
+                                    textAlign = TextAlign.Center,
+                                )
                             }
                         }
                     }
                 }
             }
-            val style = OpenOnPhoneDialogDefaults.curvedTextStyle
-            val text = OpenOnPhoneDialogDefaults.text
-            OpenOnPhoneDialog(
-                visible = openedOnPhone,
-                onDismissRequest = { openedOnPhone = false },
-                curvedText = { openOnPhoneDialogCurvedText(text, style) },
-            )
         }
     }
+    val style = OpenOnPhoneDialogDefaults.curvedTextStyle
+    val text = OpenOnPhoneDialogDefaults.text
+    OpenOnPhoneDialog(
+        visible = openedOnPhone,
+        onDismissRequest = { openedOnPhone = false },
+        curvedText = { openOnPhoneDialogCurvedText(text, style) },
+    )
 }
 
 @Composable
@@ -280,37 +322,79 @@ private fun Categories(r: BudgetReading) = Centre {
     }
 }
 
+/** The Recent page: the latest payment in full, and a way into the whole list. */
 @Composable
-private fun Recent(r: BudgetReading, onPick: (BudgetReading.Recent) -> Unit) = Centre {
+private fun RecentSummary(r: BudgetReading, onSeeAll: () -> Unit) = Centre {
     Text("Recent", style = MaterialTheme.typography.titleSmall)
-    Spacer(Modifier.height(4.dp))
-    // Three that fit, compact, rather than cards that did not: names were cut to a few letters.
-    r.recent.take(3).forEach { t ->
-        Card(
-            onClick = { onPick(t) },
-            modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
-            colors = CardDefaults.cardColors(containerColor = Panel),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 5.dp),
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(7.dp).background(Color(t.colour), CircleShape))
-                Spacer(Modifier.width(6.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(t.payee, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    Spacer(Modifier.height(6.dp))
+    r.recent.firstOrNull()?.let { t ->
+        Text(t.payee, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
+        Text(t.amount, style = MaterialTheme.typography.numeralExtraSmall, maxLines = 1)
+        Text(
+            t.category + if (t.pending) " · pending" else "",
+            style = MaterialTheme.typography.labelSmall,
+            color = if (t.pending) Pending else Muted,
+            maxLines = 1,
+        )
+    }
+    Spacer(Modifier.height(8.dp))
+    SeeAll("See all ${r.recent.size}", onSeeAll)
+}
+
+@Composable
+private fun SeeAll(label: String, onClick: () -> Unit) {
+    Button(
+        onClick = onClick,
+        colors = ButtonDefaults.buttonColors(containerColor = Panel, contentColor = Color.White),
+    ) { Text(label, maxLines = 1) }
+}
+
+/** Every recent payment, scrolled with the crown; tap one to change its category. */
+@Composable
+private fun RecentList(r: BudgetReading, onPick: (Int) -> Unit) {
+    val list = rememberScalingLazyListState()
+    ScreenScaffold(scrollState = list) { padding ->
+        ScalingLazyColumn(state = list, contentPadding = padding, modifier = Modifier.fillMaxSize()) {
+            item { ListHeader { Text("Recent") } }
+            items(r.recent.size) { index ->
+                val t = r.recent[index]
+                Card(
+                    onClick = { onPick(index) },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = Panel),
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.size(8.dp).background(Color(t.colour), CircleShape))
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            t.payee,
+                            style = MaterialTheme.typography.bodySmall,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text(t.amount, style = MaterialTheme.typography.labelMedium)
+                    }
                     Text(
                         t.category + if (t.pending) " · pending" else "",
                         style = MaterialTheme.typography.labelSmall,
                         color = if (t.pending) Pending else Muted,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(start = 16.dp),
                     )
                 }
-                Spacer(Modifier.width(4.dp))
-                Text(t.amount, style = MaterialTheme.typography.labelSmall, maxLines = 1)
+            }
+            item {
+                Text(
+                    "Tap one to change its category",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Muted,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth(),
+                )
             }
         }
     }
-    Text("Tap one to change its category", style = MaterialTheme.typography.labelSmall, color = Muted, maxLines = 1)
 }
 
 /** Every category, as buttons; the choice goes to the phone, which sends the new figures back. */
@@ -448,24 +532,67 @@ private fun CardScreen(c: BudgetReading.Card) {
     }
 }
 
+/** The To come page: the total still to leave before payday, the next one, and the whole list. */
 @Composable
-private fun Upcoming(r: BudgetReading) = Centre {
+private fun UpcomingSummary(r: BudgetReading, onSeeAll: () -> Unit) = Centre {
     Text("To come before payday", style = MaterialTheme.typography.titleSmall, maxLines = 1)
-    Spacer(Modifier.height(4.dp))
+    Spacer(Modifier.height(6.dp))
     val items = r.upcoming
-    if (items.isEmpty()) Text("Nothing else before payday", style = MaterialTheme.typography.bodySmall, color = Muted)
-    items.take(4).forEach { u ->
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp).background(Panel, CircleShape).padding(horizontal = 10.dp, vertical = 3.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(Modifier.weight(1f)) {
-                Text(u.name, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(u.date, style = MaterialTheme.typography.labelSmall, color = Muted, maxLines = 1)
+    if (items.isEmpty()) {
+        Text("Nothing else before payday", style = MaterialTheme.typography.bodySmall, color = Muted, textAlign = TextAlign.Center)
+        return@Centre
+    }
+    Text(r.text("upcomingTotal"), style = MaterialTheme.typography.numeralSmall, maxLines = 1)
+    Text(
+        "${items.size} payment${if (items.size == 1) "" else "s"}",
+        style = MaterialTheme.typography.labelSmall,
+        color = Muted,
+    )
+    Spacer(Modifier.height(4.dp))
+    items.first().let { next ->
+        Text("Next: ${next.name}", style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
+        Text("${next.amount} · ${next.date}", style = MaterialTheme.typography.labelSmall, color = Muted)
+    }
+    Spacer(Modifier.height(8.dp))
+    SeeAll("See all", onSeeAll)
+}
+
+/** Everything to come before payday, scrolled with the crown. */
+@Composable
+private fun UpcomingList(r: BudgetReading) {
+    val list = rememberScalingLazyListState()
+    ScreenScaffold(scrollState = list) { padding ->
+        ScalingLazyColumn(state = list, contentPadding = padding, modifier = Modifier.fillMaxSize()) {
+            item { ListHeader { Text("To come before payday", maxLines = 2, textAlign = TextAlign.Center) } }
+            items(r.upcoming) { u ->
+                // Nothing to do with one yet; full colour, rather than a disabled card's dimmed one.
+                Card(
+                    onClick = {},
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = Panel),
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            u.name,
+                            style = MaterialTheme.typography.bodySmall,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text(u.amount, style = MaterialTheme.typography.labelMedium)
+                    }
+                    Text(u.date, style = MaterialTheme.typography.labelSmall, color = Muted)
+                }
             }
-            Spacer(Modifier.width(4.dp))
-            Text(u.amount, style = MaterialTheme.typography.labelSmall, maxLines = 1)
+            item {
+                Text(
+                    "${r.text("upcomingTotal")} in all",
+                    style = MaterialTheme.typography.labelMedium,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
         }
     }
-    if (items.size > 4) Text("and ${items.size - 4} more on your phone", style = MaterialTheme.typography.labelSmall, color = Muted, maxLines = 1)
 }

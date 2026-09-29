@@ -147,7 +147,8 @@ internal object WatchSync {
                         ),
                     )
 
-                    // The last screen but one.
+                    // The last screen but one, and its summary.
+                    putString("upcomingTotal", money(s.upcomingFixed.sumOf { it.amountMinor }))
                     putDataMapArrayList(
                         "upcoming",
                         ArrayList(

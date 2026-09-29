@@ -97,6 +97,8 @@ dependencies {
     implementation(libs.androidx.compose.ui)
     implementation(libs.wear.compose.foundation)
     implementation(libs.wear.compose.material3)
+    // The full lists open on screens of their own, swiped away to go back.
+    implementation(libs.wear.compose.navigation)
     // Tiles: the budget and this cycle's categories, a swipe from the watch face.
     implementation(libs.wear.tiles)
     implementation(libs.wear.protolayout)
