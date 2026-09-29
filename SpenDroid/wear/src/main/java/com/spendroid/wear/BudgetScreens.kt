@@ -144,9 +144,9 @@ fun BudgetScreens(reading: BudgetReading?, onOpenPhone: () -> Boolean) {
                                     // Only the button, as asked: nothing else on this page.
                                     EdgeButton(
                                         onClick = { if (onOpenPhone()) openedOnPhone = true },
-                                        buttonSize = EdgeButtonSize.Large,
+                                        buttonSize = EdgeButtonSize.Medium,
                                         modifier = Modifier.align(Alignment.BottomCenter),
-                                    ) { Text("Open on phone") }
+                                    ) { Text("Open on phone", maxLines = 1) }
                                 }
                             }
                         }
@@ -284,30 +284,33 @@ private fun Categories(r: BudgetReading) = Centre {
 private fun Recent(r: BudgetReading, onPick: (BudgetReading.Recent) -> Unit) = Centre {
     Text("Recent", style = MaterialTheme.typography.titleSmall)
     Spacer(Modifier.height(4.dp))
-    r.recent.take(4).forEach { t ->
+    // Three that fit, compact, rather than cards that did not: names were cut to a few letters.
+    r.recent.take(3).forEach { t ->
         Card(
             onClick = { onPick(t) },
             modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
             colors = CardDefaults.cardColors(containerColor = Panel),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 5.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(8.dp).background(Color(t.colour), CircleShape))
+                Box(Modifier.size(7.dp).background(Color(t.colour), CircleShape))
                 Spacer(Modifier.width(6.dp))
                 Column(Modifier.weight(1f)) {
-                    Text(t.payee, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(t.payee, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text(
                         t.category + if (t.pending) " · pending" else "",
                         style = MaterialTheme.typography.labelSmall,
                         color = if (t.pending) Pending else Muted,
                         maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
-                Text(t.amount, style = MaterialTheme.typography.labelMedium)
+                Spacer(Modifier.width(4.dp))
+                Text(t.amount, style = MaterialTheme.typography.labelSmall, maxLines = 1)
             }
         }
     }
-    Text("Tap one to change its category", style = MaterialTheme.typography.labelSmall, color = Muted)
+    Text("Tap one to change its category", style = MaterialTheme.typography.labelSmall, color = Muted, maxLines = 1)
 }
 
 /** Every category, as buttons; the choice goes to the phone, which sends the new figures back. */
@@ -333,12 +336,21 @@ private fun CategoryPicker(r: BudgetReading, recent: BudgetReading.Recent, onDon
                         }
                     },
                     modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(containerColor = if (option.label == recent.category) Color(option.colour) else Panel),
+                    // Set explicitly: the theme's default text is for light buttons, and was dark on dark.
+                    colors = if (option.label == recent.category) {
+                        ButtonDefaults.buttonColors(containerColor = Color(option.colour), contentColor = Color.Black, iconColor = Color.Black)
+                    } else {
+                        ButtonDefaults.buttonColors(containerColor = Panel, contentColor = Color.White, iconColor = Color(option.colour))
+                    },
                     icon = { Box(Modifier.size(10.dp).background(Color(option.colour), CircleShape)) },
-                ) { Text(option.label) }
+                ) { Text(option.label, maxLines = 1, overflow = TextOverflow.Ellipsis) }
             }
             item {
-                Button(onClick = onDone, modifier = Modifier.fillMaxWidth()) { Text("Cancel") }
+                Button(
+                    onClick = onDone,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = Panel, contentColor = Muted),
+                ) { Text("Cancel") }
             }
         }
     }
@@ -405,37 +417,55 @@ private fun CardScreen(c: BudgetReading.Card) {
             }
         }
         Centre {
-            Text(c.text("name"), style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text("Since statement", style = MaterialTheme.typography.labelSmall, color = Muted)
+            Text(c.text("name"), style = MaterialTheme.typography.labelSmall, color = Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(c.text("since"), style = MaterialTheme.typography.numeralSmall, maxLines = 1)
-            c.text("pending").takeIf { it.isNotEmpty() }?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = Pending) }
+            // "since statement" and the pending part on one line, where they were two.
+            val pending = c.text("pending").removePrefix("incl. ")
+            Text(
+                "since statement" + if (pending.isNotEmpty()) " · $pending" else "",
+                style = MaterialTheme.typography.labelSmall,
+                color = if (pending.isNotEmpty()) Pending else Muted,
+                maxLines = 1,
+            )
             Spacer(Modifier.height(4.dp))
             Badge(if (c.over) "▲ Heading over" else "● On track", tone)
             Spacer(Modifier.height(4.dp))
-            val paceLine = listOf(c.text("pace").removePrefix("On pace for "), c.text("cap")).filter { it.isNotEmpty() }.joinToString(" · ")
-            if (paceLine.isNotEmpty()) Text(paceLine, style = MaterialTheme.typography.labelSmall, textAlign = TextAlign.Center)
-            Text(c.text("billed"), style = MaterialTheme.typography.labelSmall, color = Muted, textAlign = TextAlign.Center)
+            // "~£802.71 of usual £959.76": the projection against its measure, on one line.
+            val heading = c.text("pace").removePrefix("On pace for ")
+            val against = c.text("cap").replace("usual bill ", "usual ")
+            val paceLine = listOf(heading, against).filter { it.isNotEmpty() }.joinToString(" of ")
+            if (paceLine.isNotEmpty()) {
+                Text(paceLine, style = MaterialTheme.typography.labelSmall, maxLines = 1, textAlign = TextAlign.Center)
+            }
+            Text(
+                c.text("billed").replace("Billed ", "Bill ").replace(" · due ", " due "),
+                style = MaterialTheme.typography.labelSmall,
+                color = Muted,
+                maxLines = 1,
+                textAlign = TextAlign.Center,
+            )
         }
     }
 }
 
 @Composable
 private fun Upcoming(r: BudgetReading) = Centre {
-    Text("To come before payday", style = MaterialTheme.typography.titleSmall)
+    Text("To come before payday", style = MaterialTheme.typography.titleSmall, maxLines = 1)
     Spacer(Modifier.height(4.dp))
     val items = r.upcoming
     if (items.isEmpty()) Text("Nothing else before payday", style = MaterialTheme.typography.bodySmall, color = Muted)
-    items.take(5).forEach { u ->
+    items.take(4).forEach { u ->
         Row(
             modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp).background(Panel, CircleShape).padding(horizontal = 10.dp, vertical = 3.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(Modifier.weight(1f)) {
-                Text(u.name, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(u.date, style = MaterialTheme.typography.labelSmall, color = Muted)
+                Text(u.name, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(u.date, style = MaterialTheme.typography.labelSmall, color = Muted, maxLines = 1)
             }
-            Text(u.amount, style = MaterialTheme.typography.labelMedium)
+            Spacer(Modifier.width(4.dp))
+            Text(u.amount, style = MaterialTheme.typography.labelSmall, maxLines = 1)
         }
     }
-    if (items.size > 5) Text("and ${items.size - 5} more on your phone", style = MaterialTheme.typography.labelSmall, color = Muted)
+    if (items.size > 4) Text("and ${items.size - 4} more on your phone", style = MaterialTheme.typography.labelSmall, color = Muted, maxLines = 1)
 }
