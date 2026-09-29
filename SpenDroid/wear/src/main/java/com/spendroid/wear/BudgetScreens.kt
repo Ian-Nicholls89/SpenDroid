@@ -91,6 +91,7 @@ private sealed interface Page {
     data object Week : Page
     data class Card(val card: BudgetReading.Card) : Page
     data object Upcoming : Page
+    data class Update(val name: String, val url: String) : Page
     data object Phone : Page
 }
 
@@ -151,6 +152,7 @@ private fun Pages(
     onOpenPhone: () -> Boolean,
 ) {
     var openedOnPhone by remember { mutableStateOf(false) }
+    val context = LocalContext.current
     val pages = buildList {
         add(Page.Hero)
         add(Page.Today)
@@ -159,6 +161,8 @@ private fun Pages(
         add(Page.Week)
         reading.cards.forEach { add(Page.Card(it)) }
         add(Page.Upcoming)
+        // A newer watch app, when the phone knows of one: installed from here, not over ADB.
+        WatchUpdater.available(context, reading)?.let { (name, url) -> add(Page.Update(name, url)) }
         add(Page.Phone)
     }
     val state = rememberPagerState(pageCount = { pages.size })
@@ -174,6 +178,7 @@ private fun Pages(
                         Page.Week -> Week(reading)
                         is Page.Card -> CardScreen(page.card)
                         Page.Upcoming -> UpcomingSummary(reading, onSeeUpcoming)
+                        is Page.Update -> UpdatePage(page.name, page.url)
                         Page.Phone -> Box(Modifier.fillMaxSize().padding(8.dp), contentAlignment = Alignment.Center) {
                             // Only the button, as asked: a circle filling the screen, its label centred.
                             Box(
@@ -593,6 +598,44 @@ private fun UpcomingList(r: BudgetReading) {
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
+        }
+    }
+}
+
+/** A newer watch app: downloaded here, and installed once the system's prompt is confirmed. */
+@Composable
+private fun UpdatePage(name: String, url: String) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var status by remember { mutableStateOf<String?>(null) }
+    var busy by remember { mutableStateOf(false) }
+    Centre {
+        Text("Update available", style = MaterialTheme.typography.titleSmall)
+        Text("Watch app $name", style = MaterialTheme.typography.bodyMedium, color = Muted)
+        Spacer(Modifier.height(8.dp))
+        Button(
+            enabled = !busy,
+            onClick = {
+                busy = true
+                scope.launch {
+                    status = when (val result = WatchUpdater.install(context, url) { status = it }) {
+                        WatchUpdater.Result.Started -> "Confirm the install on the next screen"
+                        WatchUpdater.Result.NeedsPermission ->
+                            if (WatchUpdater.openPermission(context)) {
+                                "Allow SpenDroid to install apps, then come back and tap Install"
+                            } else {
+                                "This watch won't let apps install updates. Use Settings → Watch on your phone."
+                            }
+                        is WatchUpdater.Result.Failed -> result.message
+                    }
+                    busy = false
+                }
+            },
+            colors = ButtonDefaults.buttonColors(containerColor = Green, contentColor = Color.Black),
+        ) { Text("Install", maxLines = 1) }
+        status?.let {
+            Spacer(Modifier.height(6.dp))
+            Text(it, style = MaterialTheme.typography.labelSmall, textAlign = TextAlign.Center, maxLines = 3)
         }
     }
 }

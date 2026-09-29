@@ -9,6 +9,9 @@ enum class Direction { IN, OUT }
 /** Key prefix for user-entered rules, which have no matching transaction groupKey. */
 const val MANUAL_KEY_PREFIX = "manual-"
 
+/** A monthly payment whose amount changes each time - energy, a salary with overtime. */
+const val VARIABLE_KEY_PREFIX = "VAR|"
+
 /** Key prefix for forecast credit card bills, which are computed rather than detected. */
 const val CARD_BILL_KEY_PREFIX = "card-"
 
@@ -56,6 +59,9 @@ data class RecurringRule(
     val perOccurrence: Int = 1,
 ) {
     val isManual: Boolean get() = key.startsWith(MANUAL_KEY_PREFIX)
+
+    /** Its amount changes each time; [amountMinor] is the usual of the latest few. */
+    val isVariable: Boolean get() = key.startsWith(VARIABLE_KEY_PREFIX)
 }
 
 data class UpcomingPayment(

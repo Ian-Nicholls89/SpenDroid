@@ -99,9 +99,8 @@ object BudgetEngine {
         // commitment, so they are kept.
         val today = referenceTime.toLocalDate()
 
-        val cardPayerRuleKeys = transactions
-            .filter { "${it.accountId}|${it.transactionId}" in cardAnalysis.cardPaymentKeys }
-            .mapTo(mutableSetOf()) { RecurringAnalyzer.groupKey(it) }
+        val cardPayments = transactions.filter { "${it.accountId}|${it.transactionId}" in cardAnalysis.cardPaymentKeys }
+        val cardPayerRuleKeys = cardPayments.mapTo(mutableSetOf()) { RecurringAnalyzer.groupKey(it) }
 
         val personalAccountIds = accounts.filter { it.accountType == AccountType.PERSONAL }.map { it.id }.toSet()
         val cardOrPayPalIds = accounts
@@ -151,6 +150,9 @@ object BudgetEngine {
             // The card is already counted - by its bill or by its purchases - so this would
             // be the same money a second time.
             if (!rule.isManual && rule.key in cardPayerRuleKeys) return@filter false
+            // A card's bill varies every month, so the payments that settle it form a varying
+            // monthly rule of their own - the card counted twice, as a bill and as its bill.
+            if (rule.isVariable && cardPayments.any { RecurringAnalyzer.matches(rule, it) }) return@filter false
             // A card's credits are bill payments and refunds, never income, whenever card
             // spending is counted.
             if (rule.direction == Direction.IN && rule.accountIds.isNotEmpty() &&
@@ -181,7 +183,11 @@ object BudgetEngine {
                 .filter { tx ->
                     !tx.isPending && tx.amountMinor > 0 &&
                         tx.payee.lowercase().trim().replace(Regex("\\s+"), " ") == payer &&
-                        abs(tx.amountMinor - rule.amountMinor) <= abs(rule.amountMinor) / 4
+                        if (rule.isVariable) {
+                            RecurringAnalyzer.matches(rule, tx)
+                        } else {
+                            abs(tx.amountMinor - rule.amountMinor) <= abs(rule.amountMinor) / 4
+                        }
                 }
                 .mapNotNull { RecurringAnalyzer.parseBookingDate(it.bookingDate) }
                 .filter { !it.isAfter(referenceTime.toLocalDate()) }
@@ -216,8 +222,9 @@ object BudgetEngine {
         // Detected rules are keyed by groupKey, so they exclude their transactions with a set
         // lookup. Manual rules never produce a matching key and need the fuzzy matcher - but
         // there are only a handful of them, so the inner scan stays cheap.
-        val detectedFixedKeys = fixedRules.filterNot { it.isManual }.map { it.key }.toSet()
-        val manualFixedRules = fixedRules.filter { it.isManual }
+        val detectedFixedKeys = fixedRules.filterNot { it.isManual || it.isVariable }.map { it.key }.toSet()
+        // Manual rules and varying ones are matched by payee and amount range, not by key.
+        val fuzzyFixedRules = fixedRules.filter { it.isManual || it.isVariable }
         // Discretionary spending, whenever it happened: what the cycle's figures count, before
         // they are cut to the cycle. The week's bars read from the same pool, so today's bar
         // and "spent today" cannot disagree.
@@ -225,7 +232,7 @@ object BudgetEngine {
             val date = RecurringAnalyzer.parseBookingDate(tx.bookingDate) ?: return@mapNotNull null
             val counted = tx.amountMinor < 0 &&
                 RecurringAnalyzer.groupKey(tx) !in detectedFixedKeys &&
-                manualFixedRules.none { RecurringAnalyzer.matches(it, tx) }
+                fuzzyFixedRules.none { RecurringAnalyzer.matches(it, tx) }
             if (counted) date to tx else null
         }
         val variableDebits = discretionary

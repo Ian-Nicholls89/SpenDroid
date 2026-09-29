@@ -5,6 +5,7 @@ import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.Month
 import java.time.temporal.ChronoUnit
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 object RecurringAnalyzer {
@@ -25,7 +26,14 @@ object RecurringAnalyzer {
      * match a bank's "NETFLIX.COM 1234".
      */
     fun matches(rule: RecurringRule, tx: TransactionEntity): Boolean =
-        if (rule.isManual) {
+        if (rule.isVariable) {
+            // The same payee, the same way, and an amount of the same order - half to double.
+            tx.currency == rule.currency &&
+                (tx.amountMinor < 0) == (rule.amountMinor < 0) &&
+                normalize(tx.payee) == normalize(rule.payee) &&
+                abs(tx.amountMinor) * 2 >= abs(rule.amountMinor) &&
+                abs(tx.amountMinor) <= abs(rule.amountMinor) * 2
+        } else if (rule.isManual) {
             tx.currency == rule.currency &&
                 (tx.amountMinor < 0) == (rule.amountMinor < 0) &&
                 amountBucket(tx.amountMinor) == amountBucket(rule.amountMinor) &&
@@ -41,13 +49,54 @@ object RecurringAnalyzer {
         return a == b || a.contains(b) || b.contains(a)
     }
 
-    fun analyze(transactions: List<TransactionEntity>): List<RecurringRule> =
-        transactions
-            .filter { !it.isPending && it.bookingDate.isNotBlank() && it.amountMinor != 0L }
-            .groupBy { groupKey(it) }
+    fun analyze(transactions: List<TransactionEntity>): List<RecurringRule> {
+        val eligible = transactions.filter { !it.isPending && it.bookingDate.isNotBlank() && it.amountMinor != 0L }
+        val exact = eligible.groupBy { groupKey(it) }.values.mapNotNull { detect(it) }
+        // A second look, by payee alone, at what the first could not group: the same payee each
+        // month for an amount that changes - an energy bill, a salary with overtime. Grouped by
+        // amount to the pound, each month was a group of its own and none was ever regular.
+        val covered = exact.mapTo(HashSet()) { payeeGroup(it.direction, it.currency, it.payee) }
+        val variable = eligible
+            .groupBy { payeeGroup(if (it.amountMinor >= 0) Direction.IN else Direction.OUT, it.currency, it.payee) }
+            .filterKeys { it !in covered && normalizePayeePart(it).isNotBlank() }
             .values
-            .mapNotNull { detect(it) }
-            .sortedByDescending { it.score }
+            .mapNotNull { detectVariable(it) }
+        return (exact + variable).sortedByDescending { it.score }
+    }
+
+    private fun payeeGroup(direction: Direction, currency: String, payee: String) = "$direction|$currency|${normalize(payee)}"
+
+    private fun normalizePayeePart(group: String) = group.substringAfterLast('|')
+
+    /**
+     * A monthly payment whose amount varies, or null. Held tight so everyday spending is never
+     * mistaken for a bill: monthly only - a weekly shop at one supermarket would otherwise read
+     * as one - at least three months, one payment a month, dates as regular as a fixed monthly
+     * payment's, and every amount between half and double the usual.
+     */
+    private fun detectVariable(txs: List<TransactionEntity>): RecurringRule? {
+        val byDate = txs.groupBy { parseBookingDate(it.bookingDate) ?: return null }
+        if (byDate.size < MIN_VARIABLE_MONTHS) return null
+        val dates = byDate.keys.sorted()
+        val amounts = dates.map { date -> byDate.getValue(date).sumOf { it.amountMinor } }
+        if (amounts.any { it == 0L } || amounts.map { it < 0 }.distinct().size != 1) return null
+        val usual = amounts.map { abs(it) }.sorted().let { it[it.size / 2] }
+        if (amounts.any { abs(it) * 2 < usual || abs(it) > usual * 2 }) return null
+        val gaps = dates.zipWithNext { a, b -> ChronoUnit.DAYS.between(a, b) }
+        if (gapFraction(gaps, 24..33) < 0.8f) return null
+        // The level to expect next: the middle of the latest three.
+        val recent = amounts.takeLast(3).map { abs(it) }.sorted()[1] * (if (amounts.first() < 0) -1 else 1)
+        val payee = txs.first().payee
+        val direction = if (recent >= 0) Direction.IN else Direction.OUT
+        val rule = monthly(VARIABLE_KEY_PREFIX + payeeGroup(direction, txs.first().currency, payee), payee, recent, txs.first().currency, dates)
+            ?: return null
+        return rule.copy(
+            accountIds = txs.mapTo(mutableSetOf()) { it.accountId },
+            internalTransfer = txs.all { it.isInternalTransfer },
+        )
+    }
+
+    private const val MIN_VARIABLE_MONTHS = 3
 
     fun parseBookingDate(value: String): LocalDate? =
         try {
@@ -261,7 +310,7 @@ object RecurringAnalyzer {
         val txIdsInRules = mutableSetOf<String>()
         rules.forEach { rule ->
             transactions
-                .filter { groupKey(it) == rule.key }
+                .filter { if (rule.isVariable) matches(rule, it) else groupKey(it) == rule.key }
                 .forEach { txIdsInRules.add("${it.accountId}|${it.transactionId}") }
         }
         return transactions.associateBy({ "${it.accountId}|${it.transactionId}" }) { txIdsInRules.contains("${it.accountId}|${it.transactionId}") }

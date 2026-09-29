@@ -122,6 +122,10 @@ data class RootUiState(
     val syncFailures: Map<String, com.spendroid.data.SyncFailure> = emptyMap(),
     /** Card payments read from notifications, newest first. */
     val seenSpends: List<com.spendroid.data.db.SeenSpendEntity> = emptyList(),
+    /** Rows the bank has stopped listing, put to the user. */
+    val duplicateQuestions: List<com.spendroid.domain.DuplicateCheck.Question> = emptyList(),
+    /** New rows held out of the budget until a question about them is answered. */
+    val heldDuplicateKeys: Set<String> = emptySet(),
     /** How each payee has been filed by hand, for suggesting where a transaction belongs. */
     val categoryHistory: Map<String, Map<Category, Int>> = emptyMap(),
     val ruleOverrides: Map<String, RuleOverrideEntity> = emptyMap(),
@@ -478,6 +482,27 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch { repo.keepSeenSpend(id) }
     }
 
+    fun confirmDuplicate(question: com.spendroid.domain.DuplicateCheck.Question) {
+        viewModelScope.launch {
+            repo.confirmDuplicate(question)
+            loadLocal()
+        }
+    }
+
+    fun keepVanished(question: com.spendroid.domain.DuplicateCheck.Question) {
+        viewModelScope.launch {
+            repo.keepVanished(question)
+            loadLocal()
+        }
+    }
+
+    fun removeVanished(question: com.spendroid.domain.DuplicateCheck.Question) {
+        viewModelScope.launch {
+            repo.removeVanished(question)
+            loadLocal()
+        }
+    }
+
     fun treatAsBill(tx: TransactionEntity) {
         viewModelScope.launch {
             repo.treatAsBill(tx)
@@ -814,8 +839,9 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
         // "1.0.0" / 0 that would then be compared against the latest release.
         val versionName = BuildConfig.VERSION_NAME
         val versionCode = BuildConfig.VERSION_CODE
-        val manualRecurring = manualRules.mapNotNull { it.toRecurringRule() }
-        val allRules = detectedRules + manualRecurring
+        // The same calculation the widgets and the watch show.
+        val budget = repo.budgetSnapshotOf(all, budgetTime)
+        val questions = com.spendroid.domain.DuplicateCheck.questions(repo.duplicateChecks(), all)
         _state.update {
             it.copy(
                 accounts = accounts,
@@ -825,17 +851,7 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
                 ignoredRules = ignored,
                 categoryRules = categoryRules,
                 budgetGoals = budgetGoals,
-                budget = BudgetEngine.snapshot(
-                    referenceTime = budgetTime,
-                    transactions = all,
-                    rules = allRules.filter { rule -> rule.key !in ignored },
-                    accounts = accounts,
-                    primaryIncomeKey = primaryIncomeKey,
-                    budgetModel = budgetModel,
-                    calendar = WorkingDayCalendar(holidays.keys),
-                    overrides = overrides,
-                    cardTiming = cardTiming,
-                ),
+                budget = budget,
                 ruleOverrides = overrides,
                 bankHolidays = holidays.keys,
                 bankHolidayToday = holidays[java.time.LocalDate.now()],
@@ -850,6 +866,8 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
                 nextSyncAt = nextScheduledSync(),
                 syncFailures = repo.syncFailures.first(),
                 seenSpends = repo.seenSpends.first(),
+                duplicateQuestions = questions,
+                heldDuplicateKeys = repo.heldDuplicateKeys(),
                 categoryHistory = CategoryEngine.history(all),
                 connections = repo.connections.first(),
                 versionName = versionName,

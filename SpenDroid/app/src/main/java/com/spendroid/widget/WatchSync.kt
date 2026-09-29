@@ -60,6 +60,11 @@ internal object WatchSync {
                     putFloat("cycleLeft", elapsed?.let { 1f - it } ?: -1f)
                     putString("pace", BudgetPace.of(s).name)
 
+                    // The watch app published with this phone app, so the watch can update itself.
+                    putInt("wearLatestCode", com.spendroid.BuildConfig.WEAR_VERSION_CODE)
+                    putString("wearLatestName", com.spendroid.BuildConfig.WEAR_VERSION_NAME)
+                    putString("wearApkUrl", com.spendroid.watch.WatchInstaller.apkUrl())
+
                     // Screen 1.
                     putString("availableFull", money(s.availableToSpend))
                     putString("daysLine", days?.let { d ->

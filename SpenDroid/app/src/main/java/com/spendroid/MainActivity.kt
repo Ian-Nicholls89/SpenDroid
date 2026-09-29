@@ -243,6 +243,13 @@ class MainActivity : ComponentActivity() {
                                             onSetBudgetGoal = viewModel::setBudgetGoal,
                                             onTreatAsBill = viewModel::treatAsBill,
                                             prompts = {
+                                                com.spendroid.ui.DuplicatePrompts(
+                                                    questions = state.duplicateQuestions,
+                                                    accounts = state.accounts,
+                                                    onSame = viewModel::confirmDuplicate,
+                                                    onKeep = viewModel::keepVanished,
+                                                    onRemove = viewModel::removeVanished,
+                                                )
                                                 com.spendroid.ui.SeenSpendPrompts(
                                                     seen = state.seenSpends,
                                                     accounts = state.accounts,

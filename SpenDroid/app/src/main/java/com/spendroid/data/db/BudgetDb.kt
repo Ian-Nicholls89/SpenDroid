@@ -22,8 +22,9 @@ import kotlinx.coroutines.flow.Flow
         CategoryRuleEntity::class,
         SeenSpendEntity::class,
         NotificationSampleEntity::class,
+        DuplicateCheckEntity::class,
     ],
-    version = 17,
+    version = 18,
     exportSchema = false,
 )
 abstract class BudgetDb : RoomDatabase() {
@@ -57,6 +58,16 @@ abstract class BudgetDb : RoomDatabase() {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE accounts ADD COLUMN accountType TEXT NOT NULL DEFAULT 'PERSONAL'")
                 db.execSQL("ALTER TABLE accounts ADD COLUMN linkedCreditCardAccountId TEXT")
+            }
+        }
+        val MIGRATION_17_18 = object : Migration(17, 18) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `duplicate_checks` (`accountId` TEXT NOT NULL, " +
+                        "`transactionId` TEXT NOT NULL, `missedSyncs` INTEGER NOT NULL, " +
+                        "`candidates` TEXT NOT NULL, `state` TEXT NOT NULL, " +
+                        "PRIMARY KEY(`accountId`, `transactionId`))",
+                )
             }
         }
         val MIGRATION_16_17 = object : Migration(16, 17) {
@@ -285,6 +296,43 @@ interface BudgetDao {
 
     @Query("DELETE FROM notification_samples")
     suspend fun deleteAllNotificationSamples()
+
+    @Query("SELECT * FROM duplicate_checks")
+    suspend fun duplicateChecks(): List<DuplicateCheckEntity>
+
+    @Query("SELECT * FROM duplicate_checks WHERE accountId = :accountId")
+    suspend fun duplicateChecksFor(accountId: String): List<DuplicateCheckEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertDuplicateChecks(checks: List<DuplicateCheckEntity>)
+
+    @Query("DELETE FROM duplicate_checks WHERE accountId = :accountId")
+    suspend fun deleteDuplicateChecksFor(accountId: String)
+
+    @Query("DELETE FROM duplicate_checks WHERE accountId = :accountId AND transactionId = :transactionId")
+    suspend fun deleteDuplicateCheck(accountId: String, transactionId: String)
+
+    @Query("DELETE FROM duplicate_checks")
+    suspend fun deleteAllDuplicateChecks()
+
+    @Query("DELETE FROM transactions WHERE accountId = :accountId AND transactionId = :transactionId")
+    suspend fun deleteTransaction(accountId: String, transactionId: String)
+
+    /** A sync's rows and the account's checks, written together. */
+    @Transaction
+    suspend fun replaceSync(accountId: String, rows: List<TransactionEntity>, checks: List<DuplicateCheckEntity>) {
+        replaceSync(accountId, rows)
+        deleteDuplicateChecksFor(accountId)
+        upsertDuplicateChecks(checks)
+    }
+
+    /** The user's "Yes, the same": the old row's edits go to the new one, and the old goes. */
+    @Transaction
+    suspend fun mergeDuplicate(accountId: String, oldId: String, merged: TransactionEntity) {
+        upsertTransactions(listOf(merged))
+        deleteTransaction(accountId, oldId)
+        deleteDuplicateCheck(accountId, oldId)
+    }
 
     @Transaction
     suspend fun replaceSync(accountId: String, rows: List<TransactionEntity>) {

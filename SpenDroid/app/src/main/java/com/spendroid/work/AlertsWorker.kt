@@ -48,11 +48,14 @@ class AlertsWorker(
 
         val cards = CardWatch.warnings(snapshot.cardBills, repo.notifiedCardWarnings.first())
 
+        val duplicates = duplicateQuestions(repo)
+
         val alerts = buildList {
             billsDueTomorrow(snapshot)?.let(::add)
             large.message?.let(::add)
             addAll(goals.messages)
             addAll(cards.messages)
+            duplicates.message?.let(::add)
         }
         if (alerts.isEmpty()) return Result.success()
 
@@ -61,9 +64,28 @@ class AlertsWorker(
         if (goals.messages.isNotEmpty()) repo.saveNotifiedGoalWarnings(goals.keys)
         if (large.message != null) repo.saveNotifiedLargeTransactions(large.keys)
         if (cards.messages.isNotEmpty()) repo.saveNotifiedCardWarnings(cards.keys)
+        if (duplicates.message != null) repo.saveNotifiedDuplicates(duplicates.keys)
 
         notify(alerts)
         return Result.success()
+    }
+
+    private data class DuplicateNotice(val message: String?, val keys: Set<String>)
+
+    /**
+     * Rows the bank has stopped listing, said once each. The record is rewritten to the open
+     * questions, so an answered one drops out of it.
+     */
+    private suspend fun duplicateQuestions(repo: com.spendroid.data.GoCardlessRepository): DuplicateNotice {
+        val questions = repo.duplicateQuestions()
+        val keys = questions.mapTo(mutableSetOf()) { "${it.vanished.accountId}|${it.vanished.transactionId}" }
+        val sent = repo.notifiedDuplicates.first()
+        if (keys.all { it in sent }) return DuplicateNotice(null, sent)
+        val labels = repo.accounts().associate { it.id to it.label }
+        val where = questions.map { labels[it.vanished.accountId] ?: "an account" }.distinct()
+        val what = if (questions.size == 1) "1 transaction" else "${questions.size} transactions"
+        val them = if (questions.size == 1) "it" else "them"
+        return DuplicateNotice("$what to check on ${where.joinToString(" and ")} — the bank has stopped listing $them.", keys)
     }
 
     private data class GoalWarnings(val messages: List<String>, val keys: Set<String>)

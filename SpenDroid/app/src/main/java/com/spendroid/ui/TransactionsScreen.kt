@@ -66,6 +66,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -118,6 +119,9 @@ fun TransactionsScreen(
         CategoryEngine.suggest(tx, state.categoryRules, state.categoryHistory, cardPaymentKeys, cardAccountIds)
 
     val accountNames = remember(state.accounts) { state.accounts.associate { it.id to it.label } }
+    val vanishedKeys = remember(state.duplicateQuestions) {
+        state.duplicateQuestions.mapTo(HashSet()) { "${it.vanished.accountId}|${it.vanished.transactionId}" }
+    }
 
     val visible = remember(
         state.transactions,
@@ -378,6 +382,12 @@ fun TransactionsScreen(
                                         state.budget?.creditCardAccountIds.orEmpty(),
                                     onClick = { selected = tx },
                                     isNew = rowKey in state.newTransactionKeys,
+                                    held = rowKey in state.heldDuplicateKeys,
+                                    note = when (rowKey) {
+                                        in state.heldDuplicateKeys -> "Possible duplicate"
+                                        in vanishedKeys -> "No longer listed"
+                                        else -> null
+                                    },
                                 )
                             }
                             HorizontalDivider(
@@ -515,6 +525,10 @@ private fun TransactionRow(
     creditCardAccountIds: Set<String> = emptySet(),
     onClick: () -> Unit,
     isNew: Boolean = false,
+    /** Waiting on a "Same transaction?" answer. */
+    note: String? = null,
+    /** Held out of the budget until then, and greyed to say so. */
+    held: Boolean = false,
 ) {
     val category = CategoryEngine.classify(tx, userRules, cardPaymentKeys, creditCardAccountIds)
     // A row the latest sync brought glows briefly, then settles like the rest.
@@ -542,6 +556,7 @@ private fun TransactionRow(
             .fillMaxWidth()
             .heightIn(min = MinTouchTarget)
             .background(glow)
+            .alpha(if (held) 0.5f else 1f)
             .clickable(onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 10.dp)
             // One announcement for the row rather than four disconnected fragments.
@@ -569,6 +584,7 @@ private fun TransactionRow(
             Text(name, style = MaterialTheme.typography.bodyMedium, maxLines = 1)
             Text(
                 buildList {
+                    note?.let(::add)
                     pendingNote?.let(::add)
                     add(category.label)
                     accountName?.let(::add)

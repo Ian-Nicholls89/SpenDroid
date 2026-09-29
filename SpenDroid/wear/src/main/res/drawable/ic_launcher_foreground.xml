@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  A coin dropping into a money-box slot.
+
+  Everything sits inside the central 72dp of the 108dp canvas, so no launcher mask can
+  crop it. Deliberately only two shapes plus the glyph: at 30px on a home screen a third
+  element turns into noise.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Slot plate -->
+    <path
+        android:pathData="M35.5,58 L72.5,58 A5.5,5.5 0 0 1 72.5,69 L35.5,69 A5.5,5.5 0 0 1 35.5,58 Z"
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.3" />
+
+    <!-- The slot itself -->
+    <path
+        android:pathData="M36,61.5 L72,61.5 A2,2 0 0 1 72,65.5 L36,65.5 A2,2 0 0 1 36,61.5 Z"
+        android:fillColor="#FF0E3D12" />
+
+    <!-- Coin -->
+    <path
+        android:pathData="M39,40 a15,15 0 1,0 30,0 a15,15 0 1,0 -30,0 Z"
+        android:fillColor="#FFFFFF" />
+
+    <!-- Pound sign: bottom bar, stem with its hook, crossbar -->
+    <path
+        android:pathData="M47.6,47.2 L60.4,47.2"
+        android:strokeColor="#FF2E7D32"
+        android:strokeWidth="3"
+        android:strokeLineCap="round" />
+    <path
+        android:pathData="M51,47.2 L51,38.6 A4.4,4.4 0 0 1 58,35.2"
+        android:strokeColor="#FF2E7D32"
+        android:strokeWidth="3"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+    <path
+        android:pathData="M47,41.9 L55.4,41.9"
+        android:strokeColor="#FF2E7D32"
+        android:strokeWidth="2.6"
+        android:strokeLineCap="round" />
+</vector>

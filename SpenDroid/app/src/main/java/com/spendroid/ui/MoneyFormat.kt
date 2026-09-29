@@ -18,8 +18,10 @@ fun formatMoney(minor: Long, currencyCode: String): String {
  * A regular payment's amount, written as its parts when it is several on the same day:
  * "2 × £50.00" says both what leaves and why it is that much.
  */
-fun recurringAmount(totalMinor: Long, perOccurrence: Int, currency: String): String =
-    if (perOccurrence > 1) {
+fun recurringAmount(totalMinor: Long, perOccurrence: Int, currency: String, variable: Boolean = false): String =
+    if (variable) {
+        "about ${formatMoney(totalMinor, currency)}"
+    } else if (perOccurrence > 1) {
         "$perOccurrence × ${formatMoney(totalMinor / perOccurrence, currency)}"
     } else {
         formatMoney(totalMinor, currency)

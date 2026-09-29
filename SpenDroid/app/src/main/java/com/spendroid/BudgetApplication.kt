@@ -5,6 +5,10 @@ import androidx.room.Room
 import com.spendroid.data.GoCardlessRepository
 import com.spendroid.data.db.BudgetDb
 import com.spendroid.work.DailyRoundupScheduler
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 class BudgetApplication : Application() {
 
@@ -31,9 +35,15 @@ class BudgetApplication : Application() {
                 BudgetDb.MIGRATION_14_15,
                 BudgetDb.MIGRATION_15_16,
                 BudgetDb.MIGRATION_16_17,
+                BudgetDb.MIGRATION_17_18,
             )
             .build()
         repository = GoCardlessRepository.create(this, db.budgetDao())
         DailyRoundupScheduler.schedule(this)
+        // Credentials saved before 3.6 were in the clear; seal them. A failure leaves them
+        // readable as they were, and it tries again next start.
+        CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
+            runCatching { repository.sealLegacySecrets() }
+        }
     }
 }

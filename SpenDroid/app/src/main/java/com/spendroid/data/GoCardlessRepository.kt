@@ -11,6 +11,7 @@ import com.spendroid.data.db.ManualRecurringRuleEntity
 import com.spendroid.data.db.TransactionEntity
 import com.spendroid.data.db.SeenSpendEntity
 import com.spendroid.data.db.NotificationSampleEntity
+import com.spendroid.domain.DuplicateCheck
 import com.spendroid.domain.NotificationSpend
 import com.spendroid.data.remote.AccountDetailsDto
 import com.spendroid.data.remote.AccountInfoDto
@@ -58,11 +59,18 @@ class GoCardlessRepository private constructor(
 
     val secretId: Flow<String?> = secrets.secretId
     val secretKey: Flow<String?> = secrets.secretKey
+
+    /** See [SecretsStore.sealLegacySecrets]. */
+    suspend fun sealLegacySecrets() = secrets.sealLegacySecrets()
+
     val connections: Flow<List<Connection>> = secrets.connections
     val ignoredRules: Flow<Set<String>> = secrets.ignoredRules
     val notifiedGoalWarnings: Flow<Set<String>> = secrets.notifiedGoalWarnings
     val notifiedLargeTransactions: Flow<Set<String>> = secrets.notifiedLargeTransactions
     val notifiedCardWarnings: Flow<Set<String>> = secrets.notifiedCardWarnings
+    val notifiedDuplicates: Flow<Set<String>> = secrets.notifiedDuplicates
+
+    suspend fun saveNotifiedDuplicates(keys: Set<String>) = secrets.saveNotifiedDuplicates(keys)
     val transferGroups: Flow<Set<String>> = secrets.transferGroups
 
     /** Marks or unmarks every payment like this one as a transfer, and re-applies at once. */
@@ -299,6 +307,45 @@ class GoCardlessRepository private constructor(
         dao.deleteAllNotificationSamples()
     }
 
+    /** Rows the bank has stopped listing that the user has yet to answer for. */
+    suspend fun duplicateQuestions(): List<DuplicateCheck.Question> =
+        DuplicateCheck.questions(dao.duplicateChecks(), transactions())
+
+    suspend fun duplicateChecks(): List<com.spendroid.data.db.DuplicateCheckEntity> = dao.duplicateChecks()
+
+    /** Rows held out of the budget meanwhile, as "accountId|transactionId". */
+    suspend fun heldDuplicateKeys(): Set<String> = DuplicateCheck.heldKeys(dao.duplicateChecks())
+
+    /**
+     * "Yes, the same": the new row stays, as the bank now lists it, taking every edit the user
+     * made to the old one, and the old row goes.
+     */
+    suspend fun confirmDuplicate(question: DuplicateCheck.Question) {
+        val candidate = question.candidate ?: return
+        val old = question.vanished
+        dao.mergeDuplicate(
+            old.accountId,
+            old.transactionId,
+            candidate.copy(
+                isInternalTransfer = old.isInternalTransfer,
+                categoryOverride = old.categoryOverride ?: candidate.categoryOverride,
+                isCardPayment = old.isCardPayment || candidate.isCardPayment,
+                transferOverridden = old.transferOverridden,
+            ),
+        )
+    }
+
+    /** "No, different", or "Keep it": both count, and this row is never asked about again. */
+    suspend fun keepVanished(question: DuplicateCheck.Question) {
+        dao.upsertDuplicateChecks(listOf(question.check.copy(state = DuplicateCheck.State.KEPT.name, candidates = "")))
+    }
+
+    /** "Remove it": the bank no longer lists it - reversed or cancelled - so neither does the app. */
+    suspend fun removeVanished(question: DuplicateCheck.Question) {
+        dao.deleteTransaction(question.vanished.accountId, question.vanished.transactionId)
+        dao.deleteDuplicateCheck(question.vanished.accountId, question.vanished.transactionId)
+    }
+
     suspend fun setInternalTransfer(accountId: String, transactionId: String, isTransfer: Boolean) {
         dao.setInternalTransfer(accountId, transactionId, isTransfer)
     }
@@ -439,6 +486,7 @@ class GoCardlessRepository private constructor(
     suspend fun clearAllData() {
         watched = null
         clearNotificationData()
+        dao.deleteAllDuplicateChecks()
         dao.deleteAllTransactions()
         dao.deleteAllAccounts()
         dao.deleteAllManualRules()
@@ -637,7 +685,9 @@ class GoCardlessRepository private constructor(
         // pending row are read first and carried onto whichever row replaces it.
         val stored = dao.transactionsFor(accountId)
         val rows = booked + stillPendingOnly(booked, pending)
-        dao.replaceSync(accountId, preserveUserEdits(rows, stored))
+        // Booked rows the bank has stopped listing, followed until the user says what they were.
+        val checks = DuplicateCheck.afterSync(stored, booked, dao.duplicateChecksFor(accountId), LocalDate.now())
+        dao.replaceSync(accountId, preserveUserEdits(rows, stored), checks)
 
         // A sync refreshes the balance; it must not undo the user's own decisions. Rebuilding
         // the row from scratch reset the type, regenerated the label over any rename, and
@@ -693,17 +743,27 @@ class GoCardlessRepository private constructor(
     ): BudgetSnapshot? {
         val all = transactions()
         if (all.isEmpty()) return null
+        return budgetSnapshotOf(all, referenceTime ?: budgetTime())
+    }
 
+    /**
+     * The one budget calculation, for the app, the widgets and the watch alike. Each used to
+     * gather its own inputs, and a setting one of them forgot showed as two different figures.
+     */
+    suspend fun budgetSnapshotOf(all: List<TransactionEntity>, referenceTime: java.time.LocalDateTime): BudgetSnapshot {
+        // A possible re-issue of a row already counted waits for the user before it counts.
+        val held = DuplicateCheck.heldKeys(dao.duplicateChecks())
+        val counted = if (held.isEmpty()) all else all.filterNot { "${it.accountId}|${it.transactionId}" in held }
         val ignored = ignoredRules.first()
         val manual = manualRules.first().mapNotNull { it.toRecurringRule() }
-        val rules = (RecurringAnalyzer.analyze(all) + manual).filter { it.key !in ignored }
+        val rules = (RecurringAnalyzer.analyze(counted) + manual).filter { it.key !in ignored }
         val holidays = runCatching { bankHolidays() }.getOrDefault(emptyMap())
 
         return BudgetEngine.snapshot(
-            transactions = all,
+            transactions = counted,
             rules = rules,
             accounts = accounts(),
-            referenceTime = referenceTime ?: budgetTime(),
+            referenceTime = referenceTime,
             primaryIncomeKey = primaryIncomeKey.first(),
             budgetModel = BudgetModel.from(budgetModel.first()),
             calendar = WorkingDayCalendar(holidays.keys),

@@ -195,3 +195,24 @@ data class RuleOverrideEntity(
      */
     val decemberAnchorDay: Int? = null,
 )
+
+/**
+ * A booked transaction the bank has stopped listing, followed until the user has said what it
+ * was. Banks now and then re-issue a transaction under a new id; the old row stays stored and the
+ * new one arrives beside it, and the same money counts twice. See [com.spendroid.domain.DuplicateCheck].
+ */
+@Entity(tableName = "duplicate_checks", primaryKeys = ["accountId", "transactionId"])
+data class DuplicateCheckEntity(
+    val accountId: String,
+    /** The stored row the bank no longer lists. */
+    val transactionId: String,
+    /** Syncs in a row that left it out. */
+    val missedSyncs: Int,
+    /**
+     * Ids of rows that could be it under a new id, one per line: while watching, every new
+     * row of the same amount near its date; once asking, the one chosen, or none.
+     */
+    val candidates: String,
+    /** A [com.spendroid.domain.DuplicateCheck.State] name. */
+    val state: String,
+)

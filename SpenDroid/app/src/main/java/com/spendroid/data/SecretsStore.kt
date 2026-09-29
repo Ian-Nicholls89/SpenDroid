@@ -67,6 +67,7 @@ class SecretsStore(private val context: Context) {
         val NOTIFIED_GOAL_WARNINGS = stringPreferencesKey("notified_goal_warnings")
         val NOTIFIED_LARGE_TRANSACTIONS = stringPreferencesKey("notified_large_transactions")
         val NOTIFIED_CARD_WARNINGS = stringPreferencesKey("notified_card_warnings")
+        val NOTIFIED_DUPLICATES = stringPreferencesKey("notified_duplicates")
         val TRANSFER_GROUPS = stringPreferencesKey("transfer_groups")
         val SYNC_FAILURES = stringPreferencesKey("sync_failures")
         val SYNC_ALLOWANCES = stringPreferencesKey("sync_allowances")
@@ -82,9 +83,25 @@ class SecretsStore(private val context: Context) {
         val SPEND_READING_ON = androidx.datastore.preferences.core.booleanPreferencesKey("spend_reading_on")
     }
 
-    val secretId: Flow<String?> = stringFlow(Keys.SECRET_ID)
-    val secretKey: Flow<String?> = stringFlow(Keys.SECRET_KEY)
-    val refreshToken: Flow<String?> = stringFlow(Keys.REFRESH_TOKEN)
+    val secretId: Flow<String?> = sealedFlow(Keys.SECRET_ID)
+    val secretKey: Flow<String?> = sealedFlow(Keys.SECRET_KEY)
+    val refreshToken: Flow<String?> = sealedFlow(Keys.REFRESH_TOKEN)
+
+    private fun sealedFlow(key: androidx.datastore.preferences.core.Preferences.Key<String>): Flow<String?> =
+        stringFlow(key).map { stored -> stored?.let { SecretCipher.open(it) } }
+
+    /**
+     * Seals credentials saved in the clear before 3.6. Run once at start-up; after that every
+     * write seals, and a value already sealed is left alone.
+     */
+    suspend fun sealLegacySecrets() {
+        context.dataStore.edit { prefs ->
+            listOf(Keys.SECRET_ID, Keys.SECRET_KEY, Keys.REFRESH_TOKEN).forEach { key ->
+                val stored = prefs[key] ?: return@forEach
+                if (!SecretCipher.isSealed(stored)) prefs[key] = SecretCipher.seal(stored)
+            }
+        }
+    }
 
     /** Which income the user chose to drive the pay cycle. */
     val primaryIncomeKey: Flow<String?> = stringFlow(Keys.PRIMARY_INCOME_KEY)
@@ -316,6 +333,15 @@ class SecretsStore(private val context: Context) {
         .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
         .map { prefs -> parseStringSet(prefs[Keys.NOTIFIED_CARD_WARNINGS]) }
 
+    /** "Same transaction?" questions already announced, as "accountId|transactionId". */
+    val notifiedDuplicates: Flow<Set<String>> = context.dataStore.data
+        .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
+        .map { prefs -> parseStringSet(prefs[Keys.NOTIFIED_DUPLICATES]) }
+
+    suspend fun saveNotifiedDuplicates(keys: Set<String>) {
+        context.dataStore.edit { prefs -> prefs[Keys.NOTIFIED_DUPLICATES] = JSONArray(keys.toList()).toString() }
+    }
+
     suspend fun saveNotifiedCardWarnings(keys: Set<String>) {
         context.dataStore.edit { prefs ->
             prefs[Keys.NOTIFIED_CARD_WARNINGS] = JSONArray(keys.toList()).toString()
@@ -337,15 +363,15 @@ class SecretsStore(private val context: Context) {
 
     suspend fun saveSecret(id: String, key: String) {
         context.dataStore.edit { prefs ->
-            prefs[Keys.SECRET_ID] = id
-            prefs[Keys.SECRET_KEY] = key
+            prefs[Keys.SECRET_ID] = SecretCipher.seal(id)
+            prefs[Keys.SECRET_KEY] = SecretCipher.seal(key)
             prefs.remove(Keys.REFRESH_TOKEN) // clear old token on new credentials
         }
     }
 
     suspend fun saveRefreshToken(token: String) {
         context.dataStore.edit { prefs ->
-            prefs[Keys.REFRESH_TOKEN] = token
+            prefs[Keys.REFRESH_TOKEN] = SecretCipher.seal(token)
         }
     }
 
