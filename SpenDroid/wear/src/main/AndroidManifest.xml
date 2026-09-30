@@ -6,6 +6,8 @@
     <!-- The watch app updating itself from the GitHub release. -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- The daily roundup, kept on the watch face until it is read. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
         android:label="SpenDroid"
@@ -20,6 +22,7 @@
         <activity
             android:name=".BudgetActivity"
             android:exported="true"
+            android:launchMode="singleTop"
             android:label="SpenDroid"
             android:taskAffinity=""
             android:theme="@android:style/Theme.DeviceDefault">

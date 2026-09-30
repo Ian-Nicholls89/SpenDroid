@@ -102,7 +102,12 @@ private fun paceColour(pace: String) = when (pace) {
 }
 
 @Composable
-fun BudgetScreens(reading: BudgetReading?, onOpenPhone: () -> Boolean) {
+fun BudgetScreens(
+    reading: BudgetReading?,
+    onOpenPhone: () -> Boolean,
+    roundup: Roundup? = null,
+    onRoundupShown: () -> Unit = {},
+) {
     MaterialTheme {
         AppScaffold {
             if (reading == null || reading.map.getString("availableFull") == null) {
@@ -120,6 +125,15 @@ fun BudgetScreens(reading: BudgetReading?, onOpenPhone: () -> Boolean) {
             // The pages turn with the crown; a list long enough to scroll opens on a screen of its
             // own, where the crown scrolls it, and a swipe to the right comes back.
             val nav = rememberSwipeDismissableNavController()
+            // Opened from the roundup's icon: the roundup first, and a swipe back to the pages.
+            var shownRoundup by remember { mutableStateOf<Roundup?>(null) }
+            androidx.compose.runtime.LaunchedEffect(roundup) {
+                if (roundup != null) {
+                    shownRoundup = roundup
+                    onRoundupShown()
+                    if (nav.currentDestination?.route != "roundup") nav.navigate("roundup")
+                }
+            }
             SwipeDismissableNavHost(navController = nav, startDestination = "pages") {
                 composable("pages") {
                     Pages(
@@ -131,6 +145,7 @@ fun BudgetScreens(reading: BudgetReading?, onOpenPhone: () -> Boolean) {
                 }
                 composable("recent") { RecentList(reading) { index -> nav.navigate("pick/$index") } }
                 composable("upcoming") { UpcomingList(reading) }
+                composable("roundup") { shownRoundup?.let { RoundupScreen(it) } ?: nav.popBackStack() }
                 composable("pick/{index}") { entry ->
                     val recent = entry.arguments?.getString("index")?.toIntOrNull()?.let { reading.recent.getOrNull(it) }
                     if (recent == null) {
@@ -595,6 +610,37 @@ private fun UpcomingList(r: BudgetReading) {
                     "${r.text("upcomingTotal")} in all",
                     style = MaterialTheme.typography.labelMedium,
                     textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        }
+    }
+}
+
+/** The day's roundup, as the phone worded it: the headline in the pace's colour, then the rest. */
+@Composable
+private fun RoundupScreen(r: Roundup) {
+    val list = rememberScalingLazyListState()
+    ScreenScaffold(scrollState = list) { padding ->
+        ScalingLazyColumn(state = list, contentPadding = padding, modifier = Modifier.fillMaxSize()) {
+            item { ListHeader { Text("Roundup", maxLines = 1) } }
+            item {
+                Text(
+                    r.headline,
+                    style = MaterialTheme.typography.titleLarge,
+                    color = paceColour(r.pace),
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            items(r.lines) { line ->
+                Text(
+                    line,
+                    style = MaterialTheme.typography.bodySmall,
+                    textAlign = TextAlign.Center,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.fillMaxWidth(),
                 )
             }

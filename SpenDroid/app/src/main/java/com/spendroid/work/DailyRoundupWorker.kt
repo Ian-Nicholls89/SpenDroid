@@ -63,6 +63,9 @@ class DailyRoundupWorker(
         if (NotificationManagerCompat.from(applicationContext).areNotificationsEnabled()) {
             NotificationManagerCompat.from(applicationContext).notify(NOTIFICATION_ID, notification)
         }
+        // And to the watch, where it waits on the watch face until it is read.
+        val toCheck = runCatching { app.repository.duplicateQuestions().size }.getOrDefault(0)
+        com.spendroid.widget.WatchSync.sendRoundup(applicationContext, snapshot, toCheck)
         return Result.success()
     }
 

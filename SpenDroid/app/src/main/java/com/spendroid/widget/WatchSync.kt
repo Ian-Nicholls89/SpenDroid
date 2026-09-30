@@ -43,6 +43,47 @@ internal object WatchSync {
     private val DAY = DateTimeFormatter.ofPattern("EEE d MMM")
     private val SHORT_DAY = DateTimeFormatter.ofPattern("d MMM")
 
+    private const val ROUNDUP_PATH = "/spendroid/roundup"
+
+    /** The roundup's lines under its headline, worded as the watch shows them. */
+    internal fun roundupLines(s: com.spendroid.domain.BudgetSnapshot, toCheck: Int, today: java.time.LocalDate): List<String> {
+        val money = { minor: Long -> formatMoney(minor, s.baseCurrency) }
+        val tomorrow = today.plusDays(1)
+        return buildList {
+            add("Spent today ${money(s.spentToday)}")
+            s.nextIncomeDate?.let { date ->
+                val d = s.daysUntilNextIncome
+                add(
+                    "Income ${date.format(DAY)}" +
+                        (d?.takeIf { it > 0 }?.let { " · ${money(s.availableToSpend / it)} a day" }.orEmpty()),
+                )
+            }
+            s.upcomingFixed.filter { it.dueDate == tomorrow }.forEach { p ->
+                add("Tomorrow: ${p.rule.payee.tidyPayee()} ${money(p.amountMinor)}")
+            }
+            if (toCheck > 0) add("$toCheck transaction${if (toCheck == 1) "" else "s"} to check on your phone")
+        }
+    }
+
+    /**
+     * The daily roundup, for the watch to keep on its face until it is read. Stamped with the
+     * time, so each day's is new to the watch even when the figures match yesterday's. Sent
+     * urgently: it is the one thing here that should not wait for the watch to next wake.
+     */
+    suspend fun sendRoundup(context: Context, s: com.spendroid.domain.BudgetSnapshot, toCheck: Int) {
+        runCatching {
+            val money = { minor: Long -> formatMoney(minor, s.baseCurrency) }
+            val lines = roundupLines(s, toCheck, java.time.LocalDate.now())
+            val request = PutDataMapRequest.create(ROUNDUP_PATH).apply {
+                dataMap.putLong("at", System.currentTimeMillis())
+                dataMap.putString("headline", "${money(s.availableToSpend)} left")
+                dataMap.putString("pace", BudgetPace.of(s).name)
+                dataMap.putStringArrayList("lines", ArrayList(lines))
+            }.asPutDataRequest().setUrgent()
+            Wearable.getDataClient(context).putDataItem(request).await()
+        }
+    }
+
     suspend fun push(context: Context) {
         runCatching {
             val app = context.applicationContext as? BudgetApplication ?: return

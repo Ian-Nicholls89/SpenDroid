@@ -15,6 +15,10 @@ class BudgetListenerService : WearableListenerService() {
         dataEvents.forEach { event ->
             if (event.type != DataEvent.TYPE_CHANGED) return@forEach
             val item = event.dataItem
+            if (item.uri.path == Roundup.PATH) {
+                Roundup.from(DataMapItem.fromDataItem(item).dataMap)?.let { Roundup.receive(this, it) }
+                return@forEach
+            }
             if (item.uri.path != BudgetReading.PATH) return@forEach
             BudgetReading.from(DataMapItem.fromDataItem(item).dataMap)?.let {
                 it.save(this)

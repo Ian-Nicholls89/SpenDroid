@@ -105,5 +105,7 @@ dependencies {
     implementation(libs.wear.protolayout.material3)
     implementation(libs.concurrent.futures.ktx)
     implementation(libs.wear.remote.interactions)
+    // The roundup's icon on the watch face, kept there until it is read.
+    implementation(libs.wear.ongoing)
     testImplementation(libs.junit)
 }

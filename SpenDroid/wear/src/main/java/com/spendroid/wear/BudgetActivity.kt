@@ -1,10 +1,13 @@
 package com.spendroid.wear
 
+import android.Manifest
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -21,6 +24,9 @@ class BudgetActivity : ComponentActivity() {
 
     private val reading = mutableStateOf<BudgetReading?>(null)
 
+    /** The roundup to show first, when a tap on its icon opened the app. */
+    private val roundup = mutableStateOf<Roundup?>(null)
+
     private val updated = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             reading.value = BudgetReading.load(context)
@@ -30,7 +36,34 @@ class BudgetActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         reading.value = BudgetReading.load(this)
-        setContent { BudgetScreens(reading.value, onOpenPhone = ::openOnPhone) }
+        showRoundupIf(intent)
+        setContent {
+            BudgetScreens(
+                reading.value,
+                onOpenPhone = ::openOnPhone,
+                roundup = roundup.value,
+                onRoundupShown = { roundup.value = null },
+            )
+        }
+        // The roundup's icon on the watch face is a notification, which needs asking for once.
+        if (Build.VERSION.SDK_INT >= 33 &&
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1)
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        showRoundupIf(intent)
+    }
+
+    /** Opened from the roundup's icon: show it, and take the icon off the watch face. */
+    private fun showRoundupIf(intent: Intent?) {
+        if (intent?.getBooleanExtra(Roundup.EXTRA_OPEN, false) != true) return
+        intent.removeExtra(Roundup.EXTRA_OPEN)
+        roundup.value = Roundup.load(this)
+        Roundup.markRead(this)
     }
 
     override fun onStart() {
