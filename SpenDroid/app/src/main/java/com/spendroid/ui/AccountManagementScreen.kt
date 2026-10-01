@@ -46,6 +46,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import com.spendroid.ui.theme.Charcoal
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.contentDescription
@@ -109,13 +111,13 @@ fun AccountManagementScreen(
                 allowance = state.syncAllowances[account.id],
                 now = now,
                 owedOnCard = state.budget?.cardBills?.firstOrNull { it.cardAccountId == account.id }?.outstandingMinor,
+                colour = colourOf(account, state.accounts),
+                bill = state.budget?.cardBills?.firstOrNull { it.cardAccountId == account.id },
             )
         }
         item {
             Spacer(Modifier.height(4.dp))
-            Button(onClick = { showLinkDialog = true }, modifier = Modifier.fillMaxWidth()) {
-                Text("Add another bank")
-            }
+            BigButton("Add another bank", Icons.Filled.AccountBalance, { showLinkDialog = true }, Modifier.fillMaxWidth(), colour = MaterialTheme.colorScheme.primary, textColour = Color(0xFF111111))
             Spacer(Modifier.height(24.dp))
         }
     }
@@ -179,6 +181,8 @@ private fun AccountWalletCard(
     now: Long = System.currentTimeMillis(),
     /** For a card with a worked-out bill: everything owed on it, as a positive amount. */
     owedOnCard: Long? = null,
+    colour: Color = Color.Gray,
+    bill: CreditCardEngine.CardBill? = null,
 ) {
     val daysLeft = connection?.daysUntilExpiry()
     val isCard = account.accountType == AccountType.CREDIT_CARD
@@ -188,14 +192,13 @@ private fun AccountWalletCard(
     val balance = owedOnCard?.let { -it } ?: account.balanceMinor
     val amount = balance?.let { formatMoney(it, account.currency) } ?: "—"
 
+    // An Unraid "service": a panel washed with the account's own colour.
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(min = 48.dp)
-            .background(
-                Brush.linearGradient(account.accountType.gradient()),
-                RoundedCornerShape(16.dp),
-            )
+            .clip(RoundedCornerShape(14.dp))
+            .background(Brush.linearGradient(listOf(colour.darken(0.5f), Charcoal.Panel, Charcoal.Panel)))
             .clickable(onClick = onClick)
             .padding(16.dp)
             .semantics(mergeDescendants = true) {
@@ -204,27 +207,21 @@ private fun AccountWalletCard(
             },
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(
-                account.accountType.icon(),
-                contentDescription = null,
-                tint = Color.White.copy(alpha = 0.9f),
-                modifier = Modifier.size(18.dp),
-            )
-            Spacer(Modifier.width(8.dp))
-            Text(
-                "${account.institutionName} · ${account.accountType.shortName}",
-                style = MaterialTheme.typography.labelMedium,
-                color = Color.White.copy(alpha = 0.85f),
-                maxLines = 1,
-            )
+            ArtTile(colour, size = 38.dp) {
+                Icon(account.accountType.icon(), contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
+            }
+            Spacer(Modifier.width(12.dp))
+            Column {
+                SectionHeading(account.label)
+                Text(
+                    "${account.institutionName} · ${account.accountType.shortName}",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = Charcoal.Muted,
+                    maxLines = 1,
+                )
+            }
         }
-        Spacer(Modifier.height(6.dp))
-        Text(
-            account.label,
-            style = MaterialTheme.typography.titleSmall,
-            color = Color.White.copy(alpha = 0.9f),
-            maxLines = 1,
-        )
+        Spacer(Modifier.height(8.dp))
         Text(
             amount,
             style = MaterialTheme.typography.headlineSmall.copy(fontFeatureSettings = "tnum"),
@@ -253,6 +250,28 @@ private fun AccountWalletCard(
                     "access $daysLeft days",
                     style = MaterialTheme.typography.labelSmall,
                     color = Color.White.copy(alpha = 0.75f),
+                )
+            }
+        }
+        // A card's statement as Unraid shows a disk: a bar with its figure inside.
+        bill?.let { b ->
+            val cap = b.capMinor?.takeIf { it > 0L }
+            Spacer(Modifier.height(10.dp))
+            LabelledBar(
+                fraction = cap?.let { b.unbilledMinor.toFloat() / it } ?: 0f,
+                label = "${formatMoney(b.unbilledMinor, b.currency)}" + (cap?.let { " / ${formatMoney(it, b.currency)}" } ?: " this statement"),
+                colour = colour,
+                tick = b.statementDaysElapsed?.let { e ->
+                    val days = b.statementClose?.let { c -> b.nextStatementClose?.let { n -> java.time.temporal.ChronoUnit.DAYS.between(c, n).toFloat() } }
+                    days?.takeIf { it > 0f }?.let { e / it }
+                },
+            )
+            if (b.dueMinor > 0L && !b.statementPaid) {
+                Text(
+                    "Next bill ${formatMoney(b.dueMinor, b.currency)}" + (b.dueDate?.let { " · ${it.format(java.time.format.DateTimeFormatter.ofPattern("d MMM"))}" } ?: ""),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = Charcoal.Muted,
+                    modifier = Modifier.padding(top = 6.dp),
                 )
             }
         }

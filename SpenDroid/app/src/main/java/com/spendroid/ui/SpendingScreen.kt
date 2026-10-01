@@ -59,8 +59,12 @@ fun SpendingScreen(
     /** Questions about payments read from notifications, shown above the list. */
     prompts: @Composable () -> Unit = {},
     onTreatAsBill: ((TransactionEntity) -> Unit)? = null,
+    /** The tab on show, held by the caller so the side menu can open Insights. */
+    tabIndex: Int? = null,
+    onTabIndex: (Int) -> Unit = {},
 ) {
-    var selected by rememberSaveable { mutableIntStateOf(0) }
+    var own by rememberSaveable { mutableIntStateOf(0) }
+    val selected = tabIndex ?: own
     val tab = SpendingTab.entries[selected.coerceIn(0, SpendingTab.entries.lastIndex)]
     // The list's two switches follow the tab; they are toggles, so flip only what differs.
     LaunchedEffect(tab, state.showRecurringOnly, state.showInternalTransfers) {
@@ -73,7 +77,7 @@ fun SpendingScreen(
         DotTabs(
             tabs = SpendingTab.entries.map { it.label },
             selected = selected,
-            onSelect = { selected = it },
+            onSelect = { own = it; onTabIndex(it) },
             modifier = Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 18.dp),
         )
         when (tab) {

@@ -27,6 +27,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.Modifier
+import com.spendroid.ui.theme.Charcoal
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.clip
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.material.icons.filled.CreditCard
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.ui.unit.dp
 import com.spendroid.data.db.ManualRecurringRuleEntity
 import androidx.compose.foundation.background
@@ -115,72 +124,145 @@ fun RecurringRulesScreen(
         )
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp),
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text("Recurring payments", style = MaterialTheme.typography.titleMedium)
-            TextButton(onClick = onAddManual) {
-                Text("Add manual")
-            }
-        }
-        Spacer(Modifier.height(4.dp))
+    var tab by rememberSaveable { mutableIntStateOf(0) }
+    val ignoredRules = rules.filter { it.key in ignored }
+    Box(Modifier.fillMaxSize()) {
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(bottom = 96.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            if (budget?.nextIncomeDate != null) {
-                item { CycleTimeline(budget) }
+            item {
+                DotTabs(
+                    listOf("Upcoming", "Bills", "Income", "Ignored"),
+                    tab,
+                    { tab = it },
+                    Modifier.padding(horizontal = 18.dp),
+                )
             }
-            if (income.isNotEmpty() || manualIncome.isNotEmpty()) {
-                item { Text("Income", style = MaterialTheme.typography.titleMedium) }
-                item {
-                    Text(
-                        "Mark which income sets your pay cycle. Everything else still adds to " +
-                            "the budget - it just does not move the dates.",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(bottom = 6.dp),
-                    )
+            when (tab) {
+                0 -> {
+                    val upcoming = budget?.upcomingFixed.orEmpty()
+                    val payday = budget?.nextIncomeDate
+                    item {
+                        Column(Modifier.padding(horizontal = 18.dp, vertical = 8.dp)) {
+                            Text(
+                                payday?.let { "Before payday · ${it.format(java.time.format.DateTimeFormatter.ofPattern("EEE d MMM"))}" } ?: "Before payday",
+                                style = MaterialTheme.typography.labelLarge,
+                                color = Charcoal.Muted,
+                            )
+                            Text(
+                                "${formatMoney(upcoming.sumOf { it.amountMinor }, budget?.baseCurrency ?: "GBP")} to go out",
+                                style = MaterialTheme.typography.headlineSmall,
+                            )
+                        }
+                    }
+                    if (upcoming.isEmpty()) {
+                        item { Text("Nothing more due before payday.", color = Charcoal.Muted, modifier = Modifier.padding(horizontal = 18.dp)) }
+                    }
+                    val today = budget?.asOf ?: LocalDate.now()
+                    val (thisWeek, later) = upcoming.partition { !it.dueDate.isAfter(today.plusDays(6)) }
+                    listOf("This week" to thisWeek, "Later" to later).forEach { (heading, payments) ->
+                        if (payments.isEmpty()) return@forEach
+                        item { DayHeading(heading) }
+                        items(payments, key = { "${it.rule.key}|${it.dueDate}" }) { p -> UpcomingRow(p, today) }
+                    }
                 }
-                items(income, key = { it.key }) { rule ->
-                    RuleRow(
-                        rule = rule,
-                        ignored = ignored.contains(rule.key),
-                        isPrimaryIncome = rule.key == primaryIncomeKey,
-                        canBePrimary = true,
-                        overridden = overrides.containsKey(rule.key),
-                        onEdit = { editing = rule },
-                        onSetPrimary = {
-                            onSetPrimaryIncome(if (rule.key == primaryIncomeKey) null else rule.key)
-                        },
-                    ) { onToggle(rule.key, it) }
+                1 -> {
+                    item { SectionHeading("Bills", Modifier.padding(horizontal = 18.dp, vertical = 6.dp), trailing = "switch one off to leave it out") }
+                    items(fixed.filter { it.key !in ignored }, key = { it.key }) { rule ->
+                        RuleRow(
+                            rule = rule,
+                            ignored = false,
+                            overridden = overrides.containsKey(rule.key),
+                            onEdit = { editing = rule },
+                        ) { onToggle(rule.key, it) }
+                    }
+                    items(manualFixed, key = { it.id }) { rule -> ManualRuleRow(rule) }
                 }
-                items(manualIncome, key = { it.id }) { rule ->
-                    ManualRuleRow(rule)
+                2 -> {
+                    item {
+                        Text(
+                            "Star the income that sets your pay cycle. Everything else still adds to the budget - " +
+                                "it just does not move the dates.",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = Charcoal.Muted,
+                            modifier = Modifier.padding(horizontal = 18.dp, vertical = 6.dp),
+                        )
+                    }
+                    items(income.filter { it.key !in ignored }, key = { it.key }) { rule ->
+                        RuleRow(
+                            rule = rule,
+                            ignored = false,
+                            isPrimaryIncome = rule.key == primaryIncomeKey,
+                            canBePrimary = true,
+                            overridden = overrides.containsKey(rule.key),
+                            onEdit = { editing = rule },
+                            onSetPrimary = { onSetPrimaryIncome(if (rule.key == primaryIncomeKey) null else rule.key) },
+                        ) { onToggle(rule.key, it) }
+                    }
+                    items(manualIncome, key = { it.id }) { rule -> ManualRuleRow(rule) }
                 }
-                item { Spacer(Modifier.height(8.dp)) }
+                else -> {
+                    if (ignoredRules.isEmpty()) {
+                        item { Text("Nothing left out. Switch a bill or income off to leave it out of the budget.", color = Charcoal.Muted, modifier = Modifier.padding(horizontal = 18.dp, vertical = 6.dp)) }
+                    }
+                    items(ignoredRules, key = { it.key }) { rule ->
+                        RuleRow(
+                            rule = rule,
+                            ignored = true,
+                            overridden = overrides.containsKey(rule.key),
+                            onEdit = { editing = rule },
+                        ) { onToggle(rule.key, it) }
+                    }
+                }
             }
-            if (fixed.isNotEmpty() || manualFixed.isNotEmpty()) {
-                item { Text("Fixed outgoings", style = MaterialTheme.typography.titleMedium) }
-                items(fixed, key = { it.key }) { rule ->
-                    RuleRow(
-                        rule = rule,
-                        ignored = ignored.contains(rule.key),
-                        overridden = overrides.containsKey(rule.key),
-                        onEdit = { editing = rule },
-                    ) { onToggle(rule.key, it) }
-                }
-                items(manualFixed, key = { it.id }) { rule ->
-                    ManualRuleRow(rule)
-                }
-            }
+        }
+        androidx.compose.material3.FloatingActionButton(
+            onClick = onAddManual,
+            shape = CircleShape,
+            containerColor = MaterialTheme.colorScheme.primary,
+            contentColor = Color(0xFF111111),
+            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 14.dp),
+        ) { Icon(Icons.Filled.Add, contentDescription = "Add a regular payment by hand") }
+    }
+}
+
+/** A payment still to come, as Sonarr's Upcoming lists an episode: its tile, and its date in the accent. */
+@Composable
+private fun UpcomingRow(p: com.spendroid.domain.UpcomingPayment, today: LocalDate) {
+    val isCard = p.rule.key.startsWith(com.spendroid.domain.CARD_BILL_KEY_PREFIX)
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 14.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(Charcoal.Panel)
+            .padding(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        ArtTile(payeeColour(p.rule.payee), size = 44.dp, height = 56.dp) {
+            if (isCard) Icon(Icons.Filled.CreditCard, contentDescription = null, tint = Color.White, modifier = Modifier.size(22.dp))
+            else Monogram(p.rule.payee, 44.dp)
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(p.rule.payee.tidyPayee(), style = MaterialTheme.typography.titleSmall, maxLines = 1)
+            Text(
+                if (isCard) "Card statement · estimated" else describeRule(p.rule),
+                style = MaterialTheme.typography.labelSmall,
+                color = Charcoal.Muted,
+                maxLines = 1,
+            )
+        }
+        Column(horizontalAlignment = Alignment.End) {
+            Text(recurringAmount(p.amountMinor, p.rule.perOccurrence, p.rule.currency, p.rule.isVariable), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Black)
+            Text(
+                (if (isCard) "~" else "") + shortDay(p.dueDate, today).let { if (it.first().isDigit()) p.dueDate.format(java.time.format.DateTimeFormatter.ofPattern("EEE d MMM")) else it },
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.Black,
+                color = MaterialTheme.colorScheme.primary,
+            )
         }
     }
 }
@@ -189,7 +271,7 @@ fun RecurringRulesScreen(
 private fun ManualRuleRow(
     rule: ManualRecurringRuleEntity,
 ) {
-    Card(modifier = Modifier.fillMaxWidth()) {
+    Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp)) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -239,10 +321,17 @@ private fun RuleRow(
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(min = 48.dp)
+            .padding(horizontal = 14.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(Charcoal.Panel)
             .clickable(onClick = onEdit)
-            .padding(vertical = 6.dp),
+            .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        if (!canBePrimary) {
+            ArtTile(payeeColour(rule.payee), size = 38.dp) { Monogram(rule.payee, 38.dp) }
+            Spacer(Modifier.width(10.dp))
+        }
         if (canBePrimary) {
             IconButton(onClick = onSetPrimary, modifier = Modifier.size(36.dp)) {
                 Icon(
@@ -305,7 +394,6 @@ private fun RuleRow(
         Spacer(Modifier.width(4.dp))
         Switch(checked = !ignored, onCheckedChange = { onToggle(!it) })
     }
-    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 }
 
 @Composable

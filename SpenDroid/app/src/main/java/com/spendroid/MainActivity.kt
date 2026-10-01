@@ -18,6 +18,15 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.graphics.Color
 import com.spendroid.ui.HeaderGlow
 import com.spendroid.ui.LocalAccountColours
+import com.spendroid.ui.AppDrawer
+import com.spendroid.ui.DrawerTarget
+import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.ModalNavigationDrawer
+import androidx.compose.material3.rememberDrawerState
+import androidx.compose.material.icons.filled.Menu
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.rememberCoroutineScope
 import com.spendroid.ui.GlowState
 import com.spendroid.ui.LocalGlow
 import com.spendroid.ui.Wordmark
@@ -108,7 +117,7 @@ enum class AppScreen(
     Home("home", "Dashboard", "Home", Icons.Filled.Home),
     Spending("spending", "Spending", "Spending", Icons.AutoMirrored.Filled.ReceiptLong),
     Accounts("accounts", "Accounts", "Accounts", Icons.Filled.AccountBalance),
-    Rules("rules", "Recurring rules", "Rules", Icons.Filled.Repeat),
+    Rules("rules", "Regular", "Regular", Icons.Filled.Repeat),
     Settings("settings", "Settings", "Settings", Icons.Filled.Settings);
 
     companion object {
@@ -219,6 +228,42 @@ class MainActivity : ComponentActivity() {
                 }
 
                 if (state.hasCredentials) {
+                    val drawer = rememberDrawerState(DrawerValue.Closed)
+                    val scope = rememberCoroutineScope()
+                    var spendingTab by rememberSaveable { mutableIntStateOf(0) }
+                    ModalNavigationDrawer(
+                        drawerState = drawer,
+                        drawerContent = {
+                            AppDrawer(
+                                state = state,
+                                current = when (screen) {
+                                    AppScreen.Home -> DrawerTarget.OVERVIEW
+                                    AppScreen.Rules -> DrawerTarget.REGULAR
+                                    AppScreen.Settings -> DrawerTarget.SETTINGS
+                                    AppScreen.Spending -> DrawerTarget.INSIGHTS.takeIf { spendingTab == 4 }
+                                    else -> null
+                                },
+                                onTarget = { target ->
+                                    when (target) {
+                                        DrawerTarget.OVERVIEW -> navigate(AppScreen.Home)
+                                        DrawerTarget.REGULAR -> navigate(AppScreen.Rules)
+                                        DrawerTarget.INSIGHTS -> {
+                                            spendingTab = 4
+                                            navigate(AppScreen.Spending)
+                                        }
+                                        DrawerTarget.SETTINGS -> navigate(AppScreen.Settings)
+                                    }
+                                    scope.launch { drawer.close() }
+                                },
+                                onAccount = { account ->
+                                    viewModel.setAccountFilter(account.id)
+                                    spendingTab = 0
+                                    navigate(AppScreen.Spending)
+                                    scope.launch { drawer.close() }
+                                },
+                            )
+                        },
+                    ) {
                     Box(Modifier.fillMaxSize().background(Charcoal.Background)) {
                     val glowColour by animateColorAsState(
                         glow.colour ?: MaterialTheme.colorScheme.primary,
@@ -236,9 +281,12 @@ class MainActivity : ComponentActivity() {
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .statusBarsPadding()
-                                    .padding(horizontal = 20.dp, vertical = 14.dp),
+                                    .padding(start = 6.dp, end = 20.dp, top = 4.dp, bottom = 4.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
+                                IconButton(onClick = { scope.launch { drawer.open() } }, modifier = Modifier.padding(end = 6.dp)) {
+                                    Icon(Icons.Filled.Menu, contentDescription = "Menu", tint = Color(0xFFCFD2D8))
+                                }
                                 Wordmark(
                                     text = if (screen == AppScreen.Home) "SpenDroid" else screen.title,
                                     colour = glowColour,
@@ -302,6 +350,8 @@ class MainActivity : ComponentActivity() {
                                             onCategoryFilter = viewModel::setCategoryFilter,
                                             onSetBudgetGoal = viewModel::setBudgetGoal,
                                             onTreatAsBill = viewModel::treatAsBill,
+                                            tabIndex = spendingTab,
+                                            onTabIndex = { spendingTab = it },
                                             prompts = {
                                                 com.spendroid.ui.DuplicatePrompts(
                                                     questions = state.duplicateQuestions,
@@ -380,6 +430,7 @@ class MainActivity : ComponentActivity() {
                                 }
                             }
                         }
+                    }
                     }
                     }
                 } else {

@@ -30,6 +30,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import com.spendroid.ui.theme.Charcoal
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.draw.clip
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.DropdownMenu
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -144,8 +150,53 @@ fun InsightsScreen(
             return@Column
         }
 
-        PeriodSelector(period) { period = it }
-        Spacer(Modifier.height(12.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Where it went", style = MaterialTheme.typography.titleLarge)
+                Text(period.note, style = MaterialTheme.typography.labelMedium, color = Charcoal.Muted)
+            }
+            PeriodPicker(period) { period = it }
+        }
+        Spacer(Modifier.height(14.dp))
+
+        if (breakdown.isNotEmpty()) {
+            TopFive(
+                title = "Most spent · categories",
+                trailing = "£",
+                leaderColour = breakdown.first().category.visual.color,
+                leader = { CategoryTile(breakdown.first().category, size = 64.dp) },
+                rows = breakdown.take(5).map { it.category.label to formatMoney(it.amountMinor, it.currency) },
+                valueColour = MaterialTheme.colorScheme.primary,
+            )
+            Spacer(Modifier.height(12.dp))
+        }
+        val payees = remember(windowed) { topPayees(windowed, state.budget?.cardPaymentKeys.orEmpty()) }
+        if (payees.isNotEmpty()) {
+            val first = payees.first().first
+            TopFive(
+                title = "Most visited · payees",
+                trailing = "Visits",
+                leaderColour = payeeColour(first),
+                leader = { ArtTile(payeeColour(first), size = 64.dp, height = 86.dp) { Monogram(first, 64.dp) } },
+                rows = payees.take(5).map { (name, visits) -> name to visits.toString() },
+                valueColour = Color(0xFF29B6F6),
+            )
+            Spacer(Modifier.height(12.dp))
+        }
+        state.budget?.takeIf { it.lastSevenDaysMinor.isNotEmpty() }?.let { budget ->
+            Panel {
+                SectionHeading("Day by day", trailing = "the last week")
+                Spacer(Modifier.height(12.dp))
+                WeekBars(
+                    budget.lastSevenDaysMinor,
+                    budget.asOf,
+                    perDay = budget.daysUntilNextIncome?.takeIf { it > 0 }?.let { (budget.availableToSpend + budget.spentToday) / (it + 1) },
+                )
+            }
+            Spacer(Modifier.height(16.dp))
+        }
+        AccentTitle("Every category", "tap one to set a monthly cap")
+        Spacer(Modifier.height(10.dp))
 
         if (breakdown.isNotEmpty()) {
             CategoryBreakdownCard(
@@ -195,26 +246,79 @@ private enum class SpendingPeriod(val label: String, val note: String) {
     }
 }
 
+/**
+ * nzb360's "Last: Month" picker in the corner: the window the cards cover. Cycle is the default,
+ * as every other figure in the app is measured by it.
+ */
 @Composable
-private fun PeriodSelector(selected: SpendingPeriod, onSelect: (SpendingPeriod) -> Unit) {
-    Column {
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            items(SpendingPeriod.entries.toList(), key = { it.name }) { option ->
-                FilterChip(
-                    selected = selected == option,
-                    onClick = { onSelect(option) },
-                    label = { Text(option.label, maxLines = 1) },
-                )
+private fun PeriodPicker(selected: SpendingPeriod, onSelect: (SpendingPeriod) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    Box {
+        Column(
+            Modifier
+                .clip(RoundedCornerShape(8.dp))
+                .background(Charcoal.PanelHigh)
+                .clickable { open = true }
+                .padding(horizontal = 12.dp, vertical = 6.dp),
+        ) {
+            Text("Last", style = MaterialTheme.typography.labelSmall, color = Charcoal.Muted)
+            Text("${selected.label} ▾", style = MaterialTheme.typography.labelLarge)
+        }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            SpendingPeriod.entries.forEach { option ->
+                DropdownMenuItem(text = { Text(option.label) }, onClick = { onSelect(option); open = false })
             }
         }
-        Spacer(Modifier.height(4.dp))
-        Text(
-            selected.note,
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
     }
 }
+
+/**
+ * A ranked top five, as Tautulli's "most watched": the leader's tile on the left, the list beside
+ * it, and the card washed with the leader's colour.
+ */
+@Composable
+private fun TopFive(
+    title: String,
+    trailing: String,
+    leaderColour: Color,
+    leader: @Composable () -> Unit,
+    rows: List<Pair<String, String>>,
+    valueColour: Color,
+) {
+    Panel(brush = Brush.linearGradient(listOf(leaderColour.darken(0.45f), Charcoal.Panel, Charcoal.Panel))) {
+        SectionHeading(title, trailing = trailing)
+        Spacer(Modifier.height(10.dp))
+        Row {
+            leader()
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                rows.forEachIndexed { i, (name, value) ->
+                    Row(Modifier.padding(vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text("${i + 1}", style = MaterialTheme.typography.bodyMedium, color = Color(0xFFC9CCD3), modifier = Modifier.width(18.dp))
+                        Text(
+                            name,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = if (i == 0) FontWeight.Bold else FontWeight.Normal,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Text(value, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Black, color = valueColour)
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** Payees by how often they were paid in the window: spending only, card bill payments aside. */
+private fun topPayees(transactions: List<TransactionEntity>, cardPaymentKeys: Set<String>): List<Pair<String, Int>> =
+    transactions
+        .filter { it.amountMinor < 0 && !it.isInternalTransfer && "${it.accountId}|${it.transactionId}" !in cardPaymentKeys }
+        .groupBy { it.payee.tidyPayee().lowercase() }
+        .filterKeys { it.isNotBlank() }
+        .map { (_, txs) -> txs.first().payee.tidyPayee() to txs.size }
+        .sortedByDescending { it.second }
 
 @Composable
 private fun BudgetGoalDialog(

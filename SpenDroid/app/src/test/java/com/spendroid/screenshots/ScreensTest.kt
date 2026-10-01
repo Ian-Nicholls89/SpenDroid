@@ -161,4 +161,18 @@ class ScreensTest {
         compose.waitForIdle()
         com.github.takahirom.roborazzi.captureScreenRoboImage("build/screenshots/transaction.png")
     }
+
+    @Test
+    @Config(qualifiers = "w411dp-h1500dp-xxhdpi")
+    fun insights() {
+        val state = Sample.state()
+        shoot("insights", AppScreen.Spending) { com.spendroid.ui.InsightsScreen(state, onSetBudgetGoal = { _, _ -> }) }
+    }
+
+    @Test
+    fun drawer() {
+        val state = Sample.state()
+        compose.setContent { BudgetTheme { com.spendroid.ui.AppDrawer(state, com.spendroid.ui.DrawerTarget.OVERVIEW, {}, {}) } }
+        compose.onRoot().captureRoboImage("build/screenshots/drawer.png")
+    }
 }

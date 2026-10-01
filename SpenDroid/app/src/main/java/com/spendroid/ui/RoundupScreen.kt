@@ -158,7 +158,7 @@ fun RoundupScreen(state: RootUiState, onBack: () -> Unit, onSeeQuestions: () -> 
  * amber; [perDay] is that share, or null when it is not known.
  */
 @Composable
-private fun WeekBars(days: List<Long>, today: java.time.LocalDate, perDay: Long?) {
+internal fun WeekBars(days: List<Long>, today: java.time.LocalDate, perDay: Long?) {
     if (days.isEmpty()) return
     val top = (days.maxOrNull() ?: 0L).coerceAtLeast(perDay ?: 1L).coerceAtLeast(1L)
     val labels = (days.indices).map { i -> today.minusDays((days.size - 1 - i).toLong()) }
