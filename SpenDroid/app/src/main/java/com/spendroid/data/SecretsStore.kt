@@ -78,6 +78,8 @@ class SecretsStore(private val context: Context) {
         val PRIMARY_INCOME_KEY = stringPreferencesKey("primary_income_key")
         val BUDGET_MODEL = stringPreferencesKey("budget_model")
         val CARD_TIMING = stringPreferencesKey("card_timing")
+        val ACCENT = stringPreferencesKey("accent")
+        val ACCOUNT_COLOURS = androidx.datastore.preferences.core.booleanPreferencesKey("account_colours")
         val SPEND_SOURCES = stringPreferencesKey("spend_sources")
         val SPEND_LEARNED = stringPreferencesKey("spend_learned")
         val SPEND_READING_ON = androidx.datastore.preferences.core.booleanPreferencesKey("spend_reading_on")
@@ -107,6 +109,22 @@ class SecretsStore(private val context: Context) {
     val primaryIncomeKey: Flow<String?> = stringFlow(Keys.PRIMARY_INCOME_KEY)
     val budgetModel: Flow<String?> = stringFlow(Keys.BUDGET_MODEL)
     val cardTiming: Flow<String?> = stringFlow(Keys.CARD_TIMING)
+
+    /** The app's accent colour, by [com.spendroid.ui.theme.Accent] name. */
+    val accent: Flow<String?> = stringFlow(Keys.ACCENT)
+
+    suspend fun saveAccent(name: String) {
+        context.dataStore.edit { prefs -> prefs[Keys.ACCENT] = name }
+    }
+
+    /** Whether each account wears its own colour. On unless turned off. */
+    val accountColours: Flow<Boolean> = context.dataStore.data
+        .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
+        .map { prefs -> prefs[Keys.ACCOUNT_COLOURS] ?: true }
+
+    suspend fun saveAccountColours(on: Boolean) {
+        context.dataStore.edit { prefs -> prefs[Keys.ACCOUNT_COLOURS] = on }
+    }
 
     suspend fun saveCardTiming(name: String) {
         context.dataStore.edit { prefs -> prefs[Keys.CARD_TIMING] = name }

@@ -1,96 +1,102 @@
 package com.spendroid.ui.theme
 
-import android.os.Build
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.dynamicDarkColorScheme
-import androidx.compose.material3.dynamicLightColorScheme
-import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.unit.TextUnit
+import com.spendroid.R
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-private val DarkColors = darkColorScheme(
-    primary = Color(0xFF81C784),
-    onPrimary = Color(0xFF00390C),
-    primaryContainer = Color(0xFF1B5E20),
-    onPrimaryContainer = Color(0xFFC8E6C9),
-    secondary = Color(0xFFAED581),
-    onSecondary = Color(0xFF203A0C),
-    secondaryContainer = Color(0xFF2E5233),
-    onSecondaryContainer = Color(0xFFCCE8CD),
-    tertiary = Color(0xFF90CAF9),
-    onTertiary = Color(0xFF0D47A1),
-    background = Color(0xFF0F110F),
-    onBackground = Color(0xFFE2E8E0),
-    surface = Color(0xFF171A17),
-    onSurface = Color(0xFFE2E8E0),
-    surfaceVariant = Color(0xFF2A322B),
-    onSurfaceVariant = Color(0xFFBECDBA),
-    outline = Color(0xFF7A8A77),
-    outlineVariant = Color(0xFF2A322B),
-    error = Color(0xFFEF5350),
+/**
+ * The app's accent: buttons, the selected tab, the glow behind the header, headings in a
+ * list. The user picks it; orange is nzb360's own and the default.
+ */
+enum class Accent(val label: String, val colour: Color) {
+    ORANGE("Orange", Color(0xFFF5A623)),
+    BLUE("Blue", Color(0xFF29B6F6)),
+    GREEN("Green", Color(0xFF43B05C)),
+    PINK("Pink", Color(0xFFE04A7A)),
+    ;
+
+    companion object {
+        fun from(name: String?): Accent = entries.firstOrNull { it.name == name } ?: ORANGE
+    }
+}
+
+/** The charcoal the whole app sits on, and the panels on top of it. */
+object Charcoal {
+    val Background = Color(0xFF18191D)
+    val Panel = Color(0xFF23252B)
+    val PanelHigh = Color(0xFF2A2C33)
+    val Line = Color(0xFF2E3037)
+    val Text = Color(0xFFFFFFFF)
+    val Muted = Color(0xFF9AA0AA)
+    val Faint = Color(0xFF6B707A)
+    val Good = Color(0xFF43B05C)
+    val Warn = Color(0xFFF5A623)
+    val Bad = Color(0xFFE5534B)
+    val In = Color(0xFF5FD38A)
+}
+
+/** Dark always: nzb360's look is built on it, and the colours below are chosen against it. */
+private fun charcoalScheme(accent: Color) = darkColorScheme(
+    primary = accent,
+    onPrimary = Color(0xFF111111),
+    primaryContainer = accent.copy(alpha = 0.22f).compositeOver(Charcoal.Panel),
+    onPrimaryContainer = Color.White,
+    secondary = accent,
+    onSecondary = Color(0xFF111111),
+    secondaryContainer = Charcoal.PanelHigh,
+    onSecondaryContainer = Color.White,
+    tertiary = Color(0xFF29B6F6),
+    onTertiary = Color(0xFF08121A),
+    tertiaryContainer = Charcoal.PanelHigh,
+    onTertiaryContainer = Color.White,
+    background = Charcoal.Background,
+    onBackground = Charcoal.Text,
+    surface = Charcoal.Background,
+    onSurface = Charcoal.Text,
+    surfaceVariant = Charcoal.PanelHigh,
+    onSurfaceVariant = Charcoal.Muted,
+    surfaceContainerLowest = Charcoal.Background,
+    surfaceContainerLow = Color(0xFF1F2025),
+    surfaceContainer = Charcoal.Panel,
+    surfaceContainerHigh = Charcoal.PanelHigh,
+    surfaceContainerHighest = Color(0xFF32353D),
+    inverseSurface = Color(0xFFE8E9EC),
+    inverseOnSurface = Charcoal.Background,
+    outline = Color(0xFF5A5F68),
+    outlineVariant = Charcoal.Line,
+    error = Charcoal.Bad,
     onError = Color.White,
-    surfaceTint = Color(0xFF81C784),
+    surfaceTint = Color.Transparent,
+    scrim = Color.Black,
 )
 
-private val LightColors = lightColorScheme(
-    primary = Color(0xFF2E7D32),
-    onPrimary = Color.White,
-    primaryContainer = Color(0xFFC8E6C9),
-    onPrimaryContainer = Color(0xFF0B3D12),
-    secondary = Color(0xFF558B2F),
-    onSecondary = Color.White,
-    secondaryContainer = Color(0xFFDCEDC8),
-    onSecondaryContainer = Color(0xFF1B3A0A),
-    tertiary = Color(0xFF1976D2),
-    onTertiary = Color.White,
-    background = Color(0xFFFBFDF8),
-    onBackground = Color(0xFF171C17),
-    surface = Color(0xFFFFFFFF),
-    onSurface = Color(0xFF171C17),
-    surfaceVariant = Color(0xFFE8F0E1),
-    onSurfaceVariant = Color(0xFF40503D),
-    outline = Color(0xFF6B7A68),
-    outlineVariant = Color(0xFFD4E2CE),
-    error = Color(0xFFBA1A1A),
-    onError = Color.White,
-    surfaceTint = Color(0xFF2E7D32),
-)
-
-private val HeroStart = Color(0xFF2E7D32)
-private val HeroEnd = Color(0xFF1B5E20)
-
+/** The header's glow and the old hero gradient, from the accent. */
 val HeroGradientStart: Color
-    @Composable get() = HeroStart
+    @Composable get() = MaterialTheme.colorScheme.primary.copy(alpha = 0.55f).compositeOver(Charcoal.Panel)
 
 val HeroGradientEnd: Color
-    @Composable get() = HeroEnd
+    @Composable get() = Charcoal.Panel
 
 @Composable
 fun BudgetTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
+    accent: Accent = Accent.ORANGE,
     content: @Composable () -> Unit
 ) {
-    val context = LocalContext.current
-    val dynamicColor = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
-    val colorScheme = when {
-        dynamicColor && darkTheme -> dynamicDarkColorScheme(context)
-        dynamicColor -> dynamicLightColorScheme(context)
-        darkTheme -> DarkColors
-        else -> LightColors
-    }
-
     MaterialTheme(
-        colorScheme = colorScheme,
+        colorScheme = charcoalScheme(accent.colour),
         typography = BudgetTypography,
         shapes = BudgetShapes,
         content = content
@@ -100,43 +106,40 @@ fun BudgetTheme(
 private val BudgetShapes = Shapes(
     extraSmall = RoundedCornerShape(4.dp),
     small = RoundedCornerShape(8.dp),
-    medium = RoundedCornerShape(16.dp),
-    large = RoundedCornerShape(24.dp),
+    medium = RoundedCornerShape(14.dp),
+    large = RoundedCornerShape(18.dp),
     extraLarge = RoundedCornerShape(28.dp),
 )
 
+val Lato = FontFamily(
+    Font(R.font.lato_regular, FontWeight.Normal),
+    Font(R.font.lato_bold, FontWeight.Bold),
+    Font(R.font.lato_bold, FontWeight.SemiBold),
+    Font(R.font.lato_bold, FontWeight.Medium),
+    Font(R.font.lato_black, FontWeight.Black),
+    Font(R.font.lato_black, FontWeight.ExtraBold),
+)
+
+/** Lato throughout, as nzb360 uses; headings heavier than Material's. */
 private val BudgetTypography = run {
     val base = Typography()
+    fun TextStyle.lato(weight: FontWeight? = null, spacing: TextUnit? = null) =
+        copy(fontFamily = Lato, fontWeight = weight ?: fontWeight, letterSpacing = spacing ?: letterSpacing)
     base.copy(
-        displayLarge = base.displayLarge.copy(
-            fontFamily = FontFamily.SansSerif,
-            fontWeight = FontWeight.Bold,
-            letterSpacing = (-1.5).sp
-        ),
-        headlineLarge = base.headlineLarge.copy(
-            fontWeight = FontWeight.Bold,
-            letterSpacing = (-0.5).sp
-        ),
-        headlineMedium = base.headlineMedium.copy(
-            fontWeight = FontWeight.SemiBold
-        ),
-        headlineSmall = base.headlineSmall.copy(
-            fontWeight = FontWeight.SemiBold
-        ),
-        titleLarge = base.titleLarge.copy(
-            fontWeight = FontWeight.SemiBold
-        ),
-        titleMedium = base.titleMedium.copy(
-            fontWeight = FontWeight.SemiBold
-        ),
-        bodyLarge = base.bodyLarge.copy(
-            letterSpacing = 0.15.sp
-        ),
-        bodyMedium = base.bodyMedium.copy(
-            letterSpacing = 0.25.sp
-        ),
-        labelLarge = base.labelLarge.copy(
-            fontWeight = FontWeight.SemiBold
-        ),
+        displayLarge = base.displayLarge.lato(FontWeight.Black, (-1).sp),
+        displayMedium = base.displayMedium.lato(FontWeight.Black, (-0.5).sp),
+        displaySmall = base.displaySmall.lato(FontWeight.Black),
+        headlineLarge = base.headlineLarge.lato(FontWeight.Black, (-0.5).sp),
+        headlineMedium = base.headlineMedium.lato(FontWeight.Black),
+        headlineSmall = base.headlineSmall.lato(FontWeight.Black),
+        titleLarge = base.titleLarge.lato(FontWeight.Black),
+        titleMedium = base.titleMedium.lato(FontWeight.Bold),
+        titleSmall = base.titleSmall.lato(FontWeight.Bold),
+        bodyLarge = base.bodyLarge.lato(spacing = 0.15.sp),
+        bodyMedium = base.bodyMedium.lato(spacing = 0.2.sp),
+        bodySmall = base.bodySmall.lato(),
+        labelLarge = base.labelLarge.lato(FontWeight.Bold),
+        labelMedium = base.labelMedium.lato(FontWeight.Bold),
+        labelSmall = base.labelSmall.lato(FontWeight.Bold),
     )
 }

@@ -123,6 +123,13 @@ class GoCardlessRepository private constructor(
 
     suspend fun saveBudgetModel(name: String) = secrets.saveBudgetModel(name)
 
+    val accent: Flow<String?> = secrets.accent
+    val accountColours: Flow<Boolean> = secrets.accountColours
+
+    suspend fun saveAccent(name: String) = secrets.saveAccent(name)
+
+    suspend fun saveAccountColours(on: Boolean) = secrets.saveAccountColours(on)
+
     val cardTiming: Flow<String?> = secrets.cardTiming
 
     suspend fun saveCardTiming(name: String) = secrets.saveCardTiming(name)

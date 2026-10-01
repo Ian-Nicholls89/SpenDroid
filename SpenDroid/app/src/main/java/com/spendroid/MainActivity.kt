@@ -7,6 +7,19 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.content.Intent
 import android.os.Bundle
+import androidx.activity.SystemBarStyle
+import androidx.activity.enableEdgeToEdge
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.graphics.Color
+import com.spendroid.ui.HeaderGlow
+import com.spendroid.ui.LocalAccountColours
+import com.spendroid.ui.Wordmark
+import com.spendroid.ui.theme.Charcoal
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -101,6 +114,60 @@ enum class AppScreen(
     }
 }
 
+/**
+ * The tabs at the foot, nzb360's way: the chosen one's icon in a pill of the accent, every label
+ * shown. Material's bar hid the labels and tinted the pill to its own scheme.
+ */
+@Composable
+internal fun PillNavigationBar(screens: List<AppScreen>, selected: AppScreen, onSelect: (AppScreen) -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color(0xFF1F2025))
+            .navigationBarsPadding()
+            .height(72.dp),
+        horizontalArrangement = Arrangement.SpaceAround,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        screens.forEach { destination ->
+            val on = destination == selected
+            val pill by animateColorAsState(
+                if (on) MaterialTheme.colorScheme.primary else Color.Transparent,
+                Motion.change(Motion.SHORT),
+                label = "pill",
+            )
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(16.dp))
+                    .clickable { onSelect(destination) }
+                    .padding(vertical = 6.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Box(
+                    Modifier
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(pill)
+                        .padding(horizontal = 18.dp, vertical = 4.dp),
+                ) {
+                    Icon(
+                        destination.icon,
+                        contentDescription = null,
+                        tint = if (on) Color(0xFF111111) else Color(0xFFAAB0BB),
+                        modifier = Modifier.size(22.dp),
+                    )
+                }
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    destination.shortTitle,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (on) Color.White else Color(0xFFAAB0BB),
+                )
+            }
+        }
+    }
+}
+
 class MainActivity : ComponentActivity() {
 
     private val viewModel: RootViewModel by viewModels { RootViewModel.factory(application) }
@@ -114,8 +181,14 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         if (savedInstanceState == null) widgetCategory.value = intent?.getStringExtra(MAIN_EXTRA_CATEGORY)
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
+            navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
+        )
         setContent {
-            BudgetTheme {
+            val look by viewModel.look.collectAsStateWithLifecycle()
+            BudgetTheme(accent = look.accent) {
+            CompositionLocalProvider(LocalAccountColours provides look.accountColours) {
                 val state by viewModel.state.collectAsStateWithLifecycle()
                 var screenRoute by rememberSaveable { mutableStateOf(AppScreen.Home.route) }
                 val screen = AppScreen.from(screenRoute)
@@ -137,64 +210,33 @@ class MainActivity : ComponentActivity() {
                 }
 
                 if (state.hasCredentials) {
+                    Box(Modifier.fillMaxSize().background(Charcoal.Background)) {
+                    HeaderGlow(MaterialTheme.colorScheme.primary, height = 260.dp)
                     Scaffold(
+                        // The glow behind the header shows through: nzb360's warm wash at the top.
+                        containerColor = Color.Transparent,
+                        // Transparent has no colour of its own to read text against, so say it.
+                        contentColor = Charcoal.Text,
                         topBar = {
-                            TopAppBar(
-                                title = {
-                                    Text(
-                                        text = if (screen == AppScreen.Home) "SpenDroid" else screen.title,
-                                        style = if (screen == AppScreen.Home) {
-                                            MaterialTheme.typography.headlineSmall
-                                        } else {
-                                            MaterialTheme.typography.titleLarge
-                                        },
-                                    )
-                                },
-                                colors = TopAppBarDefaults.topAppBarColors(
-                                    containerColor = MaterialTheme.colorScheme.surface,
-                                    titleContentColor = MaterialTheme.colorScheme.onSurface,
-                                ),
-                            )
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .statusBarsPadding()
+                                    .padding(horizontal = 20.dp, vertical = 14.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Wordmark(
+                                    text = if (screen == AppScreen.Home) "SpenDroid" else screen.title,
+                                    colour = MaterialTheme.colorScheme.primary,
+                                )
+                            }
                         },
                         bottomBar = {
-                            NavigationBar {
-                                AppScreen.entries.forEach { destination ->
-                                    NavigationBarItem(
-                                        selected = destination == screen,
-                                        onClick = { navigate(destination) },
-                                        icon = {
-                                            // A small bounce on arrival says which tab took the
-                                            // tap; Material's own pill slides across beneath it.
-                                            val bounce = remember { Animatable(1f) }
-                                            val selected = destination == screen
-                                            LaunchedEffect(selected) {
-                                                if (selected) {
-                                                    bounce.snapTo(0.8f)
-                                                    bounce.animateTo(
-                                                        1f,
-                                                        spring(
-                                                            dampingRatio = Spring.DampingRatioMediumBouncy,
-                                                            stiffness = Spring.StiffnessMedium,
-                                                        ),
-                                                    )
-                                                }
-                                            }
-                                            // Label is hidden unless selected, so the icon
-                                            // has to carry the name for a screen reader.
-                                            Icon(
-                                                destination.icon,
-                                                contentDescription = destination.title,
-                                                modifier = Modifier.graphicsLayer {
-                                                    scaleX = bounce.value
-                                                    scaleY = bounce.value
-                                                },
-                                            )
-                                        },
-                                        label = { Text(destination.shortTitle) },
-                                        alwaysShowLabel = false,
-                                    )
-                                }
-                            }
+                            PillNavigationBar(
+                                screens = AppScreen.entries,
+                                selected = screen,
+                                onSelect = navigate,
+                            )
                         },
                     ) { padding ->
                         Box(
@@ -321,6 +363,7 @@ class MainActivity : ComponentActivity() {
                             }
                         }
                     }
+                    }
                 } else {
                     OnboardingScreen(
                         state = state,
@@ -377,6 +420,7 @@ class MainActivity : ComponentActivity() {
                         viewModel = viewModel,
                     )
                 }
+            }
             }
         }
         if (

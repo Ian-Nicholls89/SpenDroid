@@ -8,6 +8,9 @@ plugins {
 }
 
 android {
+    testOptions {
+        unitTests.isIncludeAndroidResources = true
+    }
     namespace = "com.spendroid"
     compileSdk = 36
 
@@ -60,8 +63,8 @@ android {
         applicationId = "com.spendroid"
         minSdk = 26
         targetSdk = 35
-        versionCode = 103
-        versionName = "3.7.1"
+        versionCode = 104
+        versionName = "4.0-alpha1"
 
         // Where the update checker looks for releases.
         buildConfigField("String", "GITHUB_OWNER", "\"Ian-Nicholls89\"")
@@ -141,4 +144,21 @@ dependencies {
     testImplementation(libs.junit)
     // Android ships org.json; a JVM unit test needs a real implementation.
     testImplementation(libs.org.json)
+    // Screenshots of the screens, rendered on the JVM, to check a design without a phone.
+    // Run with -Pscreenshots; skipped otherwise, so CI and the usual run are unaffected.
+    testImplementation(libs.robolectric)
+    testImplementation(libs.roborazzi)
+    testImplementation(libs.roborazzi.compose)
+    testImplementation(platform(libs.androidx.compose.bom))
+    testImplementation(libs.androidx.compose.ui.test.junit4)
+    debugImplementation(libs.androidx.compose.ui.test.manifest)
+}
+
+tasks.withType<Test>().configureEach {
+    if (!project.hasProperty("screenshots")) {
+        exclude("**/screenshots/**")
+    } else {
+        systemProperty("roborazzi.test.record", "true")
+        systemProperty("roborazzi.output.dir", rootProject.file("build/screenshots").absolutePath)
+    }
 }

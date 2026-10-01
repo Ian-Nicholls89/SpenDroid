@@ -140,6 +140,12 @@ data class RootUiState(
     val versionCode: Int = 0,
 )
 
+/** The app's colours: its accent, and whether each account has its own. */
+data class Look(
+    val accent: com.spendroid.ui.theme.Accent = com.spendroid.ui.theme.Accent.ORANGE,
+    val accountColours: Boolean = true,
+)
+
 class RootViewModel(app: Application) : AndroidViewModel(app) {
 
     private val repo: GoCardlessRepository = (app as BudgetApplication).repository
@@ -348,6 +354,19 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
             )
             loadLocal()
         }
+    }
+
+    /** The look the user chose, read straight from storage so the first frame already has it. */
+    val look: kotlinx.coroutines.flow.StateFlow<Look> = kotlinx.coroutines.flow.combine(repo.accent, repo.accountColours) { accent, colours ->
+        Look(com.spendroid.ui.theme.Accent.from(accent), colours)
+    }.stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.Eagerly, Look())
+
+    fun setAccent(accent: com.spendroid.ui.theme.Accent) {
+        viewModelScope.launch { repo.saveAccent(accent.name) }
+    }
+
+    fun setAccountColours(on: Boolean) {
+        viewModelScope.launch { repo.saveAccountColours(on) }
     }
 
     fun setBudgetModel(model: BudgetModel) {
