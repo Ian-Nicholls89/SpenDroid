@@ -58,7 +58,9 @@ class PeriodRowsTest {
         val row = rows(listOf("Personal")).single()
         assertEquals(PeriodRows.Kind.BUDGET, row.kind)
         assertEquals(PeriodRows.Against.BUDGET, row.against)
-        assertEquals(5_374L, row.spentMinor)
+        // £53.74 spent, and on a fresh start the Nectar bill due before payday is gone from the
+        // budget too: the row shows what the headline has taken off, not spending alone.
+        assertEquals(5_374L + 129_420L, row.spentMinor)
         assertEquals(4, row.day)
     }
 

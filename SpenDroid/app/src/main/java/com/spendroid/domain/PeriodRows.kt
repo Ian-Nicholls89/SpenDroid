@@ -68,7 +68,8 @@ object PeriodRows {
             accountId = account.id,
             label = account.label,
             kind = Kind.BUDGET,
-            spentMinor = s.spentThisCycle,
+            // Gone from the bar, not only spent, so the figure and the line agree.
+            spentMinor = if (s.spendableThisCycle > 0L) s.usedThisCycle else s.spentThisCycle,
             againstMinor = s.spendableThisCycle.takeIf { it > 0L },
             against = Against.BUDGET,
             used = BudgetPace.usedFraction(s),

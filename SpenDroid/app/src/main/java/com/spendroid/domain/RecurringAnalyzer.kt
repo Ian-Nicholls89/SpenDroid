@@ -305,6 +305,9 @@ object RecurringAnalyzer {
     private fun normalize(value: String): String =
         value.lowercase().trim().replace(Regex("\\s+"), " ")
 
+    /** A payee as rules compare them: case and spacing ignored. */
+    fun normalizedPayee(value: String): String = normalize(value)
+
     fun detectRecurring(transactions: List<TransactionEntity>): Map<String, Boolean> {
         val rules = analyze(transactions)
         val txIdsInRules = mutableSetOf<String>()

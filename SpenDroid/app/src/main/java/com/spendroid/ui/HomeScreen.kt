@@ -127,7 +127,8 @@ private fun paceCaption(budget: BudgetSnapshot): String? {
     // caption would call the cycle on track beside a ring that says otherwise.
     val against = budget.spendableThisCycle.takeIf { it > 0L } ?: budget.variableMonthlyBudget
     val expected = (against * elapsed).toLong()
-    val difference = expected - budget.spentThisCycle
+    val used = if (budget.spendableThisCycle > 0L) budget.usedThisCycle else budget.spentThisCycle
+    val difference = expected - used
     val throughCycle = "${(elapsed * 100).toInt()}% through the cycle"
     return when {
         difference > 500L -> "$throughCycle · ahead by ${formatMoney(difference, budget.baseCurrency)}"

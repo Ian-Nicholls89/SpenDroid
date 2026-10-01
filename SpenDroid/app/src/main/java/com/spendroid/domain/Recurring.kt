@@ -117,6 +117,11 @@ data class BudgetSnapshot(
      * this, or they describe the same cycle differently.
      */
     val spendableThisCycle: Long = 0L,
+    /**
+     * How much of [spendableThisCycle] is gone: the full bar less what is left. Spending, and
+     * on a fresh start the card bills due before payday too, which the headline takes off.
+     */
+    val usedThisCycle: Long = 0L,
     /** How far below nothing the figure landed before it was floored at zero. */
     val shortfallMinor: Long = 0L,
     /** What is in the pot now. */

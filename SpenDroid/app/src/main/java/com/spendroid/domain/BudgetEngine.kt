@@ -225,6 +225,22 @@ object BudgetEngine {
         val detectedFixedKeys = fixedRules.filterNot { it.isManual || it.isVariable }.map { it.key }.toSet()
         // Manual rules and varying ones are matched by payee and amount range, not by key.
         val fuzzyFixedRules = fixedRules.filter { it.isManual || it.isVariable }
+        val detectedFixedRules = fixedRules.filterNot { it.isManual || it.isVariable }
+
+        /**
+         * A detected bill that came out at a different amount: same payee, within a quarter of
+         * the usual, and within a few days of when it was due. Detected rules group by amount to
+         * the pound, so a bill up from £30.73 to £32.08 matched nothing - it was counted as
+         * spending, and still set aside as due, the same money twice.
+         */
+        fun isBillAtNewAmount(rule: RecurringRule, tx: TransactionEntity): Boolean {
+            if (tx.currency != rule.currency || (tx.amountMinor < 0) != (rule.amountMinor < 0)) return false
+            if (abs(tx.amountMinor - rule.amountMinor) > abs(rule.amountMinor) / 4) return false
+            if (RecurringAnalyzer.normalizedPayee(tx.payee) != RecurringAnalyzer.normalizedPayee(rule.payee)) return false
+            val on = RecurringAnalyzer.parseBookingDate(tx.bookingDate) ?: return false
+            val due = nextFor(rule, on.minusDays(SEEN_EARLY_DAYS + 1))
+            return abs(ChronoUnit.DAYS.between(due, on)) <= SEEN_EARLY_DAYS
+        }
         // Discretionary spending, whenever it happened: what the cycle's figures count, before
         // they are cut to the cycle. The week's bars read from the same pool, so today's bar
         // and "spent today" cannot disagree.
@@ -232,7 +248,8 @@ object BudgetEngine {
             val date = RecurringAnalyzer.parseBookingDate(tx.bookingDate) ?: return@mapNotNull null
             val counted = tx.amountMinor < 0 &&
                 RecurringAnalyzer.groupKey(tx) !in detectedFixedKeys &&
-                fuzzyFixedRules.none { RecurringAnalyzer.matches(it, tx) }
+                fuzzyFixedRules.none { RecurringAnalyzer.matches(it, tx) } &&
+                detectedFixedRules.none { isBillAtNewAmount(it, tx) }
             if (counted) date to tx else null
         }
         val variableDebits = discretionary
@@ -265,7 +282,7 @@ object BudgetEngine {
                 // date after today dropped it in the morning, before the bank had taken it.
                 val dueToday = nextFor(rule, today.minusDays(1)) == today &&
                     transactions.none { tx ->
-                        RecurringAnalyzer.matches(rule, tx) &&
+                        (RecurringAnalyzer.matches(rule, tx) || (!rule.isManual && !rule.isVariable && isBillAtNewAmount(rule, tx))) &&
                             RecurringAnalyzer.parseBookingDate(tx.bookingDate)
                                 ?.let { !it.isBefore(today.minusDays(SEEN_EARLY_DAYS)) } == true
                     }
@@ -390,7 +407,16 @@ object BudgetEngine {
          * further down. The shortfall a payment implied was counted; the payment that
          * resolved it was not, and every windfall made the figure worse.
          */
-        val rollover = potBalance?.let { it - upcomingTotal }
+        // Spending read from a notification is already counted as spent, but the bank's balance
+        // will not show it until it reports the payment. Left in the balance, one purchase moved
+        // the bar twice - a little at the till, the rest at the next sync - and the headline not
+        // at all until then.
+        val unreportedOnPot = potAccount?.let { pot ->
+            transactions
+                .filter { it.accountId == pot.id && it.amountMinor < 0 && it.transactionId.startsWith(NotificationSpend.SEEN_PREFIX) }
+                .sumOf { -it.amountMinor }
+        } ?: 0L
+        val rollover = potBalance?.let { it - upcomingTotal - unreportedOnPot }
 
         val uncapped = when (budgetModel) {
             BudgetModel.FRESH_START, BudgetModel.SHOW_BOTH -> freshStart
@@ -408,6 +434,9 @@ object BudgetEngine {
             BudgetModel.FRESH_START, BudgetModel.SHOW_BOTH -> cycleBudget
             BudgetModel.ROLLOVER -> spentThisCycle + availableToSpend
         }
+        // Whatever is not left is used, so the bar can only ever agree with the headline. Measured
+        // as spending alone, a card bill coming due took the headline down and left the bar full.
+        val usedThisCycle = (spendableThisCycle - availableToSpend).coerceAtLeast(0L)
 
         return BudgetSnapshot(
             averageMonthlyIncome = averageMonthlyIncome,
@@ -447,6 +476,7 @@ object BudgetEngine {
             potAccountId = potAccount?.id,
             openingBalanceMinor = openingBalance,
             spendableThisCycle = spendableThisCycle,
+            usedThisCycle = usedThisCycle,
             // How far past nothing the figure really is, since zero cannot say.
             shortfallMinor = if (uncapped < 0L) -uncapped else 0L,
             potBalanceMinor = potBalance,

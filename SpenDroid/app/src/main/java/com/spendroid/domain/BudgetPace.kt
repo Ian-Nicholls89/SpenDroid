@@ -32,7 +32,9 @@ object BudgetPace {
         val against = budget.spendableThisCycle.takeIf { it > 0L }
             ?: budget.variableMonthlyBudget.takeIf { it > 0L }
             ?: return null
-        return (budget.spentThisCycle.toFloat() / against.toFloat()).coerceIn(0f, 1f)
+        // The bar's own figure where there is one, so the bar shows what the headline says is left.
+        val used = if (budget.spendableThisCycle > 0L) budget.usedThisCycle else budget.spentThisCycle
+        return (used.toFloat() / against.toFloat()).coerceIn(0f, 1f)
     }
 
     /** How far through the pay cycle today is, as a fraction. */
