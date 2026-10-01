@@ -25,6 +25,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -352,6 +353,16 @@ fun BigButton(text: String, icon: ImageVector?, onClick: () -> Unit, modifier: M
         Text(text, style = MaterialTheme.typography.labelLarge, color = textColour, maxLines = 1)
     }
 }
+
+/**
+ * The colour of the glow and wordmark at the top of the screen. A screen about one account sets
+ * it to that account's colour, as nzb360 takes each service's; null is the accent.
+ */
+class GlowState {
+    var colour by androidx.compose.runtime.mutableStateOf<Color?>(null)
+}
+
+val LocalGlow = androidx.compose.runtime.staticCompositionLocalOf { GlowState() }
 
 /** Whether accounts wear their own colours; set once at the top of the app from the user's choice. */
 val LocalAccountColours = androidx.compose.runtime.staticCompositionLocalOf { true }

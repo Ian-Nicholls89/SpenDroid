@@ -56,7 +56,7 @@ class DailyRoundupWorker(
             .setStyle(NotificationCompat.BigTextStyle().bigText(body))
             .setCategory(NotificationCompat.CATEGORY_REMINDER)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setContentIntent(openAppIntent(applicationContext, NOTIFICATION_ID))
+            .setContentIntent(openAppIntent(applicationContext, NOTIFICATION_ID, EXTRA_OPEN_ROUNDUP))
             .setAutoCancel(true)
             .build()
 

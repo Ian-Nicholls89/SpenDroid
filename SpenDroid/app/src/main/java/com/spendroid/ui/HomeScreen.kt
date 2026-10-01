@@ -103,8 +103,8 @@ import java.time.temporal.ChronoUnit
 import java.util.Locale
 import kotlin.math.max
 
-internal val InColor = Color(0xFF2E7D32)
-internal val OutColor = Color(0xFFC62828)
+internal val InColor = Color(0xFF5FD38A)
+internal val OutColor = Color(0xFFE5534B)
 
 /**
  * How much of the variable budget is gone, as a fraction. Null when there is no budget to
@@ -120,7 +120,7 @@ private fun cycleElapsedFraction(budget: BudgetSnapshot): Float? =
  * "£742 left" reads very differently with 8 days to go than with 24, so say which it is:
  * spending against time, not just the remaining balance.
  */
-private fun paceCaption(budget: BudgetSnapshot): String? {
+internal fun paceCaption(budget: BudgetSnapshot): String? {
     budgetUsedFraction(budget) ?: return null
     val elapsed = cycleElapsedFraction(budget) ?: return null
     // Measured against what the ring and the headline use, or under carrying over the
@@ -268,7 +268,7 @@ private fun SpendingPaceRing(budget: BudgetSnapshot) {
  * worth showing rather than one total.
  */
 @Composable
-private fun CardBillCard(bill: CreditCardEngine.CardBill) {
+internal fun CardBillCard(bill: CreditCardEngine.CardBill) {
     // Opens to show the card's past statements; the bar fills and a warning pulses when the
     // panel is first seen, not while it is still below the fold.
     var open by rememberSaveable(bill.cardAccountId) { mutableStateOf(false) }
@@ -526,7 +526,7 @@ private fun poundsLabel(minor: Long, currency: String): String =
  * rather than blended into one number that answers neither cleanly.
  */
 @Composable
-private fun NetPositionCard(
+internal fun NetPositionCard(
     accounts: List<AccountEntity>,
     cardBills: List<CreditCardEngine.CardBill> = emptyList(),
 ) {
@@ -546,11 +546,7 @@ private fun NetPositionCard(
 
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Text(
-                "Where you stand",
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            SectionHeading("Where you stand")
             Spacer(Modifier.height(10.dp))
             Row {
                 Column(modifier = Modifier.weight(1f)) {
@@ -609,7 +605,7 @@ private fun NetPositionCard(
  * The totals are short by a known amount, and saying nothing would make them look complete.
  */
 @Composable
-private fun ForeignCurrencyBanner(currencies: Set<String>) {
+internal fun ForeignCurrencyBanner(currencies: Set<String>) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
@@ -643,7 +639,7 @@ private fun ForeignCurrencyBanner(currencies: Set<String>) {
 }
 
 @Composable
-private fun BankHolidayBanner(holidayName: String) {
+internal fun BankHolidayBanner(holidayName: String) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
@@ -685,117 +681,10 @@ private data class MonthTotals(
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun HomeScreen(
-    state: RootUiState,
-    onRefresh: () -> Unit,
-    onRelink: (Connection) -> Unit,
-    onSeeAllTransactions: () -> Unit,
-    onSetBudgetGoal: (Category, Long) -> Unit,
-    onLinkBank: () -> Unit,
-) {
-    // Pull down to sync, from where the figures are rather than from a button elsewhere.
-    PullToRefreshBox(
-        isRefreshing = state.syncing,
-        onRefresh = onRefresh,
-        modifier = Modifier.fillMaxSize(),
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 24.dp),
-        ) {
-            state.bankHolidayToday?.let { name ->
-                BankHolidayBanner(name)
-                Spacer(Modifier.height(16.dp))
-            }
-            state.budget?.unconvertedCurrencies?.takeIf { it.isNotEmpty() }?.let { currencies ->
-                ForeignCurrencyBanner(currencies)
-                Spacer(Modifier.height(16.dp))
-            }
-            if (state.reauthNeeded.isNotEmpty()) {
-                ReauthBanner(state.reauthNeeded, onRelink)
-                Spacer(Modifier.height(16.dp))
-            }
-            state.budget?.let { budget ->
-                HeroBudgetCard(budget, syncing = state.syncing)
-                Spacer(Modifier.height(16.dp))
-            }
-
-            if (state.accounts.isNotEmpty()) {
-                NetPositionCard(state.accounts, state.budget?.cardBills.orEmpty())
-                Spacer(Modifier.height(16.dp))
-            }
-
-            state.budget?.cardBills.orEmpty()
-                .filter { it.outstandingMinor > 0L }
-                .forEach { bill ->
-                    CardBillCard(bill)
-                    Spacer(Modifier.height(16.dp))
-                }
-
-            // Category breakdown and trends live on Spending → Insights. The dashboard reports
-            // the state of the cycle; analysing it is a different job and a different screen.
-
-            // The list of accounts belongs to the Accounts tab; this is only the way in on the
-            // first run, when there is nothing else on the screen to act on.
-            if (state.accounts.isEmpty()) {
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Text("No accounts linked yet.", style = MaterialTheme.typography.bodyMedium)
-                        Text(
-                            "Link a bank and SpenDroid will work out your pay cycle from what it finds.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        Spacer(Modifier.height(12.dp))
-                        Button(onClick = onLinkBank) { Text("Link a bank") }
-                    }
-                }
-                Spacer(Modifier.height(16.dp))
-            }
-            Spacer(Modifier.height(16.dp))
-
-            // The list lives on its own destination now; the dashboard keeps a way in.
-            TextButton(
-                onClick = onSeeAllTransactions,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text("See all transactions")
-                Spacer(Modifier.width(6.dp))
-                Icon(
-                    Icons.AutoMirrored.Filled.ArrowForward,
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp),
-                )
-            }
-
-            state.linkProgress?.let { progress ->
-                Spacer(Modifier.height(12.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
-                    Spacer(Modifier.width(10.dp))
-                    Text(progress, style = MaterialTheme.typography.bodySmall)
-                }
-            }
-            // What the last pull-to-refresh did about the bank's allowance.
-            state.syncNote?.let { note ->
-                Spacer(Modifier.height(12.dp))
-                Text(note, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            state.error?.let { error ->
-                Spacer(Modifier.height(12.dp))
-                Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-            }
-        }
-    }
-}
-
-private val dateFormat: DateTimeFormatter = DateTimeFormatter.ofPattern("d MMM")
+internal val dateFormat: DateTimeFormatter = DateTimeFormatter.ofPattern("d MMM")
 
 @Composable
-private fun ReauthBanner(
+internal fun ReauthBanner(
     connections: List<Connection>,
     onRelink: (Connection) -> Unit,
 ) {
@@ -832,203 +721,7 @@ private fun ReauthBanner(
 }
 
 @Composable
-private fun HeroBudgetCard(budget: BudgetSnapshot, syncing: Boolean = false) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.cardColors(containerColor = Color.Transparent),
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(Brush.linearGradient(animatedHeroGradient(budget)))
-                .padding(20.dp),
-        ) {
-            Column {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        "Budget until next income",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = Color.White.copy(alpha = 0.85f),
-                        modifier = Modifier.weight(1f),
-                    )
-                    SyncedTick(syncing)
-                }
-                budget.nextIncomeDate?.let { next ->
-                    val today = budget.asOf
-                    val days = max(0L, ChronoUnit.DAYS.between(today, next))
-                    Text(
-                        when {
-                            // Payday has come but the salary has not cleared: the cycle turns
-                            // when it does, so say what is being waited for.
-                            next == today -> "Income due today · the new cycle starts when it clears"
-                            next.isBefore(today) ->
-                                "Income expected ${next.format(dateFormat)} · not cleared yet"
-                            else -> "Next income ${next.format(dateFormat)} · in $days day${if (days == 1L) "" else "s"}"
-                        },
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Color.White.copy(alpha = 0.8f),
-                    )
-                }
-                Spacer(Modifier.height(12.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    SpendingPaceRing(budget)
-                    Spacer(Modifier.width(16.dp))
-                    Column {
-                        Text(
-                            when (budget.budgetModel) {
-                                BudgetModel.ROLLOVER -> "Available to spend, balance carried over"
-                                else -> "Available to spend"
-                            },
-                            style = MaterialTheme.typography.labelMedium,
-                            color = Color.White.copy(alpha = 0.85f),
-                        )
-                        RollingAmount(
-                            modifier = Modifier.shimmer(syncing),
-                            minor = budget.availableToSpend,
-                            currency = budget.baseCurrency,
-                            style = MaterialTheme.typography.headlineLarge,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White,
-                        )
-                        // Fades rather than jumps, so a change of verdict is noticed.
-                        AnimatedContent(
-                            targetState = paceCaption(budget),
-                            transitionSpec = {
-                                fadeIn(Motion.arrive()).togetherWith(fadeOut(Motion.change(Motion.SHORT)))
-                            },
-                            label = "pace caption",
-                        ) { caption ->
-                            if (caption != null) {
-                                Text(
-                                    caption,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = Color.White.copy(alpha = 0.8f),
-                                )
-                            }
-                        }
-                    }
-                }
-                Spacer(Modifier.height(12.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
-                    HeroStat(
-                        "Spent today",
-                        budget.spentTodayFromAccountsMinor + budget.spentTodayOnCardsMinor,
-                        budget.baseCurrency,
-                    )
-                    HeroStat("This cycle", budget.spentThisCycle, budget.baseCurrency)
-                    // Deliberately beside the budget rather than folded into it: the two
-                    // answer different questions and the gap between them is the point.
-                    if (budget.budgetModel == BudgetModel.SHOW_BOTH) {
-                        budget.potBalanceMinor?.let { pot ->
-                            HeroStat("In the account", pot, budget.baseCurrency)
-                        }
-                    }
-                }
-                // Today's figure is everything spent, cards included, so say what is in it: card
-                // spending that the budget counts only at the bill, and anything still pending.
-                todayNote(budget)?.let { note ->
-                    Text(note, style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.8f))
-                }
-                if (budget.budgetModel == BudgetModel.ROLLOVER) {
-                    budget.potBalanceMinor?.let { pot ->
-                        Text(
-                            "${formatMoney(pot, budget.baseCurrency)} in the account, less what is due before payday",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = Color.White.copy(alpha = 0.8f),
-                        )
-                    }
-                }
-                // Zero cannot say how far past zero, and the difference matters.
-                if (budget.shortfallMinor > 0L) {
-                    Text(
-                        "${formatMoney(budget.shortfallMinor, budget.baseCurrency)} short of covering what is still to come out",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = Color.White.copy(alpha = 0.9f),
-                    )
-                }
-                // Counted at the bill, card spending is out of this figure by design - so say
-                // where it went, rather than let the next cycle be a surprise.
-                if (budget.cardsNextCycleMinor > 0L) {
-                    Text(
-                        "About ${formatMoney(budget.cardsNextCycleMinor, budget.baseCurrency)} of " +
-                            "card bills fall in your next cycle",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = Color.White.copy(alpha = 0.9f),
-                    )
-                }
-                if (budget.designationLost) {
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        "The income you picked to set the cycle is no longer being detected — " +
-                            "possibly renamed by your bank. Using the largest income instead; " +
-                            "pick it again under Recurring rules.",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = Color.White,
-                    )
-                }
-                Spacer(Modifier.height(12.dp))
-                Text(
-                    "Income ${formatMoney(budget.averageMonthlyIncome, budget.baseCurrency)}/mo · " +
-                        "Fixed ${formatMoney(budget.fixedMonthlyOutgoings, budget.baseCurrency)}/mo · " +
-                        "Variable ${formatMoney(budget.variableMonthlyBudget, budget.baseCurrency)}/mo",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Color.White.copy(alpha = 0.85f),
-                )
-                if (budget.upcomingFixed.isNotEmpty()) {
-                    Spacer(Modifier.height(12.dp))
-                    Text(
-                        "Known deductions to come",
-                        style = MaterialTheme.typography.titleSmall,
-                        color = Color.White,
-                    )
-                    Spacer(Modifier.height(4.dp))
-                    budget.upcomingFixed.take(5).forEach { payment ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 2.dp),
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(payment.rule.payee.tidyPayee(), style = MaterialTheme.typography.bodyMedium, color = Color.White)
-                                // A card bill is forecast from the outstanding balance, so it
-                                // should not read as a confirmed amount and date.
-                                val isForecast = payment.rule.key.startsWith(CARD_BILL_KEY_PREFIX)
-                                Text(
-                                    if (isForecast) {
-                                        "estimated · due ~${payment.dueDate.format(dateFormat)}"
-                                    } else {
-                                        "due ${payment.dueDate.format(dateFormat)}"
-                                    },
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = Color.White.copy(alpha = 0.7f),
-                                )
-                            }
-                            Text(
-                                recurringAmount(payment.amountMinor, payment.rule.perOccurrence, payment.rule.currency, payment.rule.isVariable),
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.SemiBold,
-                                color = Color.White,
-                            )
-                        }
-                    }
-                }
-                if (budget.incomeRules.isNotEmpty() && budget.fixedRules.isNotEmpty()) {
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        "Detected ${budget.incomeRules.size} recurring ${if (budget.incomeRules.size == 1) "income" else "incomes"} " +
-                            "and ${budget.fixedRules.size} recurring ${if (budget.fixedRules.size == 1) "payment" else "payments"}.",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = Color.White.copy(alpha = 0.7f),
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun HeroStat(label: String, minor: Long, currency: String) {
+internal fun HeroStat(label: String, minor: Long, currency: String) {
     Column {
         Text(
             label,
@@ -1055,7 +748,7 @@ private fun syncTime(epochMillis: Long): String =
  * last one known, and this says a newer one is on its way without hiding it.
  */
 @Composable
-private fun Modifier.shimmer(active: Boolean): Modifier {
+internal fun Modifier.shimmer(active: Boolean): Modifier {
     if (!active) return this
     val sweep = rememberInfiniteTransition(label = "sync shimmer")
     val at by sweep.animateFloat(
@@ -1081,7 +774,7 @@ private fun Modifier.shimmer(active: Boolean): Modifier {
  * different from a pull that did nothing, and the figures rolling below say what it changed.
  */
 @Composable
-private fun SyncedTick(syncing: Boolean) {
+internal fun SyncedTick(syncing: Boolean) {
     var wasSyncing by remember { mutableStateOf(syncing) }
     val drawn = remember { Animatable(0f) }
     val shown = remember { Animatable(0f) }

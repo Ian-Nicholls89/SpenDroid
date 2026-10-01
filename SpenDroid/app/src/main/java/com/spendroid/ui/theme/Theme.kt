@@ -72,7 +72,8 @@ private fun charcoalScheme(accent: Color) = darkColorScheme(
     surfaceContainerLow = Color(0xFF1F2025),
     surfaceContainer = Charcoal.Panel,
     surfaceContainerHigh = Charcoal.PanelHigh,
-    surfaceContainerHighest = Color(0xFF32353D),
+    // What Material's filled cards are drawn in: the same panel as everything else.
+    surfaceContainerHighest = Charcoal.Panel,
     inverseSurface = Color(0xFFE8E9EC),
     inverseOnSurface = Charcoal.Background,
     outline = Color(0xFF5A5F68),

@@ -41,23 +41,36 @@ class ScreensTest {
     @Composable
     private fun Frame(screen: AppScreen, content: @Composable () -> Unit) {
         BudgetTheme {
+            val glow = androidx.compose.runtime.remember { com.spendroid.ui.GlowState() }
+            androidx.compose.runtime.CompositionLocalProvider(com.spendroid.ui.LocalGlow provides glow) {
             Box(Modifier.fillMaxSize().background(Charcoal.Background)) {
-                HeaderGlow(MaterialTheme.colorScheme.primary, height = 260.dp)
+                HeaderGlow(glow.colour ?: MaterialTheme.colorScheme.primary, height = 260.dp)
                 Scaffold(
                     containerColor = Color.Transparent,
                     contentColor = Charcoal.Text,
                     topBar = {
                         Row(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 20.dp, vertical = 14.dp)) {
-                            Wordmark(if (screen == AppScreen.Home) "SpenDroid" else screen.title, MaterialTheme.colorScheme.primary)
+                            Wordmark(if (screen == AppScreen.Home) "SpenDroid" else screen.title, glow.colour ?: MaterialTheme.colorScheme.primary)
                         }
                     },
                     bottomBar = { PillNavigationBar(AppScreen.entries, screen) {} },
                 ) { padding -> Box(Modifier.padding(padding)) { content() } }
             }
+            }
         }
     }
 
     @Test
+    @Config(qualifiers = "w411dp-h1500dp-xxhdpi")
+    fun homeCard() {
+        val state = Sample.state()
+        shoot("home-card", AppScreen.Home) {
+            HomeScreen(state, onRefresh = {}, onRelink = {}, onSeeAllTransactions = {}, onSetBudgetGoal = { _, _ -> }, onLinkBank = {}, initialPage = 1)
+        }
+    }
+
+    @Test
+    @Config(qualifiers = "w411dp-h1500dp-xxhdpi")
     fun home() {
         val state = Sample.state()
         compose.setContent {
@@ -111,5 +124,13 @@ class ScreensTest {
                 notificationTime = "21:00", onSaveNotificationTime = {},
             )
         }
+    }
+
+    @Test
+    @Config(qualifiers = "w411dp-h1100dp-xxhdpi")
+    fun roundup() {
+        val state = Sample.state()
+        compose.setContent { BudgetTheme { com.spendroid.ui.RoundupScreen(state, onBack = {}, onSeeQuestions = {}) } }
+        compose.onRoot().captureRoboImage("build/screenshots/roundup.png")
     }
 }

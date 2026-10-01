@@ -18,6 +18,8 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.graphics.Color
 import com.spendroid.ui.HeaderGlow
 import com.spendroid.ui.LocalAccountColours
+import com.spendroid.ui.GlowState
+import com.spendroid.ui.LocalGlow
 import com.spendroid.ui.Wordmark
 import com.spendroid.ui.theme.Charcoal
 import androidx.activity.ComponentActivity
@@ -175,12 +177,18 @@ class MainActivity : ComponentActivity() {
     private val requestNotificationPermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) {}
 
+    /** Opened from the roundup notification: show the roundup until it is dismissed. */
+    private val showRoundup = mutableStateOf(false)
+
     /** A category tapped on a widget, waiting to be opened. */
     private val widgetCategory = mutableStateOf<String?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        if (savedInstanceState == null) widgetCategory.value = intent?.getStringExtra(MAIN_EXTRA_CATEGORY)
+        if (savedInstanceState == null) {
+            widgetCategory.value = intent?.getStringExtra(MAIN_EXTRA_CATEGORY)
+            showRoundup.value = intent?.getBooleanExtra(com.spendroid.work.EXTRA_OPEN_ROUNDUP, false) == true
+        }
         enableEdgeToEdge(
             statusBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
             navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
@@ -188,7 +196,8 @@ class MainActivity : ComponentActivity() {
         setContent {
             val look by viewModel.look.collectAsStateWithLifecycle()
             BudgetTheme(accent = look.accent) {
-            CompositionLocalProvider(LocalAccountColours provides look.accountColours) {
+            val glow = remember { GlowState() }
+            CompositionLocalProvider(LocalAccountColours provides look.accountColours, LocalGlow provides glow) {
                 val state by viewModel.state.collectAsStateWithLifecycle()
                 var screenRoute by rememberSaveable { mutableStateOf(AppScreen.Home.route) }
                 val screen = AppScreen.from(screenRoute)
@@ -211,7 +220,12 @@ class MainActivity : ComponentActivity() {
 
                 if (state.hasCredentials) {
                     Box(Modifier.fillMaxSize().background(Charcoal.Background)) {
-                    HeaderGlow(MaterialTheme.colorScheme.primary, height = 260.dp)
+                    val glowColour by animateColorAsState(
+                        glow.colour ?: MaterialTheme.colorScheme.primary,
+                        Motion.change(Motion.MEDIUM),
+                        label = "glow",
+                    )
+                    HeaderGlow(glowColour, height = 260.dp)
                     Scaffold(
                         // The glow behind the header shows through: nzb360's warm wash at the top.
                         containerColor = Color.Transparent,
@@ -227,7 +241,7 @@ class MainActivity : ComponentActivity() {
                             ) {
                                 Wordmark(
                                     text = if (screen == AppScreen.Home) "SpenDroid" else screen.title,
-                                    colour = MaterialTheme.colorScheme.primary,
+                                    colour = glowColour,
                                 )
                             }
                         },
@@ -266,6 +280,10 @@ class MainActivity : ComponentActivity() {
                                             onSeeAllTransactions = { navigate(AppScreen.Spending) },
                                             onSetBudgetGoal = viewModel::setBudgetGoal,
                                             onLinkBank = { showLinkDialog = true },
+                                            onSeeAccount = { id ->
+                                                viewModel.setAccountFilter(id)
+                                                navigate(AppScreen.Spending)
+                                            },
                                         )
 
                                         AppScreen.Spending -> SpendingScreen(
@@ -373,6 +391,17 @@ class MainActivity : ComponentActivity() {
                     )
                 }
 
+                if (showRoundup.value && state.hasCredentials) {
+                    com.spendroid.ui.RoundupScreen(
+                        state = state,
+                        onBack = { showRoundup.value = false },
+                        onSeeQuestions = {
+                            showRoundup.value = false
+                            navigate(AppScreen.Spending)
+                        },
+                    )
+                }
+
                 state.justLinked?.let { linkedName ->
                     AlertDialog(
                         onDismissRequest = viewModel::dismissLinkPrompt,
@@ -449,5 +478,6 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         intent.getStringExtra(MAIN_EXTRA_CATEGORY)?.let { widgetCategory.value = it }
+        if (intent.getBooleanExtra(com.spendroid.work.EXTRA_OPEN_ROUNDUP, false)) showRoundup.value = true
     }
 }
