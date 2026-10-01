@@ -127,8 +127,8 @@ class ThisPeriodWidget : GlanceAppWidget() {
     @Composable
     private fun Rows(content: Content) {
         val size = LocalSize.current
-        // Each row needs about 58dp; fewer are shown rather than squeezed.
-        val room = ((size.height - 44.dp) / 58.dp).toInt().coerceIn(1, ThisPeriodPrefs.MAX_ACCOUNTS)
+        // Every account chosen is shown: short of room, the rows tighten rather than one going.
+        val (density, room) = rowLayout(size.height.value, content.rows.size)
         Column(modifier = GlanceModifier.fillMaxSize()) {
             Row(modifier = GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.Vertical.CenterVertically) {
                 Text(
@@ -144,14 +144,25 @@ class ThisPeriodWidget : GlanceAppWidget() {
                 )
             }
             content.rows.take(room).forEach { row ->
-                Spacer(GlanceModifier.height(8.dp))
-                RowView(row, content.drain, content.colours[row.accountId])
+                Spacer(GlanceModifier.height(if (density == RowDensity.LINE) 6.dp else 8.dp))
+                if (density == RowDensity.LINE) {
+                    LineView(row, content.drain, content.colours[row.accountId])
+                } else {
+                    RowView(row, content.drain, content.colours[row.accountId], full = density == RowDensity.FULL)
+                }
+            }
+            // Only on a widget too small even for single lines: say what is not shown.
+            if (room < content.rows.size) {
+                Text(
+                    "+${content.rows.size - room} more - make the widget taller",
+                    style = TextStyle(color = GlanceTheme.colors.onSurfaceVariant, fontSize = 9.sp),
+                )
             }
         }
     }
 
     @Composable
-    private fun RowView(row: PeriodRows.Row, drain: Boolean, own: Int?) {
+    private fun RowView(row: PeriodRows.Row, drain: Boolean, own: Int?, full: Boolean = true) {
         val colour = paceColour(row.pace)
         // The bar in the account's own colour, as the app draws it; the caption keeps the pace's.
         val barColour = own ?: colour
@@ -178,13 +189,15 @@ class ThisPeriodWidget : GlanceAppWidget() {
                 style = TextStyle(color = GlanceTheme.colors.onSurface, fontSize = 13.sp, fontWeight = FontWeight.Bold),
             )
         }
-        Row(modifier = GlanceModifier.fillMaxWidth()) {
-            Text(
-                kindLabel(row.kind),
-                modifier = GlanceModifier.defaultWeight(),
-                style = TextStyle(color = GlanceTheme.colors.onSurfaceVariant, fontSize = 9.sp),
-            )
-            againstLabel(row)?.let { Text(it, style = TextStyle(color = GlanceTheme.colors.onSurfaceVariant, fontSize = 9.sp)) }
+        if (full) {
+            Row(modifier = GlanceModifier.fillMaxWidth()) {
+                Text(
+                    kindLabel(row.kind),
+                    modifier = GlanceModifier.defaultWeight(),
+                    style = TextStyle(color = GlanceTheme.colors.onSurfaceVariant, fontSize = 9.sp),
+                )
+                againstLabel(row)?.let { Text(it, style = TextStyle(color = GlanceTheme.colors.onSurfaceVariant, fontSize = 9.sp)) }
+            }
         }
         val share = if (drain) row.used?.let { 1f - it } else row.used
         val tick = if (drain) row.gone?.let { 1f - it } else row.gone
@@ -194,22 +207,56 @@ class ThisPeriodWidget : GlanceAppWidget() {
             modifier = GlanceModifier.fillMaxWidth().height(9.dp),
             contentScale = ContentScale.FillBounds,
         )
-        Row(modifier = GlanceModifier.fillMaxWidth()) {
+        if (full) {
+            Row(modifier = GlanceModifier.fillMaxWidth()) {
+                Text(
+                    caption(row),
+                    maxLines = 1,
+                    modifier = GlanceModifier.defaultWeight(),
+                    style = TextStyle(
+                        color = if (row.pace == BudgetPace.Pace.ON_TRACK) GlanceTheme.colors.onSurfaceVariant else ColorProvider(androidx.compose.ui.graphics.Color(colour)),
+                        fontSize = 9.sp,
+                    ),
+                )
+                if (row.pendingMinor > 0L) {
+                    Text(
+                        "incl. ${formatMoney(row.pendingMinor, row.currency)} pending",
+                        style = TextStyle(color = ColorProvider(androidx.compose.ui.graphics.Color(PENDING)), fontSize = 9.sp),
+                    )
+                }
+            }
+        }
+    }
+
+    /** One line an account: its square, its name, a short bar and the figure. */
+    @Composable
+    private fun LineView(row: PeriodRows.Row, drain: Boolean, own: Int?) {
+        val barColour = own ?: paceColour(row.pace)
+        val share = if (drain) row.used?.let { 1f - it } else row.used
+        val tick = if (drain) row.gone?.let { 1f - it } else row.gone
+        Row(modifier = GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.Vertical.CenterVertically) {
+            Box(
+                modifier = GlanceModifier.width(14.dp).height(14.dp).cornerRadius(4.dp)
+                    .background(ColorProvider(androidx.compose.ui.graphics.Color(barColour))),
+            ) {}
+            Spacer(GlanceModifier.width(7.dp))
             Text(
-                caption(row),
+                row.label,
                 maxLines = 1,
                 modifier = GlanceModifier.defaultWeight(),
-                style = TextStyle(
-                    color = if (row.pace == BudgetPace.Pace.ON_TRACK) GlanceTheme.colors.onSurfaceVariant else ColorProvider(androidx.compose.ui.graphics.Color(colour)),
-                    fontSize = 9.sp,
-                ),
+                style = TextStyle(color = GlanceTheme.colors.onSurface, fontSize = 12.sp, fontWeight = FontWeight.Medium),
             )
-            if (row.pendingMinor > 0L) {
-                Text(
-                    "incl. ${formatMoney(row.pendingMinor, row.currency)} pending",
-                    style = TextStyle(color = ColorProvider(androidx.compose.ui.graphics.Color(PENDING)), fontSize = 9.sp),
-                )
-            }
+            Image(
+                provider = ImageProvider(periodBarBitmap(share, tick, fill = barColour, track = TRACK, tickColour = TICK)),
+                contentDescription = spoken(row),
+                modifier = GlanceModifier.width(56.dp).height(7.dp),
+                contentScale = ContentScale.FillBounds,
+            )
+            Spacer(GlanceModifier.width(7.dp))
+            Text(
+                formatMoney(row.spentMinor, row.currency),
+                style = TextStyle(color = GlanceTheme.colors.onSurface, fontSize = 12.sp, fontWeight = FontWeight.Bold),
+            )
         }
     }
 
@@ -271,4 +318,21 @@ class ThisPeriodWidgetReceiver : GlanceAppWidgetReceiver() {
 
 internal suspend fun refreshPeriodWidgets(context: Context) {
     runCatching { ThisPeriodWidget().updateAll(context) }
+}
+
+/** How much each account's row says, by the room there is. */
+internal enum class RowDensity { FULL, COMPACT, LINE }
+
+/**
+ * The roomiest rows that fit every chosen account in [heightDp], and how many are shown - all of
+ * them unless even single lines will not fit. Measured from the widget's real height: the
+ * heading takes about 46dp with the padding, a full row 58, a compact one 38, a line 24.
+ */
+internal fun rowLayout(heightDp: Float, count: Int): Pair<RowDensity, Int> {
+    val room = heightDp - 46f
+    return when {
+        count * 58f <= room -> RowDensity.FULL to count
+        count * 38f <= room -> RowDensity.COMPACT to count
+        else -> RowDensity.LINE to (room / 24f).toInt().coerceIn(1, count.coerceAtLeast(1))
+    }
 }

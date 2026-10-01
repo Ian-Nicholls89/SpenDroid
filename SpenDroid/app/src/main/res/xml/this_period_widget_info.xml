@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Two rows at 4×2, three at 4×3. The accounts are chosen when it is added, and again from
+<!-- Every chosen account shows: rows tighten to fit, full at 4×3 and compact or single lines below. The accounts are chosen when it is added, and again from
      long-press → Reconfigure; without a choice it shows the budget's account and the first card. -->
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
     android:minWidth="180dp"
