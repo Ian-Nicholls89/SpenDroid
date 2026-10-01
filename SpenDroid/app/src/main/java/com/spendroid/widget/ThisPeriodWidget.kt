@@ -1,6 +1,7 @@
 package com.spendroid.widget
 
 import android.content.Context
+import kotlinx.coroutines.flow.first
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -30,6 +31,7 @@ import androidx.glance.layout.Spacer
 import androidx.glance.layout.fillMaxSize
 import androidx.glance.layout.fillMaxWidth
 import androidx.glance.layout.height
+import androidx.glance.layout.width
 import androidx.glance.layout.padding
 import androidx.glance.text.FontWeight
 import androidx.glance.text.Text
@@ -55,10 +57,17 @@ class ThisPeriodWidget : GlanceAppWidget() {
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val widgetId = GlanceAppWidgetManager(context).getAppWidgetId(id)
         val content = load(context, widgetId)
-        provideContent { Body(content) }
+        val accent = widgetAccent(context)
+        provideContent { Body(content, accent) }
     }
 
-    private data class Content(val rows: List<PeriodRows.Row>, val drain: Boolean, val updated: String?)
+    private data class Content(
+        val rows: List<PeriodRows.Row>,
+        val drain: Boolean,
+        val updated: String?,
+        /** Each account's own colour, for its square and its bar. */
+        val colours: Map<String, Int> = emptyMap(),
+    )
 
     private suspend fun load(context: Context, widgetId: Int): Content? {
         val app = context.applicationContext as? BudgetApplication ?: return null
@@ -73,17 +82,24 @@ class ThisPeriodWidget : GlanceAppWidget() {
                 ),
                 drain = false,
             )
+            val accent = androidx.compose.ui.graphics.Color(widgetAccent(context))
+            val own = app.repository.accountColours.first()
             Content(
                 PeriodRows.rows(choice.accountIds, snapshot, accounts, app.repository.transactions()),
                 choice.drain,
                 updatedLabel(accounts),
+                accounts.associate { a ->
+                    a.id to com.spendroid.ui.accountColour(a, accounts, own, accent).let {
+                        android.graphics.Color.argb(255, (it.red * 255).toInt(), (it.green * 255).toInt(), (it.blue * 255).toInt())
+                    }
+                },
             )
         }.getOrNull()
     }
 
     @Composable
-    private fun Body(content: Content?) {
-        GlanceTheme {
+    private fun Body(content: Content?, accent: Int) {
+        GlanceTheme(colors = widgetColours(accent)) {
             Box(
                 modifier = GlanceModifier
                     .fillMaxSize()
@@ -116,9 +132,9 @@ class ThisPeriodWidget : GlanceAppWidget() {
         Column(modifier = GlanceModifier.fillMaxSize()) {
             Row(modifier = GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.Vertical.CenterVertically) {
                 Text(
-                    "This period",
+                    "THIS PERIOD",
                     modifier = GlanceModifier.defaultWeight(),
-                    style = TextStyle(color = GlanceTheme.colors.onSurfaceVariant, fontSize = 11.sp, fontWeight = FontWeight.Medium),
+                    style = TextStyle(color = GlanceTheme.colors.onSurface, fontSize = 11.sp, fontWeight = FontWeight.Bold),
                 )
                 content.updated?.let { Text(it, style = TextStyle(color = GlanceTheme.colors.onSurfaceVariant, fontSize = 9.sp)) }
                 Text(
@@ -129,15 +145,28 @@ class ThisPeriodWidget : GlanceAppWidget() {
             }
             content.rows.take(room).forEach { row ->
                 Spacer(GlanceModifier.height(8.dp))
-                RowView(row, content.drain)
+                RowView(row, content.drain, content.colours[row.accountId])
             }
         }
     }
 
     @Composable
-    private fun RowView(row: PeriodRows.Row, drain: Boolean) {
+    private fun RowView(row: PeriodRows.Row, drain: Boolean, own: Int?) {
         val colour = paceColour(row.pace)
+        // The bar in the account's own colour, as the app draws it; the caption keeps the pace's.
+        val barColour = own ?: colour
         Row(modifier = GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.Vertical.CenterVertically) {
+            Box(
+                modifier = GlanceModifier.width(16.dp).height(16.dp).cornerRadius(4.dp)
+                    .background(ColorProvider(androidx.compose.ui.graphics.Color(barColour))),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    row.label.firstOrNull { it.isLetterOrDigit() }?.uppercase() ?: "",
+                    style = TextStyle(color = ColorProvider(androidx.compose.ui.graphics.Color.White), fontSize = 9.sp, fontWeight = FontWeight.Bold),
+                )
+            }
+            Spacer(GlanceModifier.width(7.dp))
             Text(
                 row.label,
                 maxLines = 1,
@@ -160,7 +189,7 @@ class ThisPeriodWidget : GlanceAppWidget() {
         val share = if (drain) row.used?.let { 1f - it } else row.used
         val tick = if (drain) row.gone?.let { 1f - it } else row.gone
         Image(
-            provider = ImageProvider(periodBarBitmap(share, tick, fill = colour, track = TRACK, tickColour = TICK)),
+            provider = ImageProvider(periodBarBitmap(share, tick, fill = barColour, track = TRACK, tickColour = TICK)),
             contentDescription = spoken(row),
             modifier = GlanceModifier.fillMaxWidth().height(9.dp),
             contentScale = ContentScale.FillBounds,

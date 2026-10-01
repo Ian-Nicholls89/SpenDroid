@@ -103,11 +103,8 @@ class PaydayTimelineWidget : GlanceAppWidget() {
 
     @Composable
     private fun Body(timeline: Timeline?) {
-        val background = when (timeline?.pace) {
-            BudgetPace.Pace.OVER -> RedDeep
-            BudgetPace.Pace.TIGHT -> AmberDeep
-            else -> GreenDeep
-        }
+        // Charcoal, as the app; the pace is said in words on the widget itself.
+        val background = ColorProvider(androidx.compose.ui.graphics.Color(WIDGET_CHARCOAL))
         // A one-row widget can be as little as 50dp tall, so it gives up most of its margin.
         val tall = LocalSize.current.height >= STANDARD.height
         Box(

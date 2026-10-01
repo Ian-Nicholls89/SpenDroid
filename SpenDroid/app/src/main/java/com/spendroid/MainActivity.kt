@@ -110,7 +110,7 @@ import com.spendroid.ui.theme.BudgetTheme
 enum class AppScreen(
     val route: String,
     val title: String,
-    /** Bottom-bar label: "Recurring rules" does not fit under an icon. */
+    /** Bottom-bar label, shorter where the title would not fit under an icon. */
     val shortTitle: String,
     val icon: ImageVector,
 ) {
@@ -410,6 +410,9 @@ class MainActivity : ComponentActivity() {
                                             secretKey = viewModel.secretKeyValue.collectAsStateWithLifecycle().value,
                                             notificationTime = viewModel.notificationTime.collectAsStateWithLifecycle().value,
                                             onSaveNotificationTime = viewModel::saveNotificationTime,
+                                            look = look,
+                                            onSetAccent = viewModel::setAccent,
+                                            onSetAccountColours = viewModel::setAccountColours,
                                             cardAlerts = {
                                                 CardAlertsSection(
                                                     accounts = state.accounts,

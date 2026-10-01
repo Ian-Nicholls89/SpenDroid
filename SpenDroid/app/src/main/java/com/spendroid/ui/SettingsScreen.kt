@@ -39,6 +39,17 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import com.spendroid.ui.theme.Charcoal
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.clip
+import androidx.compose.material3.Switch
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.border
+import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.spendroid.domain.BudgetModel
@@ -88,6 +99,9 @@ fun SettingsScreen(
     notificationTime: String,
     onSaveNotificationTime: (String) -> Unit,
     cardAlerts: @Composable () -> Unit = {},
+    look: Look = Look(),
+    onSetAccent: (com.spendroid.ui.theme.Accent) -> Unit = {},
+    onSetAccountColours: (Boolean) -> Unit = {},
 ) {
     var selectedTab by rememberSaveable { mutableIntStateOf(0) }
     // A tab index saved before this row had three entries would otherwise index past the end.
@@ -103,50 +117,44 @@ fun SettingsScreen(
         // Scrollable, not fixed: five labels sharing the width evenly left "Notifications"
         // about 70dp, so it broke mid-word into "Notifi / catio / ns". Each tab now takes
         // the width its own label needs and the row scrolls if they do not all fit.
-        PrimaryScrollableTabRow(
-            selectedTabIndex = selectedTab,
-            edgePadding = 12.dp,
-        ) {
-            SettingsTab.entries.forEachIndexed { index, tab ->
-                Tab(
-                    selected = selectedTab == index,
-                    onClick = { selectedTab = index },
-                    text = {
-                        Text(
-                            tab.label,
-                            maxLines = 1,
-                            softWrap = false,
-                            style = MaterialTheme.typography.titleSmall,
-                        )
-                    },
-                )
-            }
-        }
+        DotTabs(
+            tabs = SettingsTab.entries.map { it.label },
+            selected = selectedTab,
+            onSelect = { selectedTab = it },
+            modifier = Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 18.dp),
+        )
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .padding(16.dp),
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             when (SettingsTab.entries[selectedTab]) {
                 SettingsTab.PREFERENCES -> {
-                    BudgetSection(
-                        current = state.budgetModel,
-                        onSelect = onSetBudgetModel,
-                    )
-                    SectionBreak()
-                    CardTimingSection(
-                        current = state.cardTiming,
-                        onSelect = onSetCardTiming,
-                    )
-                    SectionBreak()
-                    NotificationsSection(
-                        selectedTime = selectedTime,
-                        onPickTime = { showTimePicker = true },
-                    )
+                    LookSection(look, onSetAccent, onSetAccountColours)
+                    Panel {
+                        BudgetSection(
+                            current = state.budgetModel,
+                            onSelect = onSetBudgetModel,
+                        )
+                    }
+                    Panel {
+                        CardTimingSection(
+                            current = state.cardTiming,
+                            onSelect = onSetCardTiming,
+                        )
+                    }
+                    SyncingSection(state)
+                    Panel {
+                        NotificationsSection(
+                            selectedTime = selectedTime,
+                            onPickTime = { showTimePicker = true },
+                        )
+                    }
                 }
 
-                SettingsTab.SETUP -> {
+                SettingsTab.SETUP -> Panel {
                     CredentialsSection(
                         secretId = secretIdField,
                         onSecretIdChange = {
@@ -164,7 +172,7 @@ fun SettingsScreen(
                             saved = true
                         },
                     )
-                    SectionBreak()
+                    Spacer(Modifier.height(24.dp))
                     DataSection(
                         state = state,
                         onExport = onExport,
@@ -173,17 +181,17 @@ fun SettingsScreen(
                     )
                 }
 
-                SettingsTab.CARD_ALERTS -> cardAlerts()
+                SettingsTab.CARD_ALERTS -> Panel { cardAlerts() }
 
-                SettingsTab.WATCH -> WatchSection()
+                SettingsTab.WATCH -> Panel { WatchSection() }
 
-                SettingsTab.ABOUT -> UpdatesSection(
+                SettingsTab.ABOUT -> Panel { UpdatesSection(
                     state = state,
                     versionName = state.versionName,
                     versionCode = state.versionCode,
                     onCheckUpdate = onCheckUpdate,
                     onOpenInstallSettings = onOpenInstallSettings,
-                )
+                ) }
             }
         }
     }
@@ -227,6 +235,72 @@ fun SettingsScreen(
             },
             onDismiss = { showTimePicker = false },
         )
+    }
+}
+
+/**
+ * The Look card: the app's accent, from four, and whether each account wears its own colour.
+ * Applied at once, so the choice can be judged on the screen it was made on.
+ */
+@Composable
+private fun LookSection(look: Look, onSetAccent: (com.spendroid.ui.theme.Accent) -> Unit, onSetAccountColours: (Boolean) -> Unit) {
+    Panel {
+        SectionHeading("Look", trailing = "colours")
+        Spacer(Modifier.height(10.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("App colour", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+            com.spendroid.ui.theme.Accent.entries.forEach { accent ->
+                val chosen = accent == look.accent
+                Box(
+                    Modifier
+                        .padding(start = 8.dp)
+                        .size(30.dp)
+                        .clip(CircleShape)
+                        .background(accent.colour)
+                        .then(if (chosen) Modifier.border(3.dp, Color.White, CircleShape) else Modifier)
+                        .clickable { onSetAccent(accent) }
+                        .semantics { contentDescription = accent.label + if (chosen) ", chosen" else "" },
+                )
+            }
+        }
+        Spacer(Modifier.height(12.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Colour each account", style = MaterialTheme.typography.bodyLarge)
+                Text("Its pages, bars and tiles in its own colour", style = MaterialTheme.typography.labelSmall, color = Charcoal.Muted)
+            }
+            Switch(checked = look.accountColours, onCheckedChange = onSetAccountColours)
+        }
+    }
+}
+
+/**
+ * How the bank's allowance stands, account by account, as Unraid shows a disk: a bar with its
+ * word inside - full while a refresh is there, half on the last one, filling towards the reset
+ * once spent. No count of calls: once a reset has passed nobody can say how many came back.
+ */
+@Composable
+private fun SyncingSection(state: RootUiState) {
+    val now = System.currentTimeMillis()
+    Panel {
+        SectionHeading("Syncing", trailing = "GoCardless")
+        state.nextSyncAt?.let {
+            Text("Next scheduled sync ${com.spendroid.data.SyncAllowance.resetLabel(it, now)}", style = MaterialTheme.typography.labelMedium, color = Charcoal.Muted)
+        }
+        state.accounts.forEach { account ->
+            val allowance = state.syncAllowances[account.id]
+            val status = com.spendroid.data.SyncAllowance.status(allowance, now)
+            val (fraction, colour) = when (status) {
+                com.spendroid.data.SyncAllowance.Status.AVAILABLE -> 1f to Charcoal.Good
+                com.spendroid.data.SyncAllowance.Status.LAST_ONE -> 0.5f to Charcoal.Warn
+                com.spendroid.data.SyncAllowance.Status.UNAVAILABLE ->
+                    (allowance?.resetAt?.let { 1f - (it - now).toFloat() / (24 * 60 * 60 * 1000f) } ?: 0f) to Charcoal.Bad
+            }
+            Spacer(Modifier.height(10.dp))
+            Text(account.label, style = MaterialTheme.typography.labelLarge)
+            Spacer(Modifier.height(4.dp))
+            LabelledBar(fraction, com.spendroid.data.SyncAllowance.summary(allowance, now), colour, height = 18.dp)
+        }
     }
 }
 
@@ -468,7 +542,7 @@ private fun BudgetSection(
     Spacer(Modifier.height(12.dp))
     Text(
         "Carrying the balance over and showing the balance both use the account your main " +
-            "income is paid into. Choose which income that is under Recurring rules.",
+            "income is paid into. Star which income that is under Regular, on the Income tab.",
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )

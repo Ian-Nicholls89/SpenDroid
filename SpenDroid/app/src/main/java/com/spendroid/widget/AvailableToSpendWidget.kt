@@ -80,6 +80,8 @@ class AvailableToSpendWidget : GlanceAppWidget() {
     private data class CategoryLine(val name: String, val label: String, val amount: String, val share: Float, val color: Color)
 
     private data class Summary(
+        /** The user's accent, for the wordmark and glow. */
+        val accent: Int = 0xFFF5A623.toInt(),
         val available: String,
         val availableRounded: String,
         val days: String?,
@@ -134,6 +136,7 @@ class AvailableToSpendWidget : GlanceAppWidget() {
             }
 
             Summary(
+                accent = widgetAccent(context),
                 available = formatMoney(snapshot.availableToSpend, snapshot.baseCurrency),
                 availableRounded = poundsOnly(snapshot.availableToSpend),
                 days = days?.let { "$it day${if (it == 1) "" else "s"}" },
@@ -201,19 +204,20 @@ class AvailableToSpendWidget : GlanceAppWidget() {
     @Composable
     private fun WidgetBody(summary: Summary) {
         val size = LocalSize.current
-        val background = when (summary.pace) {
-            BudgetPace.Pace.OVER -> RedDeep
-            BudgetPace.Pace.TIGHT -> AmberDeep
-            BudgetPace.Pace.ON_TRACK -> GreenDeep
-        }
-
+        // Charcoal with the accent's glow at the top, as the app; the pace has its own chip.
         Box(
             modifier = GlanceModifier
                 .fillMaxSize()
-                .background(background)
-                .cornerRadius(18.dp)
+                .background(ColorProvider(Color(WIDGET_CHARCOAL)))
+                .cornerRadius(22.dp)
                 .clickable(actionStartActivity<MainActivity>()),
         ) {
+            Image(
+                provider = ImageProvider(glowBitmap(summary.accent)),
+                contentDescription = null,
+                contentScale = ContentScale.FillBounds,
+                modifier = GlanceModifier.fillMaxSize(),
+            )
             when {
                 summary.empty != null -> Centred(summary.empty)
                 size.height >= LARGE.height -> Large(summary, size)
@@ -240,7 +244,7 @@ class AvailableToSpendWidget : GlanceAppWidget() {
                 modifier = GlanceModifier
                     .width(5.dp)
                     .fillMaxSize()
-                    .background(ColorProvider(Color.White)),
+                    .background(ColorProvider(Color(paceInt(summary.pace)))),
             ) {}
             Column(
                 modifier = GlanceModifier.fillMaxSize().padding(horizontal = 11.dp),
@@ -261,7 +265,7 @@ class AvailableToSpendWidget : GlanceAppWidget() {
             Spacer(GlanceModifier.height(3.dp))
             Text(summary.available, style = figure(25.sp))
             Spacer(GlanceModifier.height(5.dp))
-            Rail(summary.remaining, summary.elapsed, size.width - 24.dp)
+            Rail(summary, size.width - 24.dp)
             Spacer(GlanceModifier.height(4.dp))
             Text(
                 listOfNotNull(summary.days, summary.perDay).joinToString(" · "),
@@ -334,7 +338,7 @@ class AvailableToSpendWidget : GlanceAppWidget() {
         Column(modifier = GlanceModifier.fillMaxSize().padding(horizontal = 14.dp, vertical = 10.dp)) {
             HeadRow(summary)
             Spacer(GlanceModifier.height(3.dp))
-            Rail(summary.remaining, summary.elapsed, size.width - 28.dp)
+            Rail(summary, size.width - 28.dp)
             Spacer(GlanceModifier.height(5.dp))
             Row(modifier = GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.Vertical.Bottom) {
                 Column(modifier = GlanceModifier.defaultWeight()) {
@@ -378,7 +382,7 @@ class AvailableToSpendWidget : GlanceAppWidget() {
         Column(modifier = GlanceModifier.fillMaxSize().padding(14.dp)) {
             HeadRow(summary)
             Spacer(GlanceModifier.height(9.dp))
-            Rail(summary.remaining, summary.elapsed, size.width - 28.dp)
+            Rail(summary, size.width - 28.dp)
             Spacer(GlanceModifier.height(9.dp))
             if (summary.lines.isNotEmpty()) {
                 Text("Still to come out", style = label())
@@ -410,8 +414,8 @@ class AvailableToSpendWidget : GlanceAppWidget() {
                 Spacer(GlanceModifier.width(12.dp))
                 Column(modifier = GlanceModifier.defaultWeight()) {
                     Row(modifier = GlanceModifier.fillMaxWidth()) {
-                        Text("Available to spend", style = label(), modifier = GlanceModifier.defaultWeight())
-                        Text(paceLabel(summary.pace), style = chip())
+                        Text("SPENDROID", style = wordmark(summary.accent), modifier = GlanceModifier.defaultWeight())
+                        PaceChip(summary.pace)
                     }
                     Text(summary.available, style = figure(26.sp))
                     Text(
@@ -488,8 +492,8 @@ class AvailableToSpendWidget : GlanceAppWidget() {
     private fun HeadRow(summary: Summary) {
         Column(modifier = GlanceModifier.fillMaxWidth()) {
             Row(modifier = GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.Vertical.CenterVertically) {
-                Text("Available to spend", style = label(), modifier = GlanceModifier.defaultWeight())
-                Text(paceLabel(summary.pace), style = chip())
+                Text("SPENDROID", style = wordmark(summary.accent), modifier = GlanceModifier.defaultWeight())
+                PaceChip(summary.pace)
             }
             Row(modifier = GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.Vertical.CenterVertically) {
                 Text(summary.available, style = figure(25.sp), modifier = GlanceModifier.defaultWeight())
@@ -523,37 +527,49 @@ class AvailableToSpendWidget : GlanceAppWidget() {
     }
 
     /**
-     * How much of the budget is left, as a bar sized against the widget's real width, with a
-     * tick where the bar would end if spending were even across the cycle. Bar short of the
-     * tick is spending ahead of the days; past it is room in hand.
+     * How much of the budget is left, as the app's labelled bar: draining as it is spent, the
+     * figure written inside, in the pace's colour, and a tick where an even pace would leave it.
      */
     @Composable
-    private fun Rail(remaining: Float, elapsed: Float?, available: androidx.compose.ui.unit.Dp) {
-        Box(modifier = GlanceModifier.fillMaxWidth().height(12.dp), contentAlignment = Alignment.CenterStart) {
-            Box(
-                modifier = GlanceModifier
-                    .fillMaxWidth()
-                    .height(4.dp)
-                    .cornerRadius(2.dp)
-                    .background(ColorProvider(TrackWhite)),
-            ) {
-                Box(
-                    modifier = GlanceModifier
-                        .width(available * remaining.coerceIn(0.02f, 1f))
-                        .height(4.dp)
-                        .cornerRadius(2.dp)
-                        .background(ColorProvider(Color.White)),
-                ) {}
-            }
-            elapsed?.let { gone ->
-                // Where an even pace would leave the bar: the share of the cycle still to come.
-                Row {
-                    Spacer(GlanceModifier.width(maxOf(0.dp, available * (1f - gone).coerceIn(0f, 1f) - 1.dp)))
-                    Box(modifier = GlanceModifier.width(2.dp).height(12.dp).cornerRadius(1.dp).background(ColorProvider(Color.White))) {}
-                }
-            }
-        }
+    private fun Rail(summary: Summary, available: androidx.compose.ui.unit.Dp) {
+        Image(
+            provider = ImageProvider(
+                labelledBarBitmap(
+                    widthDp = available.value,
+                    heightDp = 18f,
+                    fraction = summary.remaining,
+                    label = "${summary.available} left",
+                    fill = paceInt(summary.pace),
+                    tick = summary.elapsed?.let { 1f - it },
+                ),
+            ),
+            contentDescription = "${summary.available} left, ${(summary.remaining * 100).toInt()} percent of the budget",
+            contentScale = ContentScale.FillBounds,
+            modifier = GlanceModifier.fillMaxWidth().height(18.dp),
+        )
     }
+
+    /** The pace as a small solid chip, as in the app: "ON PACE", "TIGHT", "OVER PACE". */
+    @Composable
+    private fun PaceChip(pace: BudgetPace.Pace) {
+        Text(
+            when (pace) {
+                BudgetPace.Pace.ON_TRACK -> "ON PACE"
+                BudgetPace.Pace.TIGHT -> "TIGHT"
+                BudgetPace.Pace.OVER -> "OVER PACE"
+            },
+            style = TextStyle(color = ColorProvider(Color(0xFF111111)), fontSize = 10.sp, fontWeight = FontWeight.Bold),
+            modifier = GlanceModifier.background(ColorProvider(Color(paceInt(pace)))).cornerRadius(5.dp).padding(horizontal = 6.dp, vertical = 1.dp),
+        )
+    }
+
+    private fun paceInt(pace: BudgetPace.Pace): Int = when (pace) {
+        BudgetPace.Pace.ON_TRACK -> 0xFF43B05C.toInt()
+        BudgetPace.Pace.TIGHT -> 0xFFF5A623.toInt()
+        BudgetPace.Pace.OVER -> 0xFFE5534B.toInt()
+    }
+
+    private fun wordmark(accent: Int) = TextStyle(color = ColorProvider(Color(accent)), fontSize = 12.sp, fontWeight = FontWeight.Bold)
 
     private fun ringDescription(summary: Summary): String =
         listOfNotNull(
@@ -616,9 +632,6 @@ class AvailableToSpendWidget : GlanceAppWidget() {
         val DASHBOARD = DpSize(250.dp, 190.dp)
         val LARGE = DpSize(250.dp, 260.dp)
 
-        val GreenDeep = ColorProvider(Color(0xFF256B29))
-        val AmberDeep = ColorProvider(Color(0xFF9A5B00))
-        val RedDeep = ColorProvider(Color(0xFF8A2025))
         val OnHeroMuted = Color(0xD9FFFFFF)
         val TrackWhite = Color(0x47FFFFFF)
         val TrackSoft = Color(0x2EFFFFFF)
@@ -648,6 +661,7 @@ suspend fun refreshWidgets(context: Context) {
     // Drawn from the same snapshot, so it moves when this one does.
     refreshTimelineWidgets(context)
     refreshPeriodWidgets(context)
+    refreshComingUpWidgets(context)
     // And the watch's complication, for the same reason.
     WatchSync.push(context)
 }

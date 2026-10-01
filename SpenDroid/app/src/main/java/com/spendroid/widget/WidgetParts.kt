@@ -11,6 +11,7 @@ import androidx.glance.appwidget.action.ActionCallback
 import com.spendroid.data.db.AccountEntity
 import com.spendroid.domain.BudgetPace
 import java.time.Instant
+import kotlinx.coroutines.flow.first
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -199,4 +200,78 @@ fun periodBarBitmap(share: Float?, tick: Float?, fill: Int, track: Int, tickColo
         canvas.drawLine(x, 2f, x, h - 2f, paint(tickColour, 6f))
     }
     return bitmap
+}
+
+/** The charcoal every widget now sits on, as the app does. */
+const val WIDGET_CHARCOAL = 0xF218191D.toInt()
+
+/** The user's accent, as the app shows it, for a widget's wordmark and glow. */
+suspend fun widgetAccent(context: Context): Int {
+    val app = context.applicationContext as? com.spendroid.BudgetApplication ?: return 0xFFF5A623.toInt()
+    val name = runCatching { app.repository.accent.first() }.getOrNull()
+    val c = com.spendroid.ui.theme.Accent.from(name).colour
+    return android.graphics.Color.argb((c.alpha * 255).toInt(), (c.red * 255).toInt(), (c.green * 255).toInt(), (c.blue * 255).toInt())
+}
+
+/** A wash of [colour] fading downwards, behind a widget's top: the app's header glow. */
+fun glowBitmap(colour: Int, strength: Float = 0.38f): Bitmap {
+    val h = 96
+    val bitmap = Bitmap.createBitmap(1, h, Bitmap.Config.ARGB_8888)
+    for (y in 0 until h) {
+        val a = (strength * 255 * (1f - y / (h - 1f))).toInt().coerceIn(0, 255)
+        bitmap.setPixel(0, y, (a shl 24) or (colour and 0x00FFFFFF))
+    }
+    return bitmap
+}
+
+/**
+ * The app's labelled bar: a thick rounded bar with its figure written inside, and a white tick
+ * where an even pace would have it. Drawn at the size it is shown, three pixels to the dp, so
+ * the writing is not stretched.
+ */
+fun labelledBarBitmap(widthDp: Float, heightDp: Float, fraction: Float, label: String, fill: Int, tick: Float?): Bitmap {
+    val scale = 3f
+    val w = (widthDp * scale).toInt().coerceAtLeast(30)
+    val h = (heightDp * scale).toInt().coerceAtLeast(12)
+    val bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(bitmap)
+    val r = h / 2f
+    canvas.drawRoundRect(RectF(0f, 0f, w.toFloat(), h.toFloat()), r, r, paint(0xFF33363E.toInt()))
+    val f = fraction.coerceIn(0f, 1f)
+    if (f > 0f) canvas.drawRoundRect(RectF(0f, 0f, (w * f).coerceAtLeast(h.toFloat()), h.toFloat()), r, r, paint(fill))
+    tick?.let { t ->
+        val x = w * t.coerceIn(0f, 1f)
+        canvas.drawRoundRect(RectF(x - scale * 1.5f, 0f, x + scale * 1.5f, h.toFloat()), scale, scale, paint(0xFFFFFFFF.toInt()))
+    }
+    val text = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = 0xFFFFFFFF.toInt()
+        textSize = h * 0.56f
+        typeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
+        textAlign = Paint.Align.CENTER
+        setShadowLayer(scale * 1.5f, 0f, 0f, 0x99000000.toInt())
+    }
+    canvas.drawText(label, w / 2f, h / 2f - (text.descent() + text.ascent()) / 2f, text)
+    return bitmap
+}
+
+/**
+ * The widgets' colours: the app's charcoal and its accent, fixed rather than taken from the
+ * system, so a widget looks like the app it opens whatever the phone's wallpaper colours.
+ */
+fun widgetColours(accent: Int): androidx.glance.color.ColorProviders {
+    val a = androidx.compose.ui.graphics.Color(accent)
+    return androidx.glance.material3.ColorProviders(
+        scheme = androidx.compose.material3.darkColorScheme(
+            primary = a,
+            onPrimary = androidx.compose.ui.graphics.Color(0xFF111111),
+            secondaryContainer = androidx.compose.ui.graphics.Color(0xFF2A2C33),
+            onSecondaryContainer = androidx.compose.ui.graphics.Color.White,
+            surface = androidx.compose.ui.graphics.Color(WIDGET_CHARCOAL),
+            onSurface = androidx.compose.ui.graphics.Color.White,
+            surfaceVariant = androidx.compose.ui.graphics.Color(0xFF2A2C33),
+            onSurfaceVariant = androidx.compose.ui.graphics.Color(0xFF9AA0AA),
+            background = androidx.compose.ui.graphics.Color(WIDGET_CHARCOAL),
+            onBackground = androidx.compose.ui.graphics.Color.White,
+        ),
+    )
 }

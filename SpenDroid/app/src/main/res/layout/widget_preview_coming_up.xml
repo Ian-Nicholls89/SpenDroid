@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- What the Coming up widget looks like, shown in the widget picker. Sample bills only. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/preview_bg_surface"
+    android:orientation="vertical"
+    android:padding="12dp">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="COMING UP"
+        android:textColor="#FFF5A623"
+        android:textSize="11sp"
+        android:textStyle="bold" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_marginTop="8dp"
+        android:layout_weight="1"
+        android:orientation="horizontal">
+        <View android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:background="#FF7A3BE0" />
+        <View android:layout_width="8dp" android:layout_height="match_parent" />
+        <View android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:background="#FFE05A3B" />
+        <View android:layout_width="8dp" android:layout_height="match_parent" />
+        <View android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:background="#FF1B9BD8" />
+        <View android:layout_width="8dp" android:layout_height="match_parent" />
+        <View android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:background="#FF2FB57A" />
+    </LinearLayout>
+</LinearLayout>

@@ -60,7 +60,8 @@ class CardBillsWidget : GlanceAppWidget() {
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val cards = loadCards(context)
-        provideContent { Body(cards) }
+        val accent = widgetAccent(context)
+        provideContent { Body(cards, accent) }
     }
 
     private data class CardRow(
@@ -148,8 +149,8 @@ class CardBillsWidget : GlanceAppWidget() {
     }
 
     @Composable
-    private fun Body(cards: Cards?) {
-        GlanceTheme {
+    private fun Body(cards: Cards?, accent: Int) {
+        GlanceTheme(colors = widgetColours(accent)) {
             Box(
                 modifier = GlanceModifier
                     .fillMaxSize()

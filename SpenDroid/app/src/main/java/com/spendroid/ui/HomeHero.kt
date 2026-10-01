@@ -351,7 +351,7 @@ private fun BudgetBelow(state: RootUiState, budget: BudgetSnapshot, onRefresh: (
             Spacer(Modifier.height(8.dp))
             Text(
                 "The income you picked to set the cycle is no longer being detected - possibly renamed by your bank. " +
-                    "Using the largest income instead; pick it again under Recurring rules.",
+                    "Using the largest income instead; star it again under Regular, on the Income tab.",
                 style = MaterialTheme.typography.labelMedium,
                 color = Charcoal.Warn,
             )

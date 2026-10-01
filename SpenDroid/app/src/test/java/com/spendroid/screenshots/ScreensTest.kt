@@ -122,6 +122,7 @@ class ScreensTest {
     }
 
     @Test
+    @Config(qualifiers = "w411dp-h1500dp-xxhdpi")
     fun settings() {
         val state = Sample.state()
         shoot("settings", AppScreen.Settings) {

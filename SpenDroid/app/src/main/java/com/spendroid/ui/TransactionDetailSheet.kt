@@ -295,7 +295,7 @@ fun TransactionDetailSheet(
                         Spacer(Modifier.height(10.dp))
                         Text(
                             if (isRegularBill) {
-                                "A regular bill: set aside from the start of each cycle. Change it under Rules."
+                                "A regular bill: set aside from the start of each cycle. Change it under Regular."
                             } else {
                                 "Bill takes ${formatMoney(kotlin.math.abs(transaction.amountMinor), transaction.currency)} off your budget " +
                                     "on the ${ordinal(transaction.bookingDate)} of every month, from the start of each cycle, instead of " +
