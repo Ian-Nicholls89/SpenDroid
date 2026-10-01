@@ -66,6 +66,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.ui.draw.clip
+import com.spendroid.ui.theme.Charcoal
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -103,6 +109,8 @@ fun TransactionsScreen(
     onMarkCardPayment: (TransactionEntity, Boolean) -> Unit,
     onCategoryFilter: (Category?) -> Unit,
     onTreatAsBill: ((TransactionEntity) -> Unit)? = null,
+    /** Only what is still pending: the Pending tab. */
+    pendingOnly: Boolean = false,
 ) {
     var selected by remember { mutableStateOf<TransactionEntity?>(null) }
     // The last swipe, kept long enough to undo it or make it stick for the payee.
@@ -147,13 +155,14 @@ fun TransactionsScreen(
             cardPaymentKeys = state.budget?.cardPaymentKeys.orEmpty(),
             creditCardAccountIds = state.budget?.creditCardAccountIds.orEmpty(),
         )
+            .filter { !pendingOnly || it.isPending }
             .take(DISPLAY_TRANSACTION_LIMIT)
     }
 
-    // Grouped by month so a long history can be read rather than merely scrolled.
+    // Grouped by day, under headings in the accent, as nzb360 groups what is coming up.
     val months = remember(visible, state.categoryRules) {
         visible
-            .groupBy { it.bookingDate.take(7) }
+            .groupBy { it.bookingDate }
             .toList()
             .sortedByDescending { it.first }
     }
@@ -177,12 +186,20 @@ fun TransactionsScreen(
         onRefresh = onRefresh,
         modifier = Modifier.fillMaxSize(),
     ) {
-        LazyColumn(modifier = Modifier.fillMaxSize()) {
+        // Room at the foot for the floating button, so it never sits over the last row.
+        LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 96.dp)) {
             item {
                 OutlinedTextField(
                     value = state.transactionQuery,
                     onValueChange = onQueryChange,
-                    label = { Text("Search payee or reference") },
+                    placeholder = { Text("Search ${state.transactions.size} transactions") },
+                    shape = RoundedCornerShape(24.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        unfocusedContainerColor = Charcoal.PanelHigh,
+                        focusedContainerColor = Charcoal.PanelHigh,
+                        unfocusedBorderColor = Color.Transparent,
+                        focusedBorderColor = MaterialTheme.colorScheme.primary,
+                    ),
                     singleLine = true,
                     leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
                     trailingIcon = {
@@ -279,25 +296,6 @@ fun TransactionsScreen(
                 }
             }
 
-            item {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    FilterChip(
-                        selected = state.showRecurringOnly,
-                        onClick = onToggleRecurring,
-                        label = { Text("Recurring only") },
-                    )
-                    FilterChip(
-                        selected = state.showInternalTransfers,
-                        onClick = onToggleInternal,
-                        label = { Text("Transfers only") },
-                    )
-                }
-            }
 
             if (visible.isEmpty()) {
                 item {
@@ -348,7 +346,7 @@ fun TransactionsScreen(
 
                 months.forEach { (monthKey, rows) ->
                     item(key = "header-$monthKey") {
-                        Box(modifier = Modifier.animateItem()) { MonthHeader(monthKey, rows) }
+                        Box(modifier = Modifier.animateItem()) { DayHeader(monthKey, rows, state.budget?.asOf ?: java.time.LocalDate.now()) }
                     }
                     items(rows, key = { "${it.accountId}|${it.transactionId}" }) { tx ->
                         val rowKey = "${tx.accountId}|${tx.transactionId}"
@@ -390,10 +388,6 @@ fun TransactionsScreen(
                                     },
                                 )
                             }
-                            HorizontalDivider(
-                                modifier = Modifier.padding(start = 64.dp),
-                                color = MaterialTheme.colorScheme.outlineVariant,
-                            )
                         }
                     }
                 }
@@ -407,6 +401,35 @@ fun TransactionsScreen(
                         style = MaterialTheme.typography.bodySmall,
                         modifier = Modifier.padding(16.dp),
                     )
+                }
+            }
+        }
+
+        // nzb360's floating button: refresh, with arrows either side stepping between accounts
+        // as nzb360 steps between services. Hidden while the undo bar is up, which sits there.
+        if (sorted == null) {
+            val order = listOf<String?>(null) + state.accounts.map { it.id }
+            val at = order.indexOf(state.accountFilter).coerceAtLeast(0)
+            Row(
+                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                if (order.size > 1) {
+                    IconButton(onClick = { onAccountFilter(order[(at - 1 + order.size) % order.size]) }) {
+                        Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = "Previous account", tint = Charcoal.Muted)
+                    }
+                }
+                androidx.compose.material3.FloatingActionButton(
+                    onClick = onRefresh,
+                    shape = CircleShape,
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = Color(0xFF111111),
+                ) { Icon(Icons.Filled.Refresh, contentDescription = "Refresh") }
+                if (order.size > 1) {
+                    IconButton(onClick = { onAccountFilter(order[(at + 1) % order.size]) }) {
+                        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Next account", tint = Charcoal.Muted)
+                    }
                 }
             }
         }
@@ -457,8 +480,50 @@ fun TransactionsScreen(
             onMarkCardPayment = { t, v -> onMarkCardPayment(t, v); selected = null },
             isRegularBill = state.budget?.fixedRules.orEmpty().any { com.spendroid.domain.RecurringAnalyzer.matches(it, tx) },
             onTreatAsBill = onTreatAsBill?.let { treat -> { t: TransactionEntity -> treat(t); selected = null } },
+            accountLabel = accountNames[tx.accountId],
+            payeeCycle = remember(tx, state.transactions, state.budget) { payeeCycle(tx, state) },
         )
     }
+}
+
+/** "Today", "Yesterday", else "Mon 28 Sep", with what went out that day on the right. */
+@Composable
+private fun DayHeader(date: String, rows: List<TransactionEntity>, today: java.time.LocalDate) {
+    val day = runCatching { java.time.LocalDate.parse(date) }.getOrNull()
+    val label = when (day) {
+        null -> date
+        today -> "Today"
+        today.minusDays(1) -> "Yesterday"
+        else -> day.format(DateTimeFormatter.ofPattern(if (day.year == today.year) "EEE d MMM" else "EEE d MMM yyyy", Locale.getDefault()))
+    }
+    val spent = rows.filter { it.amountMinor < 0 }.sumOf { -it.amountMinor }
+    Row(Modifier.fillMaxWidth().padding(end = 18.dp, top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+        DayHeading(label, Modifier.weight(1f))
+        if (spent > 0L) Text(formatMoney(spent, rows.first().currency), style = MaterialTheme.typography.labelMedium, color = Charcoal.Muted)
+    }
+}
+
+/**
+ * How [tx]'s payee is going this pay cycle against the cycles before: the middle of the last
+ * three, cycle-length windows back from this one's start.
+ */
+private fun payeeCycle(tx: TransactionEntity, state: RootUiState): PayeeCycle? {
+    val budget = state.budget ?: return null
+    if (tx.amountMinor >= 0) return null
+    val payee = tx.payee.tidyPayee().lowercase()
+    if (payee.isBlank()) return null
+    val start = budget.cycleStart
+    val length = budget.cycleEnd?.let { java.time.temporal.ChronoUnit.DAYS.between(start, it) + 1 } ?: 30L
+    val mine = state.transactions.filter { it.amountMinor < 0 && it.payee.tidyPayee().lowercase() == payee }
+    fun between(from: java.time.LocalDate, until: java.time.LocalDate) = mine.filter { t ->
+        com.spendroid.domain.RecurringAnalyzer.parseBookingDate(t.bookingDate)?.let { !it.isBefore(from) && it.isBefore(until) } == true
+    }
+    val now = between(start, start.plusDays(length))
+    if (now.isEmpty()) return null
+    val past = (1..3).map { k -> between(start.minusDays(length * k), start.minusDays(length * (k - 1))).sumOf { -it.amountMinor } }
+        .filter { it > 0L }
+        .sorted()
+    return PayeeCycle(now.sumOf { -it.amountMinor }, now.size, past.takeIf { it.isNotEmpty() }?.let { it[it.size / 2] })
 }
 
 @Composable
@@ -555,42 +620,29 @@ private fun TransactionRow(
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(min = MinTouchTarget)
+            .padding(horizontal = 14.dp, vertical = 4.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(Charcoal.Panel)
             .background(glow)
             .alpha(if (held) 0.5f else 1f)
             .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 10.dp)
+            .padding(horizontal = 12.dp, vertical = 10.dp)
             // One announcement for the row rather than four disconnected fragments.
             .semantics(mergeDescendants = true) {
                 contentDescription = "$name, $category.label, ${tx.bookingDate}, $amount"
             },
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(
-            modifier = Modifier
-                .size(36.dp)
-                .background(visual.color, CircleShape),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                visual.icon,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.surface,
-                modifier = Modifier.size(20.dp),
-            )
-        }
+        CategoryTile(category)
         Spacer(Modifier.width(12.dp))
 
         Column(modifier = Modifier.weight(1f)) {
-            Text(name, style = MaterialTheme.typography.bodyMedium, maxLines = 1)
+            Text(name, style = MaterialTheme.typography.titleSmall, maxLines = 1)
             Text(
                 buildList {
                     note?.let(::add)
-                    pendingNote?.let(::add)
                     add(category.label)
                     accountName?.let(::add)
-                    tx.bookingDate.takeIf { it.isNotBlank() }?.let(::add)
-                    if (tx.isInternalTransfer) add("transfer")
-                    if (tx.isRecurring) add("recurring")
                     if (tx.categoryOverride != null) add("edited")
                 }.joinToString(" · "),
                 style = MaterialTheme.typography.labelSmall,
@@ -600,16 +652,29 @@ private fun TransactionRow(
         }
 
         Spacer(Modifier.width(12.dp))
-        Text(
-            amount,
-            // Colour marks the exception, not the rule: an ordinary debit is the most common
-            // thing on this screen and does not need the loudest colour on the palette.
-            style = MaterialTheme.typography.bodyMedium.copy(fontFeatureSettings = "tnum"),
-            fontWeight = FontWeight.SemiBold,
-            color = if (tx.amountMinor >= 0) InColor else MaterialTheme.colorScheme.onSurface,
-            textAlign = TextAlign.End,
-            modifier = Modifier.widthIn(min = 84.dp),
-        )
+        Column(horizontalAlignment = Alignment.End, modifier = Modifier.widthIn(min = 84.dp)) {
+            Text(
+                amount,
+                // Colour marks the exception, not the rule: an ordinary debit is the most common
+                // thing on this screen and does not need the loudest colour on the palette.
+                style = MaterialTheme.typography.titleSmall.copy(fontFeatureSettings = "tnum"),
+                fontWeight = FontWeight.Black,
+                color = if (tx.amountMinor >= 0) InColor else MaterialTheme.colorScheme.onSurface,
+                textAlign = TextAlign.End,
+            )
+            // A word under the amount, as nzb360 puts "Downloaded": what state the row is in.
+            val status = when {
+                held -> "Check" to Charcoal.Warn
+                note != null -> "Not listed" to Charcoal.Warn
+                pendingNote != null -> "Pending" to Color(0xFF29B6F6)
+                tx.isInternalTransfer -> "Transfer" to Charcoal.Muted
+                tx.isRecurring -> "Regular" to Charcoal.Muted
+                else -> null
+            }
+            status?.let { (word, colour) ->
+                Text(word, style = MaterialTheme.typography.labelSmall, color = colour, fontWeight = FontWeight.Black)
+            }
+        }
     }
 }
 

@@ -87,6 +87,7 @@ class ScreensTest {
     }
 
     @Test
+    @Config(qualifiers = "w411dp-h1500dp-xxhdpi")
     fun spending() {
         val state = Sample.state()
         shoot("spending", AppScreen.Spending) {
@@ -94,6 +95,12 @@ class ScreensTest {
                 state = state, onRefresh = {}, onToggleRecurring = {}, onToggleInternal = {}, onQueryChange = {},
                 onAccountFilter = {}, onOverrideCategory = { _, _ -> }, onAlwaysCategorise = { _, _ -> },
                 onMarkTransfer = { _, _ -> }, onMarkCardPayment = { _, _ -> }, onCategoryFilter = {}, onSetBudgetGoal = { _, _ -> },
+                prompts = {
+                    androidx.compose.foundation.layout.Column(Modifier.padding(horizontal = 14.dp, vertical = 8.dp), verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(10.dp)) {
+                        com.spendroid.ui.DuplicatePrompts(Sample.questions(), state.accounts, {}, {}, {})
+                        com.spendroid.ui.SeenSpendPrompts(Sample.seen(), state.accounts, { _, _ -> }, {}, {})
+                    }
+                },
             )
         }
     }
@@ -132,5 +139,26 @@ class ScreensTest {
         val state = Sample.state()
         compose.setContent { BudgetTheme { com.spendroid.ui.RoundupScreen(state, onBack = {}, onSeeQuestions = {}) } }
         compose.onRoot().captureRoboImage("build/screenshots/roundup.png")
+    }
+
+    @OptIn(com.github.takahirom.roborazzi.ExperimentalRoborazziApi::class)
+    @Test
+    @Config(qualifiers = "w411dp-h1100dp-xxhdpi")
+    fun transaction() {
+        val state = Sample.state()
+        val tx = state.transactions.first { it.payee == "PORTON STORES" }
+        compose.setContent {
+            BudgetTheme {
+                com.spendroid.ui.TransactionDetailSheet(
+                    transaction = tx, userRules = emptyList(), onDismiss = {}, onOverrideCategory = { _, _ -> },
+                    onAlwaysCategorise = { _, _ -> }, onMarkTransfer = { _, _ -> }, similarCount = 2,
+                    suggestions = listOf(com.spendroid.domain.Category.WORK_LUNCH, com.spendroid.domain.Category.GROCERIES),
+                    onTreatAsBill = {}, accountLabel = "Personal Account",
+                    payeeCycle = com.spendroid.ui.PayeeCycle(1_936, 2, 2_400),
+                )
+            }
+        }
+        compose.waitForIdle()
+        com.github.takahirom.roborazzi.captureScreenRoboImage("build/screenshots/transaction.png")
     }
 }

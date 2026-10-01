@@ -15,6 +15,11 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import com.spendroid.ui.theme.Charcoal
+import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.clickable
 import androidx.compose.ui.unit.dp
 import com.spendroid.data.db.AccountEntity
 import com.spendroid.data.db.SeenSpendEntity
@@ -45,33 +50,36 @@ internal fun SeenSpendPrompts(
 
     Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         unassigned.forEach { spend ->
-            PromptCard {
+            QuestionCard("Which card?", Color(0xFF29B6F6)) {
                 Text(
                     "${formatMoney(-spend.amountMinor, spend.currency)} at ${spend.merchant} · ${NotificationSpend.dateOf(spend.seenAt).format(DAY)}",
-                    style = MaterialTheme.typography.bodyMedium,
+                    style = MaterialTheme.typography.titleSmall,
                 )
-                Text("Which card was this on?", style = MaterialTheme.typography.bodySmall)
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("Seen in a notification; nothing is counted until you say.", style = MaterialTheme.typography.labelSmall, color = Charcoal.Muted)
+                Spacer(Modifier.height(10.dp))
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     wallet.forEach { account ->
-                        AssistChip(onClick = { onAssign(spend.id, account.id) }, label = { Text(account.label, maxLines = 1) })
+                        ColourPill(account.label, colourOf(account, accounts), { onAssign(spend.id, account.id) })
                     }
-                    AssistChip(onClick = { onDismiss(spend.id) }, label = { Text("Ignore") })
+                    ColourPill("Ignore", Charcoal.PanelHigh, { onDismiss(spend.id) }, Color(0xFFAAB0BB))
                 }
             }
         }
         unconfirmed.forEach { spend ->
-            PromptCard {
+            QuestionCard("Not reported yet", Charcoal.Warn) {
                 Text(
                     "${formatMoney(-spend.amountMinor, spend.currency)} at ${spend.merchant} · seen ${NotificationSpend.dateOf(spend.seenAt).format(DAY)}",
-                    style = MaterialTheme.typography.bodyMedium,
+                    style = MaterialTheme.typography.titleSmall,
                 )
                 Text(
                     "Your bank hasn't reported this a week on. It may have been cancelled.",
-                    style = MaterialTheme.typography.bodySmall,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Charcoal.Muted,
                 )
-                Row {
-                    TextButton(onClick = { onKeep(spend.id) }) { Text("Keep counting it") }
-                    TextButton(onClick = { onDismiss(spend.id) }) { Text("Remove it") }
+                Spacer(Modifier.height(10.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    BigButton("Keep counting it", null, { onKeep(spend.id) }, Modifier.weight(1f))
+                    BigButton("Remove it", null, { onDismiss(spend.id) }, Modifier.weight(1f), colour = Charcoal.Warn, textColour = Color(0xFF111111))
                 }
             }
         }

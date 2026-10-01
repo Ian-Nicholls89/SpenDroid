@@ -399,3 +399,42 @@ fun accountColour(account: AccountEntity?, accounts: List<AccountEntity>, enable
 fun Color.darken(amount: Float): Color =
     Color(red * (1 - amount), green * (1 - amount), blue * (1 - amount), alpha)
 
+
+/**
+ * A question for the user, as nzb360's banners: a header strip in [colour] so it reads as
+ * something to act on rather than more of the list.
+ */
+@Composable
+fun QuestionCard(title: String, colour: Color, modifier: Modifier = Modifier, trailing: String? = null, content: @Composable ColumnScope.() -> Unit) {
+    Column(modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Charcoal.Panel)) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .background(Brush.horizontalGradient(listOf(colour, colour.darken(0.3f))))
+                .padding(horizontal = 16.dp, vertical = 9.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            SectionHeading(title, Modifier.weight(1f), colour = Color(0xFF111111))
+            trailing?.let { Text(it, fontFamily = Lato, fontWeight = FontWeight.Black, fontSize = 12.sp, color = Color(0xFF111111)) }
+        }
+        Column(Modifier.padding(14.dp), content = content)
+    }
+}
+
+/** A choice as a pill in its own colour, big enough to tap: "Personal", "Nectar", "Ignore". */
+@Composable
+fun ColourPill(text: String, colour: Color, onClick: () -> Unit, textColour: Color = Color.White) {
+    Text(
+        text,
+        fontFamily = Lato,
+        fontWeight = FontWeight.Black,
+        fontSize = 13.sp,
+        color = textColour,
+        maxLines = 1,
+        modifier = Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(colour)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 10.dp),
+    )
+}

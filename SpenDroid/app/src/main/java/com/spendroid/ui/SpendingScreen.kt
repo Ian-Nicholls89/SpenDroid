@@ -13,11 +13,23 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
 import com.spendroid.data.db.TransactionEntity
 import com.spendroid.domain.Category
 
-private enum class SpendingTab(val label: String) {
-    TRANSACTIONS("Transactions"),
+/**
+ * The tabs along the top, nzb360's way. The first four are views of the one list - all of it,
+ * what is still pending, the regular payments, the transfers - and the last is what it adds up to.
+ */
+private enum class SpendingTab(val label: String, val recurring: Boolean = false, val transfers: Boolean = false, val pending: Boolean = false) {
+    ALL("All"),
+    PENDING("Pending", pending = true),
+    BILLS("Bills", recurring = true),
+    TRANSFERS("Transfers", transfers = true),
     INSIGHTS("Insights"),
 }
 
@@ -49,19 +61,24 @@ fun SpendingScreen(
     onTreatAsBill: ((TransactionEntity) -> Unit)? = null,
 ) {
     var selected by rememberSaveable { mutableIntStateOf(0) }
+    val tab = SpendingTab.entries[selected.coerceIn(0, SpendingTab.entries.lastIndex)]
+    // The list's two switches follow the tab; they are toggles, so flip only what differs.
+    LaunchedEffect(tab, state.showRecurringOnly, state.showInternalTransfers) {
+        if (tab == SpendingTab.INSIGHTS) return@LaunchedEffect
+        if (state.showRecurringOnly != tab.recurring) onToggleRecurring()
+        if (state.showInternalTransfers != tab.transfers) onToggleInternal()
+    }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        PrimaryTabRow(selectedTabIndex = selected) {
-            SpendingTab.entries.forEachIndexed { index, tab ->
-                Tab(
-                    selected = selected == index,
-                    onClick = { selected = index },
-                    text = { Text(tab.label) },
-                )
-            }
-        }
-        when (SpendingTab.entries[selected]) {
-            SpendingTab.TRANSACTIONS -> Column {
+        DotTabs(
+            tabs = SpendingTab.entries.map { it.label },
+            selected = selected,
+            onSelect = { selected = it },
+            modifier = Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 18.dp),
+        )
+        when (tab) {
+            SpendingTab.INSIGHTS -> Unit
+            else -> Column {
                 prompts()
                 TransactionsScreen(
                 state = state,
@@ -78,12 +95,16 @@ fun SpendingScreen(
                 onMarkCardPayment = onMarkCardPayment,
                 onCategoryFilter = onCategoryFilter,
                 onTreatAsBill = onTreatAsBill,
+                pendingOnly = tab.pending,
                 )
             }
+        }
+        when (tab) {
             SpendingTab.INSIGHTS -> InsightsScreen(
                 state = state,
                 onSetBudgetGoal = onSetBudgetGoal,
             )
+            else -> Unit
         }
     }
 }

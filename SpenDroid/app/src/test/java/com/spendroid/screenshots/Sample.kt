@@ -63,4 +63,23 @@ object Sample {
             categoryHistory = CategoryEngine.history(transactions),
         )
     }
+
+    fun questions(): List<com.spendroid.domain.DuplicateCheck.Question> {
+        val old = tx("acc-personal", LocalDate.of(2026, 9, 24), -3_208, "HEALTH PLAN")
+        val new = tx("acc-personal", LocalDate.of(2026, 9, 25), -3_208, "HEALTH PLAN 0218")
+        return listOf(
+            com.spendroid.domain.DuplicateCheck.Question(
+                com.spendroid.data.db.DuplicateCheckEntity("acc-personal", old.transactionId, 2, new.transactionId, "ASK"),
+                old,
+                new,
+            ),
+        )
+    }
+
+    fun seen() = listOf(
+        com.spendroid.data.db.SeenSpendEntity(
+            id = "seen-1", source = "com.google.android.apps.walletnfcrel", seenAt = System.currentTimeMillis(),
+            amountMinor = -640, currency = "GBP", merchant = "Costa",
+        ),
+    )
 }
