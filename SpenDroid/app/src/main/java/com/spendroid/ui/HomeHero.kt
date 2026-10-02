@@ -369,17 +369,39 @@ private fun BudgetBelow(state: RootUiState, budget: BudgetSnapshot, onRefresh: (
             items(budget.upcomingFixed, key = { "${it.rule.key}|${it.dueDate}" }) { payment -> UpcomingPoster(payment, state, budget) }
         }
     }
-    Spacer(Modifier.height(8.dp))
-    Panel(Modifier.padding(horizontal = 14.dp)) {
+    // "Each month" heads Regular, where its figures come from, and "Where you stand" heads
+    // Accounts: Home is about this cycle.
+}
+
+/**
+ * The month as the regular payments make it: income, bills, and what that leaves to spend, with
+ * a bar for how much of the income the bills take. At the head of Regular.
+ */
+@Composable
+internal fun EachMonthPanel(budget: BudgetSnapshot, modifier: Modifier = Modifier) {
+    Panel(modifier) {
         SectionHeading("Each month")
         Spacer(Modifier.height(10.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(22.dp)) {
             HeroStat("Income", budget.averageMonthlyIncome, budget.baseCurrency)
             HeroStat("Bills", budget.fixedMonthlyOutgoings, budget.baseCurrency)
-            HeroStat("To spend", budget.variableMonthlyBudget, budget.baseCurrency)
+            Column {
+                Text("To spend", style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.8f))
+                Text(formatMoney(budget.variableMonthlyBudget, budget.baseCurrency), style = MaterialTheme.typography.titleMedium, color = InColor)
+            }
+        }
+        if (budget.averageMonthlyIncome > 0L) {
+            val share = budget.fixedMonthlyOutgoings.toFloat() / budget.averageMonthlyIncome
+            Spacer(Modifier.height(10.dp))
+            LabelledBar(
+                fraction = share,
+                label = "${(share * 100).toInt()}% of income on bills",
+                colour = if (share > 0.8f) Charcoal.Bad else if (share > 0.6f) Charcoal.Warn else Charcoal.Good,
+                height = 18.dp,
+            )
         }
         if (budget.incomeRules.isNotEmpty() || budget.fixedRules.isNotEmpty()) {
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(6.dp))
             Text(
                 "From ${budget.incomeRules.size} regular ${if (budget.incomeRules.size == 1) "income" else "incomes"} " +
                     "and ${budget.fixedRules.size} regular ${if (budget.fixedRules.size == 1) "payment" else "payments"}.",
@@ -387,10 +409,6 @@ private fun BudgetBelow(state: RootUiState, budget: BudgetSnapshot, onRefresh: (
                 color = Charcoal.Muted,
             )
         }
-    }
-    if (state.accounts.isNotEmpty()) {
-        Spacer(Modifier.height(12.dp))
-        Box(Modifier.padding(horizontal = 14.dp)) { NetPositionCard(state.accounts, budget.cardBills) }
     }
 }
 
@@ -488,7 +506,7 @@ private fun AccountBelow(state: RootUiState, page: HeroPage.Account, colour: Col
     }
     bill?.let {
         Spacer(Modifier.height(8.dp))
-        Box(Modifier.padding(horizontal = 14.dp)) { CardBillCard(it) }
+        Box(Modifier.padding(horizontal = 14.dp)) { StatementsPanel(it, colour) }
     }
 }
 

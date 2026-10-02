@@ -68,6 +68,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import com.spendroid.ui.theme.Charcoal
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.geometry.Offset
@@ -430,17 +431,19 @@ internal fun CardBillCard(bill: CreditCardEngine.CardBill) {
  * statement building now is heading. It draws itself in when the panel opens.
  */
 @Composable
-private fun StatementHistory(bill: CreditCardEngine.CardBill) {
-    val points = bill.pastBills.map { (date, amount) -> date.format(monthFormat) to amount } +
+private fun StatementHistory(bill: CreditCardEngine.CardBill, colour: Color? = null, tall: Boolean = false) {
+    val points = bill.pastBills.takeLast(if (tall) 3 else bill.pastBills.size).map { (date, amount) -> date.format(monthFormat) to amount } +
         listOfNotNull(
             (bill.projectedMinor ?: bill.unbilledMinor).takeIf { it > 0L }?.let { projected ->
                 (bill.nextStatementClose?.format(monthFormat) ?: "Next") to projected
             },
         )
-    val projectedLast = points.size > bill.pastBills.size
+    val projectedLast = points.size > bill.pastBills.takeLast(if (tall) 3 else bill.pastBills.size).size
     if (points.size < 2) return
 
-    val lineColor = MaterialTheme.colorScheme.primary
+    val lineColor = colour ?: MaterialTheme.colorScheme.primary
+    // The usual bill as a faint line across, so each statement reads against it.
+    val usual = if (tall) bill.usualBillMinor?.takeIf { it > 0L } else null
     val axisText = MaterialTheme.colorScheme.onSurfaceVariant
     val surface = MaterialTheme.colorScheme.surfaceContainerHighest
     val textMeasurer = rememberTextMeasurer()
@@ -451,7 +454,7 @@ private fun StatementHistory(bill: CreditCardEngine.CardBill) {
     Canvas(
         modifier = Modifier
             .fillMaxWidth()
-            .height(96.dp)
+            .height(if (tall) 150.dp else 96.dp)
             .semantics {
                 contentDescription = points.joinToString("; ") { (label, amount) ->
                     "$label ${formatMoney(amount, bill.currency)}"
@@ -460,11 +463,23 @@ private fun StatementHistory(bill: CreditCardEngine.CardBill) {
     ) {
         val left = 16.dp.toPx()
         val right = size.width - 16.dp.toPx()
-        val top = 16.dp.toPx()
+        val top = (if (tall) 24.dp else 16.dp).toPx()
         val bottom = size.height - 18.dp.toPx()
-        val peak = points.maxOf { it.second }.coerceAtLeast(1L).toFloat()
+        val peak = maxOf(points.maxOf { it.second }, usual ?: 0L).coerceAtLeast(1L).toFloat()
         fun x(i: Int) = left + i * (right - left) / (points.size - 1)
         fun y(v: Long) = bottom - v / peak * (bottom - top)
+
+        usual?.let { u ->
+            drawLine(
+                axisText.copy(alpha = 0.6f),
+                Offset(0f, y(u)),
+                Offset(size.width, y(u)),
+                strokeWidth = 1.dp.toPx(),
+                pathEffect = PathEffect.dashPathEffect(floatArrayOf(3.dp.toPx(), 4.dp.toPx())),
+            )
+            val label = textMeasurer.measure("usual ${poundsLabel(u, bill.currency)}", labelStyle)
+            drawText(label, topLeft = Offset(size.width - label.size.width, y(u) - label.size.height - 2.dp.toPx()))
+        }
 
         val settled = if (projectedLast) points.size - 1 else points.size
         val path = Path().apply {
@@ -505,10 +520,53 @@ private fun StatementHistory(bill: CreditCardEngine.CardBill) {
             drawText(labelText, topLeft = Offset(c.x - labelText.size.width / 2f, bottom + 3.dp.toPx()))
             // Amounts on the first and the last two points only: enough to read the trend
             // without a number on every dot.
-            if (i == 0 || i >= points.size - 2) {
+            if (tall || i == 0 || i >= points.size - 2) {
                 val amountText = textMeasurer.measure(poundsLabel(amount, bill.currency), labelStyle)
                 drawText(amountText, topLeft = Offset(c.x - amountText.size.width / 2f, c.y - amountText.size.height - 4.dp.toPx()))
             }
+        }
+    }
+}
+
+/**
+ * A card's statements, below its page's own "This statement" bar: the bill due, then the last
+ * three statements and where this one is heading, always shown in the card's colour. What the
+ * bar above already says - billed, since the statement, the pace - is not said again.
+ */
+@Composable
+internal fun StatementsPanel(bill: CreditCardEngine.CardBill, colour: Color) {
+    val money = { minor: Long -> formatMoney(minor, bill.currency) }
+    Panel {
+        SectionHeading("Statements", trailing = if (bill.pastBills.isNotEmpty()) "the last few and this one" else null)
+        Spacer(Modifier.height(8.dp))
+        when {
+            bill.statementPaid -> Text("Last statement paid in full", style = MaterialTheme.typography.titleMedium, color = InColor)
+            bill.dueMinor > 0L -> Row(verticalAlignment = Alignment.Bottom) {
+                Text(money(bill.dueMinor), style = MaterialTheme.typography.headlineSmall)
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    listOfNotNull(
+                        bill.dueDate?.let { "due ~${it.format(dateFormat)}" },
+                        bill.statementClose?.let { "closed ${it.format(dateFormat)}" },
+                    ).joinToString(" · "),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = Charcoal.Muted,
+                    modifier = Modifier.padding(bottom = 3.dp),
+                )
+            }
+        }
+        Text(
+            buildList {
+                add("${money(bill.outstandingMinor)} owed in all")
+                // The split across the statement is only as good as the cycle behind it.
+                if (bill.cycleSource == CreditCardEngine.CycleSource.ASSUMED) add("cycle estimated")
+            }.joinToString(" · "),
+            style = MaterialTheme.typography.labelMedium,
+            color = Charcoal.Muted,
+        )
+        if (bill.pastBills.isNotEmpty()) {
+            Spacer(Modifier.height(10.dp))
+            StatementHistory(bill, colour, tall = true)
         }
     }
 }

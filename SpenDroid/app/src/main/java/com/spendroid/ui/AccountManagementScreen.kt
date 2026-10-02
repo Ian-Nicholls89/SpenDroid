@@ -46,6 +46,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.layout.fillMaxHeight
 import com.spendroid.ui.theme.Charcoal
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
@@ -98,6 +99,9 @@ fun AccountManagementScreen(
             .padding(horizontal = 16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
+        if (state.accounts.isNotEmpty()) {
+            item { WhereYouStand(state) }
+        }
         item {
             SyncHeader(nextSyncAt = state.nextSyncAt, note = state.syncNote, now = now)
         }
@@ -149,6 +153,45 @@ fun AccountManagementScreen(
                 onLink(institution)
             },
         )
+    }
+}
+
+/**
+ * What is held against what is owed, across every account, at the head of Accounts: the money
+ * in each account as a bar split in the accounts' own colours, then held, owed and net. A card
+ * owes what its statement and spending since add up to, as its panel works it out.
+ */
+@Composable
+private fun WhereYouStand(state: RootUiState) {
+    val accounts = state.accounts
+    val currency = accounts.firstOrNull()?.currency ?: "GBP"
+    val bills = state.budget?.cardBills.orEmpty().associateBy { it.cardAccountId }
+    val holding = accounts.filter { it.accountType != AccountType.CREDIT_CARD }
+    val held = holding.sumOf { it.balanceMinor ?: 0L }
+    val owed = accounts.filter { it.accountType == AccountType.CREDIT_CARD }
+        .sumOf { card -> bills[card.id]?.outstandingMinor ?: maxOf(0L, -(card.balanceMinor ?: 0L)) }
+    Panel {
+        SectionHeading("Where you stand")
+        Spacer(Modifier.height(10.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(22.dp)) {
+            HeroStat("Held", held, currency)
+            Column {
+                Text("Owed", style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.8f))
+                Text(formatMoney(-owed, currency), style = MaterialTheme.typography.titleMedium, color = OutColor)
+            }
+            HeroStat("Net", held - owed, currency)
+        }
+        val parts = holding.mapNotNull { a -> a.balanceMinor?.takeIf { it > 0L }?.let { a to it } }
+        if (parts.isNotEmpty()) {
+            Spacer(Modifier.height(10.dp))
+            Row(Modifier.fillMaxWidth().height(14.dp).clip(RoundedCornerShape(7.dp))) {
+                parts.forEach { (account, amount) ->
+                    Box(Modifier.weight(amount.toFloat()).fillMaxHeight().background(colourOf(account, accounts)))
+                }
+            }
+            Spacer(Modifier.height(4.dp))
+            Text("Each account's share of what is held, in its colour", style = MaterialTheme.typography.labelSmall, color = Charcoal.Muted)
+        }
     }
 }
 

@@ -106,6 +106,7 @@ class ScreensTest {
     }
 
     @Test
+    @Config(qualifiers = "w411dp-h1100dp-xxhdpi")
     fun accounts() {
         val state = Sample.state()
         shoot("accounts", AppScreen.Accounts) {
@@ -114,6 +115,7 @@ class ScreensTest {
     }
 
     @Test
+    @Config(qualifiers = "w411dp-h1100dp-xxhdpi")
     fun rules() {
         val state = Sample.state()
         shoot("rules", AppScreen.Rules) {

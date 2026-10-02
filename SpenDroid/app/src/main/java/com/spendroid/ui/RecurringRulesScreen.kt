@@ -132,6 +132,8 @@ fun RecurringRulesScreen(
             contentPadding = PaddingValues(bottom = 96.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
+            // What the month comes to, worked out from everything listed below it.
+            budget?.let { b -> item { EachMonthPanel(b, Modifier.padding(horizontal = 14.dp, vertical = 4.dp)) } }
             item {
                 DotTabs(
                     listOf("Upcoming", "Bills", "Income", "Ignored"),
