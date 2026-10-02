@@ -12,6 +12,9 @@ plugins {
  * one app, and it knows them by exactly those.
  */
 android {
+    testOptions {
+        unitTests.isIncludeAndroidResources = true
+    }
     namespace = "com.spendroid.wear"
     compileSdk = 36
 
@@ -108,4 +111,16 @@ dependencies {
     // The roundup's icon on the watch face, kept there until it is read.
     implementation(libs.wear.ongoing)
     testImplementation(libs.junit)
+    // Screenshots of the watch screens on the JVM, run with -Pscreenshots only.
+    testImplementation(libs.robolectric)
+    testImplementation(libs.roborazzi)
+    testImplementation(libs.roborazzi.compose)
+    testImplementation(platform(libs.androidx.compose.bom))
+    testImplementation(libs.androidx.compose.ui.test.junit4)
+    debugImplementation(libs.androidx.compose.ui.test.manifest)
+}
+
+tasks.withType<Test>().configureEach {
+    if (!project.hasProperty("screenshots")) exclude("**/screenshots/**")
+    else systemProperty("roborazzi.test.record", "true")
 }

@@ -106,8 +106,31 @@ internal object WatchSync {
                     putString("wearLatestName", com.spendroid.BuildConfig.WEAR_VERSION_NAME)
                     putString("wearApkUrl", com.spendroid.watch.WatchInstaller.apkUrl())
 
+                    // The phone's look, for the watch's glow, wordmark and each account's colour.
+                    val accentInt = widgetAccent(context)
+                    val accent = androidx.compose.ui.graphics.Color(accentInt)
+                    val accounts = repo.accounts()
+                    val ownColours = repo.accountColours.first()
+                    val colourOf = { id: String? ->
+                        com.spendroid.ui.accountColour(accounts.firstOrNull { it.id == id }, accounts, ownColours, accent).toArgb()
+                    }
+                    putInt("accent", accentInt)
+
                     // Screen 1.
                     putString("availableFull", money(s.availableToSpend))
+                    putString("untilLine", s.nextIncomeDate?.let { "left until ${it.format(DAY)}" } ?: "left to spend")
+                    putString("perDay", days?.takeIf { it > 0 }?.let { "${money(s.availableToSpend / it)} a day" }.orEmpty())
+                    putString("dayOfCycle", s.cycleEnd?.let { end ->
+                        val total = ChronoUnit.DAYS.between(s.cycleStart, end).toInt() + 1
+                        val day = ChronoUnit.DAYS.between(s.cycleStart, s.asOf).toInt() + 1
+                        if (day in 1..total) "day $day of $total" else ""
+                    }.orEmpty())
+                    putFloat("used", BudgetPace.usedFraction(s) ?: -1f)
+                    putFloat("elapsed", elapsed ?: -1f)
+                    putString(
+                        "barLabel",
+                        if (s.spendableThisCycle > 0L) "${poundsOnly(s.usedThisCycle, s.baseCurrency)} / ${poundsOnly(s.spendableThisCycle, s.baseCurrency)}" else "",
+                    )
                     putString("daysLine", days?.let { d ->
                         "$d day${if (d == 1) "" else "s"}" + (if (d > 0) " · ${money(s.availableToSpend / d)} a day" else "")
                     }.orEmpty())
@@ -119,6 +142,12 @@ internal object WatchSync {
                     val cardsPending = s.spentTodayOnCardsPendingMinor
                     putString("todayCardsPending", if (cardsPending > 0L) "incl. ${money(cardsPending)} pending" else "")
                     putString("thisCycle", money(s.spentThisCycle))
+                    putString("todayTotal", money(s.spentTodayFromAccountsMinor + s.spentTodayOnCardsMinor))
+                    putString("todayPending", if (s.spentTodayPendingMinor > 0L) "${money(s.spentTodayPendingMinor)} pending" else "")
+                    putLong("todayAccountsMinor", s.spentTodayFromAccountsMinor)
+                    putLong("todayCardsMinor", s.spentTodayOnCardsMinor)
+                    putInt("potColour", colourOf(s.potAccountId))
+                    putInt("cardsColour", colourOf(s.cardBills.firstOrNull()?.cardAccountId))
                     val showBalance = s.budgetModel != BudgetModel.FRESH_START
                     putString("inAccount", s.potBalanceMinor?.takeIf { showBalance }?.let(money).orEmpty())
 
@@ -128,7 +157,7 @@ internal object WatchSync {
                     putString("updated", updatedLabel(repo.accounts()).orEmpty())
 
                     // Screens 4 on: one per card.
-                    putDataMapArrayList("cards", ArrayList(s.cardBills.map { card(it, money) }))
+                    putDataMapArrayList("cards", ArrayList(s.cardBills.map { card(it, money).apply { putInt("colour", colourOf(it.cardAccountId)) } }))
 
                     // Recent spending, newest first, to recategorise from the wrist.
                     val rules = repo.categoryRules.first()
@@ -149,6 +178,16 @@ internal object WatchSync {
                                         putString("category", category.label)
                                         putInt("colour", category.visual.color.toArgb())
                                         putBoolean("pending", tx.isPending)
+                                        putString(
+                                            "day",
+                                            RecurringAnalyzer.parseBookingDate(tx.bookingDate)?.let { d ->
+                                                when (d) {
+                                                    s.asOf -> "Today"
+                                                    s.asOf.minusDays(1) -> "Yesterday"
+                                                    else -> d.format(DAY)
+                                                }
+                                            }.orEmpty(),
+                                        )
                                     }
                                 }
                                 .toList(),
@@ -204,6 +243,16 @@ internal object WatchSync {
                                     putString("name", p.rule.payee)
                                     putString("date", (if (isCard) "~" else "") + p.dueDate.format(SHORT_DAY))
                                     putString("amount", money(p.amountMinor))
+                                    putString("short", (if (p.rule.isVariable) "about " else "") + poundsOnly(p.amountMinor, p.rule.currency))
+                                    putBoolean("card", isCard)
+                                    putInt(
+                                        "colour",
+                                        if (isCard) {
+                                            colourOf(s.cardBills.firstOrNull { b -> p.rule.payee.contains(b.cardLabel) }?.cardAccountId)
+                                        } else {
+                                            com.spendroid.ui.payeeColour(p.rule.payee).toArgb()
+                                        },
+                                    )
                                 }
                             },
                         ),
@@ -244,6 +293,14 @@ internal object WatchSync {
             },
         )
         putBoolean("over", line?.over == true)
+        putString("capShort", cap?.let { poundsOnly(it, bill.currency) }.orEmpty())
+        putString("closes", bill.nextStatementClose?.let { "closes ${it.format(SHORT_DAY)}" }.orEmpty())
+        putString(
+            "nextBill",
+            bill.dueMinor.takeIf { it > 0L && !bill.statementPaid }?.let { due ->
+                "bill ${money(due)}" + (bill.dueDate?.let { " · ${it.format(SHORT_DAY)}" } ?: "")
+            }.orEmpty(),
+        )
     }
 
     /** "£430": a complication has room for a few characters, not pence. As the widget does it. */

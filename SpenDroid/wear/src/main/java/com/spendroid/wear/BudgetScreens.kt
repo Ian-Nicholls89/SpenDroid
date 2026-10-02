@@ -2,6 +2,8 @@ package com.spendroid.wear
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.ui.draw.clip
 import androidx.wear.compose.navigation.SwipeDismissableNavHost
@@ -107,6 +109,8 @@ fun BudgetScreens(
     onOpenPhone: () -> Boolean,
     roundup: Roundup? = null,
     onRoundupShown: () -> Unit = {},
+    /** Which page the pager opens on; for screenshots. */
+    initialPage: Int = 0,
 ) {
     MaterialTheme {
         AppScaffold {
@@ -138,6 +142,7 @@ fun BudgetScreens(
                 composable("pages") {
                     Pages(
                         reading,
+                        initialPage = initialPage,
                         onSeeRecent = { nav.navigate("recent") },
                         onSeeUpcoming = { nav.navigate("upcoming") },
                         onOpenPhone = onOpenPhone,
@@ -145,7 +150,7 @@ fun BudgetScreens(
                 }
                 composable("recent") { RecentList(reading) { index -> nav.navigate("pick/$index") } }
                 composable("upcoming") { UpcomingList(reading) }
-                composable("roundup") { shownRoundup?.let { RoundupScreen(it) } ?: nav.popBackStack() }
+                composable("roundup") { shownRoundup?.let { RoundupScreen(it, reading) } ?: nav.popBackStack() }
                 composable("pick/{index}") { entry ->
                     val recent = entry.arguments?.getString("index")?.toIntOrNull()?.let { reading.recent.getOrNull(it) }
                     if (recent == null) {
@@ -162,6 +167,7 @@ fun BudgetScreens(
 @Composable
 private fun Pages(
     reading: BudgetReading,
+    initialPage: Int = 0,
     onSeeRecent: () -> Unit,
     onSeeUpcoming: () -> Unit,
     onOpenPhone: () -> Boolean,
@@ -180,7 +186,7 @@ private fun Pages(
         WatchUpdater.available(context, reading)?.let { (name, url) -> add(Page.Update(name, url)) }
         add(Page.Phone)
     }
-    val state = rememberPagerState(pageCount = { pages.size })
+    val state = rememberPagerState(initialPage = initialPage, pageCount = { pages.size })
     VerticalPagerScaffold(pagerState = state) {
         VerticalPager(state = state, modifier = Modifier.fillMaxSize()) { index ->
             AnimatedPage(pageIndex = index, pagerState = state) {
@@ -200,14 +206,14 @@ private fun Pages(
                                 modifier = Modifier
                                     .fillMaxSize()
                                     .clip(CircleShape)
-                                    .background(MaterialTheme.colorScheme.primary)
+                                    .background(Color(reading.accent))
                                     .clickable { if (onOpenPhone()) openedOnPhone = true },
                                 contentAlignment = Alignment.Center,
                             ) {
                                 Text(
                                     "Open on phone",
                                     style = MaterialTheme.typography.titleLarge,
-                                    color = MaterialTheme.colorScheme.onPrimary,
+                                    color = Color(0xFF111111),
                                     textAlign = TextAlign.Center,
                                 )
                             }
@@ -258,35 +264,21 @@ private fun DrawScope.arc(from: Float, sweep: Float, color: Color, width: Float)
     )
 }
 
+/** 1 · The figure, as the phone's Home: the pace chip, the daily allowance, and the cycle as a bar. */
 @Composable
 private fun Hero(r: BudgetReading) {
-    // Three parts in proportion - spent, behind even pace, left - which no stock indicator draws,
-    // so it is drawn here, in the Material stroke and gaps.
-    val segments = BudgetArc.drawOrder(BudgetArc.segments(r.budgetLeft, r.cycleLeft))
-    Box(Modifier.fillMaxSize()) {
-        Canvas(Modifier.fillMaxSize()) {
-            val w = 8.dp.toPx()
-            var at = ARC_START
-            segments.forEach { s ->
-                val sweep = ARC_SWEEP * s.weight
-                val colour = when (s.kind) {
-                    BudgetArc.Kind.SPENT -> Blue
-                    BudgetArc.Kind.BEHIND -> Red
-                    BudgetArc.Kind.LEFT -> Green
-                }
-                arc(at + 2f, sweep - 4f, colour, w)
-                at += sweep
-            }
-        }
+    val accent = Color(r.accent)
+    NzbScreen("SpenDroid", accent) {
         Centre {
-            Text("Available to spend", style = MaterialTheme.typography.labelSmall, color = Muted)
+            Spacer(Modifier.height(16.dp))
             Text(r.text("availableFull"), style = MaterialTheme.typography.numeralMedium, maxLines = 1)
-            Spacer(Modifier.height(4.dp))
-            val badge = when (r.pace) { "OVER" -> "▲ Over"; "TIGHT" -> "◆ Tight"; else -> "● On track" }
-            Badge(badge, paceColour(r.pace))
+            WatchChip(paceWord(r.pace), pace(r.pace))
             Spacer(Modifier.height(6.dp))
-            Text(r.text("daysLine"), style = MaterialTheme.typography.bodyMedium)
-            Text(r.text("incomeLine"), style = MaterialTheme.typography.bodySmall, color = Muted)
+            r.used?.let { used ->
+                WatchBar(used, r.text("barLabel"), pace(r.pace), Modifier.padding(horizontal = 6.dp), tick = r.elapsed)
+            }
+            Spacer(Modifier.height(4.dp))
+            Text(r.text("daysLine"), style = MaterialTheme.typography.labelSmall, color = Soft, maxLines = 1)
         }
     }
 }
@@ -303,112 +295,145 @@ private fun Line(label: String, value: String, note: String = "") {
     Spacer(Modifier.height(4.dp))
 }
 
+/** 2 · Today: what went out, and from where - accounts and cards, each a bar in its colour. */
 @Composable
-private fun Today(r: BudgetReading) = Centre {
-    Text("Today", style = MaterialTheme.typography.titleMedium)
-    Spacer(Modifier.height(6.dp))
-    Line("From accounts", r.text("todayAccounts"))
-    Line("On credit cards", r.text("todayCards"), r.text("todayCardsPending"))
-    Box(Modifier.fillMaxWidth().height(1.dp).background(Track))
-    Spacer(Modifier.height(4.dp))
-    Line("This cycle", r.text("thisCycle"))
-    r.text("inAccount").takeIf { it.isNotEmpty() }?.let { Line("In the account", it) }
-}
-
-@Composable
-private fun Categories(r: BudgetReading) = Centre {
-    Text("This cycle by category", style = MaterialTheme.typography.titleSmall)
-    Spacer(Modifier.height(6.dp))
-    r.categories.take(4).forEach { c ->
-        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(8.dp).background(Color(c.colour), CircleShape))
-            Spacer(Modifier.width(6.dp))
-            Text(c.label, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-            Text(
-                if (c.limit.isNotEmpty()) "${c.spent} of ${c.limit}" else c.spent,
-                style = MaterialTheme.typography.labelSmall,
-                color = if (c.over) Red else Muted,
-            )
-        }
-        c.share?.let { share ->
-            Box(Modifier.fillMaxWidth().padding(top = 2.dp).height(4.dp).background(Track, RoundedCornerShape(2.dp))) {
-                Box(
-                    Modifier.fillMaxWidth(share.coerceAtLeast(0.02f)).fillMaxHeight()
-                        .background(if (c.over) Red else Color(c.colour), RoundedCornerShape(2.dp)),
-                )
+private fun Today(r: BudgetReading) {
+    NzbScreen("Today", Color(r.accent), glow = 0.35f) {
+        Centre {
+            Spacer(Modifier.height(8.dp))
+            Text(r.text("todayTotal").ifEmpty { r.text("todayAccounts") }, style = MaterialTheme.typography.numeralSmall, maxLines = 1)
+            Text("spent today", style = MaterialTheme.typography.labelSmall, color = Soft, maxLines = 1)
+            r.text("todayPending").takeIf { it.isNotEmpty() }?.let {
+                Text("incl. $it", style = MaterialTheme.typography.labelSmall, color = PendingBlue, maxLines = 1)
             }
+            Spacer(Modifier.height(8.dp))
+            val accounts = r.map.getLong("todayAccountsMinor")
+            val cards = r.map.getLong("todayCardsMinor")
+            val top = maxOf(accounts, cards, 1L).toFloat()
+            SplitLine("Accounts", r.text("todayAccounts"), accounts / top, Color(r.map.getInt("potColour", r.accent)))
+            Spacer(Modifier.height(6.dp))
+            SplitLine("Cards", r.text("todayCards"), cards / top, Color(r.map.getInt("cardsColour", r.accent)))
         }
-        Spacer(Modifier.height(5.dp))
     }
 }
 
-/** The Recent page: the latest payment in full, and a way into the whole list. */
 @Composable
-private fun RecentSummary(r: BudgetReading, onSeeAll: () -> Unit) = Centre {
-    Text("Recent", style = MaterialTheme.typography.titleSmall)
-    Spacer(Modifier.height(6.dp))
-    r.recent.firstOrNull()?.let { t ->
-        Text(t.payee, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
-        Text(t.amount, style = MaterialTheme.typography.numeralExtraSmall, maxLines = 1)
-        Text(
-            t.category + if (t.pending) " · pending" else "",
-            style = MaterialTheme.typography.labelSmall,
-            color = if (t.pending) Pending else Muted,
-            maxLines = 1,
-        )
+private fun SplitLine(label: String, value: String, share: Float, colour: Color) {
+    Column(Modifier.fillMaxWidth().padding(horizontal = 4.dp)) {
+        Row(Modifier.fillMaxWidth()) {
+            Text(label, style = MaterialTheme.typography.labelSmall, modifier = Modifier.weight(1f))
+            Text(value, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Black)
+        }
+        Spacer(Modifier.height(2.dp))
+        WatchBar(share, "", colour, height = 9.dp)
     }
-    Spacer(Modifier.height(8.dp))
-    SeeAll("See all ${r.recent.size}", onSeeAll)
+}
+
+/** 6 · Most spent: the leading category's tile, and the top four beside it in the accent. */
+@Composable
+private fun Categories(r: BudgetReading) {
+    val leader = r.categories.firstOrNull()
+    NzbScreen("Most spent", Color(leader?.colour ?: r.accent), glow = 0.4f) {
+        Centre {
+            Spacer(Modifier.height(8.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                leader?.let { WatchTile(initial(it.label), Color(it.colour), size = 40.dp) }
+                Spacer(Modifier.width(8.dp))
+                Column(Modifier.weight(1f)) {
+                    r.categories.take(4).forEachIndexed { i, c ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                "${i + 1} ${c.label}",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = if (i == 0) FontWeight.Bold else null,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f),
+                            )
+                            Text(
+                                c.spent.replace(Regex("[.,]\\d\\d$"), ""),
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Black,
+                                color = if (c.over) Bad else Color(r.accent),
+                            )
+                        }
+                    }
+                }
+            }
+            Spacer(Modifier.height(4.dp))
+            Text("this cycle", style = MaterialTheme.typography.labelSmall, color = Soft)
+        }
+    }
+}
+
+/** 5 · Recent: the latest two as the phone's cards, under a day heading, and the way into the rest. */
+@Composable
+private fun RecentSummary(r: BudgetReading, onSeeAll: () -> Unit) {
+    NzbScreen("Recent", Color(r.accent), glow = 0.25f) {
+        Centre {
+            Spacer(Modifier.height(18.dp))
+            r.recent.take(2).forEach { t ->
+                RecentRow(t)
+                Spacer(Modifier.height(3.dp))
+            }
+            Spacer(Modifier.height(4.dp))
+            SeeAll("See all ${r.recent.size}", onSeeAll)
+        }
+    }
+}
+
+/** A payment as a small card: its category tile, its name, the amount and "Pending" in blue. */
+@Composable
+private fun RecentRow(t: BudgetReading.Recent, onClick: (() -> Unit)? = null) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(Charcoal)
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+            .padding(horizontal = 8.dp, vertical = 5.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        WatchTile(initial(t.payee), Color(t.colour), size = 24.dp)
+        Spacer(Modifier.width(6.dp))
+        Column(Modifier.weight(1f)) {
+            Text(t.payee, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (t.pending) Text("Pending", style = MaterialTheme.typography.labelSmall, color = PendingBlue, maxLines = 1)
+        }
+        Spacer(Modifier.width(4.dp))
+        Text(t.amount, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Black, maxLines = 1)
+    }
 }
 
 @Composable
 private fun SeeAll(label: String, onClick: () -> Unit) {
     Button(
         onClick = onClick,
-        colors = ButtonDefaults.buttonColors(containerColor = Panel, contentColor = Color.White),
-    ) { Text(label, maxLines = 1) }
+        colors = ButtonDefaults.buttonColors(containerColor = Charcoal, contentColor = Color.White),
+    ) { Text("$label ›", maxLines = 1) }
 }
 
-/** Every recent payment, scrolled with the crown; tap one to change its category. */
+/** Every recent payment, scrolled with the crown, under day headings; tap one to change its category. */
 @Composable
 private fun RecentList(r: BudgetReading, onPick: (Int) -> Unit) {
     val list = rememberScalingLazyListState()
     ScreenScaffold(scrollState = list) { padding ->
         ScalingLazyColumn(state = list, contentPadding = padding, modifier = Modifier.fillMaxSize()) {
-            item { ListHeader { Text("Recent") } }
+            item { ListHeader { Text("Recent", color = Color(r.accent)) } }
             items(r.recent.size) { index ->
                 val t = r.recent[index]
-                Card(
-                    onClick = { onPick(index) },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = Panel),
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(Modifier.size(8.dp).background(Color(t.colour), CircleShape))
-                        Spacer(Modifier.width(8.dp))
-                        Text(
-                            t.payee,
-                            style = MaterialTheme.typography.bodySmall,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f),
-                        )
-                        Spacer(Modifier.width(6.dp))
-                        Text(t.amount, style = MaterialTheme.typography.labelMedium)
+                Column(Modifier.fillMaxWidth()) {
+                    if (t.day.isNotEmpty() && (index == 0 || r.recent[index - 1].day != t.day)) {
+                        Text(t.day, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = Color(r.accent), modifier = Modifier.padding(start = 6.dp, bottom = 2.dp))
                     }
-                    Text(
-                        t.category + if (t.pending) " · pending" else "",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = if (t.pending) Pending else Muted,
-                        modifier = Modifier.padding(start = 16.dp),
-                    )
+                    RecentRow(t) { onPick(index) }
                 }
             }
             item {
                 Text(
                     "Tap one to change its category",
                     style = MaterialTheme.typography.labelSmall,
-                    color = Muted,
+                    color = Soft,
                     textAlign = TextAlign.Center,
                     modifier = Modifier.fillMaxWidth(),
                 )
@@ -460,188 +485,177 @@ private fun CategoryPicker(r: BudgetReading, recent: BudgetReading.Recent, onDon
     }
 }
 
+/** The last seven days as bars: today in white, a day over its share in amber. */
 @Composable
 private fun Week(r: BudgetReading) {
     val values = r.week
     val max = (values.maxOrNull() ?: 0L).coerceAtLeast(1L)
     val end = runCatching { LocalDate.parse(r.text("weekEnds")) }.getOrNull()
-    Centre {
-        Text("Last 7 days", style = MaterialTheme.typography.titleSmall)
-        Spacer(Modifier.height(8.dp))
-        Row(
-            modifier = Modifier.fillMaxWidth().height(64.dp),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-            verticalAlignment = Alignment.Bottom,
-        ) {
-            values.forEachIndexed { i, v ->
-                Box(
-                    Modifier.width(12.dp)
-                        .fillMaxHeight((v.toFloat() / max).coerceAtLeast(0.05f))
-                        .background(if (i == values.lastIndex) Green else Blue, RoundedCornerShape(6.dp)),
-                )
+    val usual = values.dropLast(1).takeIf { it.isNotEmpty() }?.average()
+    NzbScreen("This week", Color(r.accent), glow = 0.3f) {
+        Centre {
+            Spacer(Modifier.height(8.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth().height(64.dp),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.Bottom,
+            ) {
+                values.forEachIndexed { i, v ->
+                    val colour = when {
+                        i == values.lastIndex -> Color.White
+                        usual != null && v > usual * 1.5 -> Warn
+                        else -> Good
+                    }
+                    Box(Modifier.width(12.dp).fillMaxHeight((v.toFloat() / max).coerceAtLeast(0.05f)).background(colour, RoundedCornerShape(4.dp)))
+                }
             }
-        }
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-            values.indices.forEach { i ->
-                val day = end?.minusDays((values.size - 1 - i).toLong())?.dayOfWeek?.name?.take(1).orEmpty()
-                Text(
-                    day,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = if (i == values.lastIndex) Color.White else Muted,
-                    fontWeight = if (i == values.lastIndex) FontWeight.Bold else null,
-                    modifier = Modifier.width(12.dp),
-                    textAlign = TextAlign.Center,
-                )
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                values.indices.forEach { i ->
+                    val day = end?.minusDays((values.size - 1 - i).toLong())?.dayOfWeek?.name?.take(1).orEmpty()
+                    Text(
+                        day,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (i == values.lastIndex) Color.White else Soft,
+                        fontWeight = if (i == values.lastIndex) FontWeight.Bold else null,
+                        modifier = Modifier.width(12.dp),
+                        textAlign = TextAlign.Center,
+                    )
+                }
             }
+            Spacer(Modifier.height(6.dp))
+            Text(r.text("updated"), style = MaterialTheme.typography.labelSmall, color = Soft)
         }
-        Spacer(Modifier.height(8.dp))
-        Text(r.text("updated"), style = MaterialTheme.typography.labelSmall, color = Muted)
     }
 }
 
+/** 3 · A card, in its own colour: its statement as a bar against the usual bill, and the next bill. */
 @Composable
 private fun CardScreen(c: BudgetReading.Card) {
-    val tone = if (c.over) Red else Green
-    Box(Modifier.fillMaxSize()) {
-        CircularProgressIndicator(
-            progress = { c.capShare ?: 0f },
-            modifier = Modifier.fillMaxSize().padding(4.dp),
-            startAngle = ARC_START,
-            endAngle = ARC_START + ARC_SWEEP,
-            colors = ProgressIndicatorDefaults.colors(indicatorColor = tone, trackColor = Track),
-        )
-        c.statementGone?.let { gone ->
-            Canvas(Modifier.fillMaxSize()) {
-                val w = 8.dp.toPx()
-                val angle = Math.toRadians((ARC_START + ARC_SWEEP * gone).toDouble())
-                val radius = size.width / 2 - w / 2 - 8.dp.toPx()
-                val centre = Offset(size.width / 2 + radius * cos(angle).toFloat(), size.height / 2 + radius * sin(angle).toFloat())
-                drawCircle(Color.Black, radius = w * 0.9f, center = centre)
-                drawCircle(Color.White, radius = w * 0.65f, center = centre)
-            }
-        }
+    val colour = Color(c.colour)
+    NzbScreen(c.text("name"), colour, glow = 0.55f) {
         Centre {
-            Text(c.text("name"), style = MaterialTheme.typography.labelSmall, color = Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Spacer(Modifier.height(16.dp))
             Text(c.text("since"), style = MaterialTheme.typography.numeralSmall, maxLines = 1)
-            // "since statement" and the pending part on one line, where they were two.
-            val pending = c.text("pending").removePrefix("incl. ")
-            Text(
-                "since statement" + if (pending.isNotEmpty()) " · $pending" else "",
-                style = MaterialTheme.typography.labelSmall,
-                color = if (pending.isNotEmpty()) Pending else Muted,
-                maxLines = 1,
-            )
-            Spacer(Modifier.height(4.dp))
-            Badge(if (c.over) "▲ Heading over" else "● On track", tone)
-            Spacer(Modifier.height(4.dp))
-            // "~£802.71 of usual £959.76": the projection against its measure, on one line.
-            val heading = c.text("pace").removePrefix("On pace for ")
-            val against = c.text("cap").replace("usual bill ", "usual ")
-            val paceLine = listOf(heading, against).filter { it.isNotEmpty() }.joinToString(" of ")
-            if (paceLine.isNotEmpty()) {
-                Text(paceLine, style = MaterialTheme.typography.labelSmall, maxLines = 1, textAlign = TextAlign.Center)
+            if (c.capShare != null) WatchChip(if (c.over) "OVER USUAL" else "BELOW USUAL", if (c.over) Bad else Good)
+            Spacer(Modifier.height(6.dp))
+            c.capShare?.let { share ->
+                WatchBar(
+                    share,
+                    "${c.text("since").replace(Regex("[.,]\\d\\d$"), "")} / ${c.text("capShort")}",
+                    colour,
+                    Modifier.padding(horizontal = 6.dp),
+                    tick = c.statementGone,
+                )
+                Spacer(Modifier.height(4.dp))
             }
-            Text(
-                c.text("billed").replace("Billed ", "Bill ").replace(" · due ", " due "),
-                style = MaterialTheme.typography.labelSmall,
-                color = Muted,
-                maxLines = 1,
-                textAlign = TextAlign.Center,
-            )
+            c.text("nextBill").takeIf { it.isNotEmpty() }?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = Soft, maxLines = 1) }
+                ?: c.text("closes").takeIf { it.isNotEmpty() }?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = Soft, maxLines = 1) }
+            c.text("pending").takeIf { it.isNotEmpty() }?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = PendingBlue, maxLines = 1) }
         }
     }
 }
 
-/** The To come page: the total still to leave before payday, the next one, and the whole list. */
+/** 4 · Coming up: the next three bills as posters, the total before payday, and the full list. */
 @Composable
-private fun UpcomingSummary(r: BudgetReading, onSeeAll: () -> Unit) = Centre {
-    Text("To come before payday", style = MaterialTheme.typography.titleSmall, maxLines = 1)
-    Spacer(Modifier.height(6.dp))
-    val items = r.upcoming
-    if (items.isEmpty()) {
-        Text("Nothing else before payday", style = MaterialTheme.typography.bodySmall, color = Muted, textAlign = TextAlign.Center)
-        return@Centre
+private fun UpcomingSummary(r: BudgetReading, onSeeAll: () -> Unit) {
+    NzbScreen("Coming up", Color(r.accent), glow = 0.35f) {
+        Centre {
+            Spacer(Modifier.height(30.dp))
+            val items = r.upcoming
+            if (items.isEmpty()) {
+                Text("Nothing else before payday", style = MaterialTheme.typography.bodySmall, color = Soft, textAlign = TextAlign.Center)
+                return@Centre
+            }
+            Spacer(Modifier.height(8.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                items.take(2).forEach { u ->
+                    WatchPoster(
+                        name = u.name,
+                        amount = u.short,
+                        date = u.date.removePrefix("~"),
+                        colour = Color(u.colour),
+                        glyph = if (u.card) "▭" else initial(u.name),
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+            }
+            Spacer(Modifier.height(4.dp))
+            SeeAll("${r.text("upcomingTotal")} · all ${items.size}", onSeeAll)
+        }
     }
-    Text(r.text("upcomingTotal"), style = MaterialTheme.typography.numeralSmall, maxLines = 1)
-    Text(
-        "${items.size} payment${if (items.size == 1) "" else "s"}",
-        style = MaterialTheme.typography.labelSmall,
-        color = Muted,
-    )
-    Spacer(Modifier.height(4.dp))
-    items.first().let { next ->
-        Text("Next: ${next.name}", style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
-        Text("${next.amount} · ${next.date}", style = MaterialTheme.typography.labelSmall, color = Muted)
-    }
-    Spacer(Modifier.height(8.dp))
-    SeeAll("See all", onSeeAll)
 }
 
-/** Everything to come before payday, scrolled with the crown. */
+/** Everything to come before payday, scrolled with the crown, each with its tile and date. */
 @Composable
 private fun UpcomingList(r: BudgetReading) {
     val list = rememberScalingLazyListState()
     ScreenScaffold(scrollState = list) { padding ->
         ScalingLazyColumn(state = list, contentPadding = padding, modifier = Modifier.fillMaxSize()) {
-            item { ListHeader { Text("To come before payday", maxLines = 2, textAlign = TextAlign.Center) } }
+            item { ListHeader { Text("Coming up", color = Color(r.accent)) } }
             items(r.upcoming) { u ->
-                // Nothing to do with one yet; full colour, rather than a disabled card's dimmed one.
-                Card(
-                    onClick = {},
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = Panel),
+                Row(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Charcoal).padding(horizontal = 8.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            u.name,
-                            style = MaterialTheme.typography.bodySmall,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f),
-                        )
-                        Spacer(Modifier.width(6.dp))
-                        Text(u.amount, style = MaterialTheme.typography.labelMedium)
+                    WatchTile(if (u.card) "▭" else initial(u.name), Color(u.colour), size = 24.dp)
+                    Spacer(Modifier.width(6.dp))
+                    Text(u.name, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text(u.amount, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Black)
+                        Text(u.date, style = MaterialTheme.typography.labelSmall, color = Color(r.accent))
                     }
-                    Text(u.date, style = MaterialTheme.typography.labelSmall, color = Muted)
                 }
             }
             item {
-                Text(
-                    "${r.text("upcomingTotal")} in all",
-                    style = MaterialTheme.typography.labelMedium,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth(),
-                )
+                Text("${r.text("upcomingTotal")} in all", style = MaterialTheme.typography.labelMedium, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
             }
         }
     }
 }
 
-/** The day's roundup, as the phone worded it: the headline in the pace's colour, then the rest. */
+/** 7 · The roundup, from the watch-face icon: the figure and pace, the week, and what is next. */
 @Composable
-private fun RoundupScreen(r: Roundup) {
+private fun RoundupScreen(r: Roundup, reading: BudgetReading?) {
+    val accent = Color(reading?.accent ?: 0xFFF5A623.toInt())
     val list = rememberScalingLazyListState()
     ScreenScaffold(scrollState = list) { padding ->
+        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to accent.copy(alpha = 0.5f), 0.45f to Color.Transparent)))
         ScalingLazyColumn(state = list, contentPadding = padding, modifier = Modifier.fillMaxSize()) {
-            item { ListHeader { Text("Roundup", maxLines = 1) } }
+            item { ListHeader { Text("ROUNDUP", color = accent, fontWeight = FontWeight.Black) } }
             item {
-                Text(
-                    r.headline,
-                    style = MaterialTheme.typography.titleLarge,
-                    color = paceColour(r.pace),
-                    textAlign = TextAlign.Center,
-                    maxLines = 1,
-                    modifier = Modifier.fillMaxWidth(),
-                )
+                Text(r.headline, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black, textAlign = TextAlign.Center, maxLines = 1, modifier = Modifier.fillMaxWidth())
+            }
+            item { Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { WatchChip(paceWord(r.pace), pace(r.pace)) } }
+            reading?.week?.takeIf { it.isNotEmpty() }?.let { values ->
+                item {
+                    val max = (values.maxOrNull() ?: 1L).coerceAtLeast(1L)
+                    val usual = values.dropLast(1).takeIf { it.isNotEmpty() }?.average()
+                    Row(Modifier.fillMaxWidth().height(36.dp).padding(horizontal = 24.dp), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.Bottom) {
+                        values.forEachIndexed { i, v ->
+                            val colour = when {
+                                i == values.lastIndex -> Color.White
+                                usual != null && v > usual * 1.5 -> Warn
+                                else -> Good
+                            }
+                            Box(Modifier.width(9.dp).fillMaxHeight((v.toFloat() / max).coerceAtLeast(0.06f)).background(colour, RoundedCornerShape(3.dp)))
+                        }
+                    }
+                }
             }
             items(r.lines) { line ->
+                // Tomorrow's bills and anything to check stand out in outlined cards, as the phone's.
+                val outlined = line.startsWith("Tomorrow") || line.contains("to check")
                 Text(
                     line,
-                    style = MaterialTheme.typography.bodySmall,
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = if (outlined) FontWeight.Black else null,
+                    color = if (outlined) accent else Color.White,
                     textAlign = TextAlign.Center,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .then(if (outlined) Modifier.border(1.dp, accent, RoundedCornerShape(10.dp)).padding(horizontal = 8.dp, vertical = 4.dp) else Modifier),
                 )
             }
         }
@@ -677,7 +691,7 @@ private fun UpdatePage(name: String, url: String) {
                     busy = false
                 }
             },
-            colors = ButtonDefaults.buttonColors(containerColor = Green, contentColor = Color.Black),
+            colors = ButtonDefaults.buttonColors(containerColor = Good, contentColor = Color.Black),
         ) { Text("Install", maxLines = 1) }
         status?.let {
             Spacer(Modifier.height(6.dp))

@@ -34,11 +34,11 @@ import com.google.common.util.concurrent.ListenableFuture
  * glance) and this cycle's categories. Material 3 tile layouts; tapping Open opens the watch app.
  */
 private const val RESOURCES = "1"
-private const val GREEN = 0xFFC4E84A.toInt()
-private const val RED = 0xFFFF5C3C.toInt()
-private const val AMBER = 0xFFFFB74D.toInt()
+private const val GREEN = 0xFF43B05C.toInt()
+private const val RED = 0xFFE5534B.toInt()
+private const val AMBER = 0xFFF5A623.toInt()
 private const val BLUE = 0xFFBED8FF.toInt()
-private const val TRACK = 0xFF2D303A.toInt()
+private const val TRACK = 0xFF33363E.toInt()
 private const val MUTED = 0xFFA0AABE.toInt()
 private const val WHITE = 0xFFFFFFFF.toInt()
 
@@ -83,49 +83,55 @@ private fun background(colour: Int, radius: Float) =
         )
         .build()
 
-/** The budget: the figure, the three-part ring, days left and the daily amount. */
+/**
+ * The budget, in the phone's look: the name in the accent along the top, what is left as one
+ * thick arc in the pace's colour round the edge, the figure, a pace chip, and the daily amount.
+ */
 fun budgetTileLayout(context: Context, device: DeviceParameters, reading: BudgetReading?): LayoutElement =
     materialScope(context, device) {
+        val accent = reading?.accent ?: 0xFFF5A623.toInt()
         primaryLayout(
-            titleSlot = { text("Left to spend".layoutString) },
+            titleSlot = { text("SPENDROID".layoutString, color = accent.argb, typography = Typography.LABEL_MEDIUM) },
             mainSlot = {
                 if (reading == null) return@primaryLayout noFigures()
-                // Spent, behind even pace, left - in proportion - round the edge of the slot.
-                val arc = LayoutElementBuilders.Arc.Builder()
+                val colour = paceArgb(reading.pace)
+                fun arc(length: Float, c: Int) = LayoutElementBuilders.Arc.Builder()
                     .setAnchorAngle(degrees(ARC_START))
                     .setAnchorType(LayoutElementBuilders.ARC_ANCHOR_START)
-                    .apply {
-                        BudgetArc.drawOrder(BudgetArc.segments(reading.budgetLeft, reading.cycleLeft)).forEach { s ->
-                            val colour = when (s.kind) {
-                                BudgetArc.Kind.SPENT -> BLUE
-                                BudgetArc.Kind.BEHIND -> RED
-                                BudgetArc.Kind.LEFT -> GREEN
-                            }
-                            addContent(
-                                LayoutElementBuilders.ArcLine.Builder()
-                                    .setLength(degrees((ARC_SWEEP * s.weight - GAP).coerceAtLeast(1f)))
-                                    .setThickness(dp(6f))
-                                    .setColor(argb(colour))
-                                    .build(),
-                            )
-                            addContent(LayoutElementBuilders.ArcSpacer.Builder().setLength(degrees(GAP)).build())
-                        }
-                    }
+                    .addContent(
+                        LayoutElementBuilders.ArcLine.Builder()
+                            .setLength(degrees(length.coerceAtLeast(1f)))
+                            .setThickness(dp(10f))
+                            .setColor(argb(c))
+                            .build(),
+                    )
                     .build()
                 LayoutElementBuilders.Box.Builder()
                     .setWidth(expand())
                     .setHeight(expand())
-                    .addContent(arc)
+                    .addContent(arc(ARC_SWEEP, TRACK))
+                    .addContent(arc(ARC_SWEEP * reading.budgetLeft.coerceIn(0f, 1f), colour))
                     .addContent(
                         column(
                             text(reading.available.layoutString, typography = Typography.NUMERAL_MEDIUM),
-                            text(reading.text("daysLine").ifEmpty { " " }.layoutString, typography = Typography.BODY_SMALL),
+                            gap(2f),
+                            LayoutElementBuilders.Box.Builder()
+                                .setModifiers(background(colour, 5f))
+                                .addContent(
+                                    LayoutElementBuilders.Box.Builder()
+                                        .setModifiers(ModifiersBuilders.Modifiers.Builder().setPadding(ModifiersBuilders.Padding.Builder().setStart(dp(6f)).setEnd(dp(6f)).build()).build())
+                                        .addContent(
+                                            text(
+                                                when (reading.pace) { "OVER" -> "OVER PACE"; "TIGHT" -> "TIGHT"; else -> "ON PACE" }.layoutString,
+                                                typography = Typography.LABEL_SMALL,
+                                                color = 0xFF111111.toInt().argb,
+                                            ),
+                                        )
+                                        .build(),
+                                )
+                                .build(),
                             gap(4f),
-                            text(
-                                when (reading.pace) { "OVER" -> "▲ Over"; "TIGHT" -> "◆ Tight"; else -> "● On track" }.layoutString,
-                                typography = Typography.LABEL_MEDIUM,
-                                color = paceArgb(reading.pace).argb,
-                            ),
+                            text(reading.text("daysLine").ifEmpty { " " }.layoutString, typography = Typography.BODY_SMALL, color = MUTED.argb),
                         ),
                     )
                     .build()
@@ -138,7 +144,7 @@ fun budgetTileLayout(context: Context, device: DeviceParameters, reading: Budget
 fun categoriesTileLayout(context: Context, device: DeviceParameters, reading: BudgetReading?): LayoutElement =
     materialScope(context, device) {
         primaryLayout(
-            titleSlot = { text("This cycle".layoutString) },
+            titleSlot = { text("MOST SPENT".layoutString, color = (reading?.accent ?: 0xFFF5A623.toInt()).argb, typography = Typography.LABEL_MEDIUM) },
             mainSlot = {
                 val rows = reading?.categories.orEmpty().take(3)
                 if (reading == null || rows.isEmpty()) return@primaryLayout noFigures()

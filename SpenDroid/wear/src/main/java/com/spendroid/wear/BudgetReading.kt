@@ -25,9 +25,18 @@ class BudgetReading(val map: DataMap) {
 
     fun text(key: String): String = map.getString(key).orEmpty()
 
+    /** The phone's accent, for the glow and the curved title. Orange until a phone says otherwise. */
+    val accent: Int get() = map.getInt("accent", 0xFFF5A623.toInt())
+    /** Share of the budget used, 0 to 1, for the bar; null when unknown. */
+    val used: Float? get() = map.getFloat("used", -1f).takeIf { it >= 0f }
+    /** Share of the cycle gone, 0 to 1, for the bar's tick; null when unknown. */
+    val elapsed: Float? get() = map.getFloat("elapsed", -1f).takeIf { it >= 0f }
+
     /** One card's screen. */
     class Card(private val map: DataMap) {
         fun text(key: String): String = map.getString(key).orEmpty()
+        /** The account's own colour on the phone. */
+        val colour: Int get() = map.getInt("colour", 0xFF9B5DE5.toInt())
         val capShare: Float? get() = map.getFloat("capShare", -1f).takeIf { it >= 0f }
         val statementGone: Float? get() = map.getFloat("statementGone", -1f).takeIf { it >= 0f }
         val over: Boolean get() = map.getBoolean("over", false)
@@ -35,17 +44,32 @@ class BudgetReading(val map: DataMap) {
 
     val cards: List<Card> get() = map.getDataMapArrayList("cards").orEmpty().map { Card(it) }
 
-    data class Upcoming(val name: String, val date: String, val amount: String)
+    data class Upcoming(
+        val name: String,
+        val date: String,
+        val amount: String,
+        /** To the pound, for a poster. */
+        val short: String = amount,
+        val card: Boolean = false,
+        val colour: Int = 0xFF5A5FD8.toInt(),
+    )
 
     val upcoming: List<Upcoming>
         get() = map.getDataMapArrayList("upcoming").orEmpty().map {
-            Upcoming(it.getString("name").orEmpty(), it.getString("date").orEmpty(), it.getString("amount").orEmpty())
+            Upcoming(
+                it.getString("name").orEmpty(),
+                it.getString("date").orEmpty(),
+                it.getString("amount").orEmpty(),
+                it.getString("short") ?: it.getString("amount").orEmpty(),
+                it.getBoolean("card"),
+                it.getInt("colour", 0xFF5A5FD8.toInt()),
+            )
         }
 
     val week: LongArray get() = map.getLongArray("week") ?: LongArray(0)
 
     /** A recent payment, recategorisable from the wrist. */
-    data class Recent(val id: String, val payee: String, val amount: String, val category: String, val colour: Int, val pending: Boolean)
+    data class Recent(val id: String, val payee: String, val amount: String, val category: String, val colour: Int, val pending: Boolean, val day: String = "")
 
     val recent: List<Recent>
         get() = map.getDataMapArrayList("recent").orEmpty().map {
@@ -56,6 +80,7 @@ class BudgetReading(val map: DataMap) {
                 it.getString("category").orEmpty(),
                 it.getInt("colour"),
                 it.getBoolean("pending"),
+                it.getString("day").orEmpty(),
             )
         }
 
