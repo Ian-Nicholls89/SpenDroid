@@ -48,6 +48,8 @@ internal fun WatchSection() {
     val paired = remember { mutableStateOf(prefs.getBoolean("paired", false)) }
 
     Column {
+        ChimeSetting()
+        Spacer(Modifier.height(20.dp))
         Text("Watch app", style = MaterialTheme.typography.titleMedium)
         Spacer(Modifier.height(4.dp))
         Text(

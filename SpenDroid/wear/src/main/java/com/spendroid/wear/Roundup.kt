@@ -18,13 +18,24 @@ import com.google.android.gms.wearable.DataMap
  * the same thing a running timer or workout is - so the watch face shows SpenDroid's icon at
  * its foot until the roundup is opened. Opening it takes the icon away.
  */
-data class Roundup(val at: Long, val headline: String, val pace: String, val lines: List<String>) {
+data class Roundup(
+    val at: Long,
+    val headline: String,
+    val pace: String,
+    val lines: List<String>,
+    /** The chime chosen on the phone - WARM, SHAPED or SPARKLE - or empty for none. */
+    val chime: String = "",
+) {
 
     companion object {
         const val PATH = "/spendroid/roundup"
         const val EXTRA_OPEN = "com.spendroid.wear.OPEN_ROUNDUP"
         private const val PREFS = "roundup"
-        private const val CHANNEL_ID = "daily_roundup"
+        // Silent: the chime, when chosen, is played by the app, and the system's sound on top of it
+        // would be two noises for one roundup. A channel's sound cannot be changed once made, so
+        // this is a new one, and the old goes.
+        private const val CHANNEL_ID = "daily_roundup_quiet"
+        private const val OLD_CHANNEL_ID = "daily_roundup"
         private const val NOTIFICATION_ID = 7001
 
         fun from(map: DataMap): Roundup? {
@@ -34,6 +45,7 @@ data class Roundup(val at: Long, val headline: String, val pace: String, val lin
                 headline = headline,
                 pace = map.getString("pace") ?: "ON_TRACK",
                 lines = map.getStringArrayList("lines").orEmpty(),
+                chime = map.getString("chime").orEmpty(),
             )
         }
 
@@ -60,8 +72,46 @@ data class Roundup(val at: Long, val headline: String, val pace: String, val lin
                 .putString("headline", roundup.headline)
                 .putString("pace", roundup.pace)
                 .putString("lines", roundup.lines.joinToString("\n"))
+                .putString("chime", roundup.chime)
                 .apply()
             post(context, roundup)
+            chime(context, roundup.chime)
+        }
+
+        /**
+         * Plays the chosen chime once, unless the watch has been told to be quiet - Do Not Disturb,
+         * Bedtime, theatre mode. Waits for it to finish: the data layer's service can be stopped as
+         * soon as it returns, which would cut the chime short.
+         */
+        private fun chime(context: Context, name: String) {
+            val sound = when (name) {
+                "WARM" -> R.raw.chime_warm
+                "SHAPED" -> R.raw.chime_shaped
+                "SPARKLE" -> R.raw.chime_sparkle
+                else -> return
+            }
+            val manager = context.getSystemService(NotificationManager::class.java)
+            if (manager.currentInterruptionFilter != NotificationManager.INTERRUPTION_FILTER_ALL) return
+            val theatre = runCatching {
+                android.provider.Settings.Global.getInt(context.contentResolver, "theater_mode_on", 0) == 1
+            }.getOrDefault(false)
+            if (theatre) return
+            runCatching {
+                val done = java.util.concurrent.CountDownLatch(1)
+                val player = android.media.MediaPlayer.create(
+                    context,
+                    sound,
+                    android.media.AudioAttributes.Builder()
+                        .setUsage(android.media.AudioAttributes.USAGE_NOTIFICATION_EVENT)
+                        .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                        .build(),
+                    0,
+                ) ?: return
+                player.setOnCompletionListener { done.countDown() }
+                player.start()
+                done.await(4, java.util.concurrent.TimeUnit.SECONDS)
+                player.release()
+            }
         }
 
         /** Read: the icon leaves the watch face. */
@@ -79,10 +129,13 @@ data class Roundup(val at: Long, val headline: String, val pace: String, val lin
                 return
             }
             if (!manager.areNotificationsEnabled()) return
-            context.getSystemService(NotificationManager::class.java).createNotificationChannel(
+            val system = context.getSystemService(NotificationManager::class.java)
+            system.deleteNotificationChannel(OLD_CHANNEL_ID)
+            system.createNotificationChannel(
                 NotificationChannel(CHANNEL_ID, "Daily roundup", NotificationManager.IMPORTANCE_HIGH).apply {
                     description = "The day's roundup, kept on the watch face until you read it"
                     enableVibration(true)
+                    setSound(null, null)
                 },
             )
             val open = PendingIntent.getActivity(

@@ -79,6 +79,8 @@ internal object WatchSync {
                 dataMap.putString("headline", "${money(s.availableToSpend)} left")
                 dataMap.putString("pace", BudgetPace.of(s).name)
                 dataMap.putStringArrayList("lines", ArrayList(lines))
+                // The chime to play with it, or none; chosen on the phone, played on the watch.
+                dataMap.putString("chime", com.spendroid.ui.Chime.chosen(context)?.name.orEmpty())
             }.asPutDataRequest().setUrgent()
             Wearable.getDataClient(context).putDataItem(request).await()
         }
