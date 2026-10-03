@@ -51,22 +51,32 @@ enum class Chime(val label: String, val sound: Int) {
             context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit { putString(KEY, chime?.name) }
         }
 
-        /** Plays [chime] on the phone, to hear it before choosing. */
+        /** The preview playing now, held until it finishes: one let go is cleaned up mid-play, silently. */
+        private var playing: MediaPlayer? = null
+
+        /**
+         * Plays [chime] on the phone, to hear it before choosing. As media, at the media volume: a
+         * notification sound is muted on a phone set to vibrate, and the button did nothing.
+         */
         fun preview(context: Context, chime: Chime) {
-            runCatching {
+            playing?.release()
+            playing = runCatching {
                 MediaPlayer.create(
-                    context,
+                    context.applicationContext,
                     chime.sound,
                     AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_NOTIFICATION_EVENT)
+                        .setUsage(AudioAttributes.USAGE_MEDIA)
                         .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
                         .build(),
                     0,
                 )?.apply {
-                    setOnCompletionListener { it.release() }
+                    setOnCompletionListener { player ->
+                        player.release()
+                        if (playing === player) playing = null
+                    }
                     start()
                 }
-            }
+            }.getOrNull()
         }
     }
 }

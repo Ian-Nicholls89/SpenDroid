@@ -102,7 +102,9 @@ data class Roundup(
                     context,
                     sound,
                     android.media.AudioAttributes.Builder()
-                        .setUsage(android.media.AudioAttributes.USAGE_NOTIFICATION_EVENT)
+                        // Media, not a notification sound, which a watch may keep to vibration alone;
+                        // the quiet modes are checked above instead.
+                        .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
                         .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION)
                         .build(),
                     0,
