@@ -419,6 +419,11 @@ class GoCardlessRepository private constructor(
         secrets.setRuleIgnored(RecurringAnalyzer.groupKey(tx), true)
     }
 
+    /** Where a bill added by hand is paid from; null when not said. */
+    suspend fun setManualRulePaidFrom(rule: ManualRecurringRuleEntity, accountId: String?) {
+        dao.upsertManualRule(rule.copy(accountId = accountId))
+    }
+
     suspend fun deleteManualRule(id: String) {
         dao.deleteManualRule(id)
     }

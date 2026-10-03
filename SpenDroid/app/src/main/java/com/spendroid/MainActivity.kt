@@ -394,6 +394,9 @@ class MainActivity : ComponentActivity() {
                                             overrides = state.ruleOverrides,
                                             onSetOverride = viewModel::setRuleOverride,
                                             holidays = state.bankHolidays,
+                                            accounts = state.accounts,
+                                            onSetManualPaidFrom = viewModel::setManualRulePaidFrom,
+                                            onDeleteManual = viewModel::deleteManualRule,
                                         )
 
                                         AppScreen.Settings -> SettingsScreen(

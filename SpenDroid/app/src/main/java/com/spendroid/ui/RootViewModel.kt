@@ -522,6 +522,20 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    fun setManualRulePaidFrom(rule: ManualRecurringRuleEntity, accountId: String?) {
+        viewModelScope.launch {
+            repo.setManualRulePaidFrom(rule, accountId)
+            loadLocal()
+        }
+    }
+
+    fun deleteManualRule(rule: ManualRecurringRuleEntity) {
+        viewModelScope.launch {
+            repo.deleteManualRule(rule.id)
+            loadLocal()
+        }
+    }
+
     fun treatAsBill(tx: TransactionEntity, cadence: com.spendroid.domain.Cadence) {
         viewModelScope.launch {
             repo.treatAsBill(tx, cadence)

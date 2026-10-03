@@ -88,6 +88,9 @@ fun RecurringRulesScreen(
     overrides: Map<String, RuleOverrideEntity> = emptyMap(),
     onSetOverride: (String, Int?, PaymentShift?, Int?) -> Unit = { _, _, _, _ -> },
     holidays: Set<LocalDate> = emptySet(),
+    accounts: List<com.spendroid.data.db.AccountEntity> = emptyList(),
+    onSetManualPaidFrom: (ManualRecurringRuleEntity, String?) -> Unit = { _, _ -> },
+    onDeleteManual: (ManualRecurringRuleEntity) -> Unit = {},
 ) {
     var editing by remember { mutableStateOf<RecurringRule?>(null) }
     val income = rules.filter { it.direction == Direction.IN }
@@ -180,7 +183,7 @@ fun RecurringRulesScreen(
                             onEdit = { editing = rule },
                         ) { onToggle(rule.key, it) }
                     }
-                    items(manualFixed, key = { it.id }) { rule -> ManualRuleRow(rule) }
+                    items(manualFixed, key = { it.id }) { rule -> ManualRuleRow(rule, accounts, onSetManualPaidFrom, onDeleteManual) }
                 }
                 2 -> {
                     item {
@@ -203,7 +206,7 @@ fun RecurringRulesScreen(
                             onSetPrimary = { onSetPrimaryIncome(if (rule.key == primaryIncomeKey) null else rule.key) },
                         ) { onToggle(rule.key, it) }
                     }
-                    items(manualIncome, key = { it.id }) { rule -> ManualRuleRow(rule) }
+                    items(manualIncome, key = { it.id }) { rule -> ManualRuleRow(rule, accounts, onSetManualPaidFrom, onDeleteManual) }
                 }
                 else -> {
                     if (ignoredRules.isEmpty()) {
@@ -269,30 +272,70 @@ private fun UpcomingRow(p: com.spendroid.domain.UpcomingPayment, today: LocalDat
     }
 }
 
+/**
+ * A bill added by hand. Tapping it opens where it is paid from - a card's is counted in that
+ * card's bill, not again - and a way to delete it, neither of which had a place before.
+ */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 private fun ManualRuleRow(
     rule: ManualRecurringRuleEntity,
+    accounts: List<com.spendroid.data.db.AccountEntity> = emptyList(),
+    onSetPaidFrom: (ManualRecurringRuleEntity, String?) -> Unit = { _, _ -> },
+    onDelete: (ManualRecurringRuleEntity) -> Unit = {},
 ) {
-    Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp)) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
+    var open by remember { mutableStateOf(false) }
+    val payer = accounts.firstOrNull { it.id == rule.accountId }
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 14.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(Charcoal.Panel)
+            .clickable { open = !open }
+            .padding(12.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            ArtTile(payeeColour(rule.payee), size = 38.dp) { Monogram(rule.payee, 38.dp) }
+            Spacer(Modifier.width(10.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text("${rule.payee} (manual)", style = MaterialTheme.typography.titleSmall)
+                Text(rule.payee, style = MaterialTheme.typography.titleSmall, maxLines = 1)
                 Text(
-                    "${describeManualRule(rule)} · ${formatMoney(rule.amountMinor, rule.currency)}",
+                    "${describeManualRule(rule)} · added by you · " + (payer?.let { "from ${it.label}" } ?: "account not set"),
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Text(
-                    "Manual entry · always active",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.primary,
+                    color = if (payer == null && rule.direction == "OUT") Charcoal.Warn else Charcoal.Muted,
+                    maxLines = 2,
                 )
             }
+            Text(formatMoney(rule.amountMinor, rule.currency), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Black)
+        }
+        if (open) {
+            Spacer(Modifier.height(10.dp))
+            if (rule.direction == "OUT" && accounts.isNotEmpty()) {
+                Text("Paid from", style = MaterialTheme.typography.labelLarge)
+                Spacer(Modifier.height(4.dp))
+                androidx.compose.foundation.layout.FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    accounts.forEach { a ->
+                        val chosen = a.id == rule.accountId
+                        ColourPill(
+                            a.label,
+                            if (chosen) colourOf(a, accounts) else Charcoal.PanelHigh,
+                            { onSetPaidFrom(rule, if (chosen) null else a.id) },
+                        )
+                    }
+                }
+                Text(
+                    "One paid on a card is counted in that card's bill, not taken off your budget as well.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Charcoal.Muted,
+                    modifier = Modifier.padding(top = 6.dp),
+                )
+                Spacer(Modifier.height(10.dp))
+            }
+            BigButton("Delete this bill", null, { onDelete(rule) }, Modifier.fillMaxWidth(), colour = Charcoal.Bad.copy(alpha = 0.25f), textColour = Charcoal.Bad)
         }
     }
 }
