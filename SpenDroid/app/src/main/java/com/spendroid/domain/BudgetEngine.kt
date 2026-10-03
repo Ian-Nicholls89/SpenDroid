@@ -160,7 +160,10 @@ object BudgetEngine {
             ) {
                 return@filter false
             }
-            rule.accountIds.isEmpty() || !rule.accountIds.all { it in notSpendableFrom }
+            // Where it is paid from now decides, not where it once was: a payment that moved to a card
+            // is settled by the card's bill, and counting it as a bill too counts it twice.
+            val payer = rule.paidFrom
+            if (payer != null) payer !in notSpendableFrom else rule.accountIds.isEmpty() || !rule.accountIds.all { it in notSpendableFrom }
         }
         val incomeRules = cashRules.filter { it.direction == Direction.IN }
         val fixedRules = cashRules.filter { it.direction == Direction.OUT }
@@ -276,6 +279,13 @@ object BudgetEngine {
                 RecurringAnalyzer.parseBookingDate(tx.bookingDate) == today
         }
 
+        // Regular payments made on each card, still to come before its statement closes.
+        val cardRules = rules.filter { rule ->
+            rule.direction == Direction.OUT && !rule.internalTransfer && !isStale(rule, today) &&
+                (rule.paidFrom?.let { it in creditCardAccountIds } ?: (rule.accountIds.isNotEmpty() && rule.accountIds.all { it in creditCardAccountIds }))
+        }
+        val cardBills = cardAnalysis.bills.map { bill -> withToCome(bill, cardRules, transactions, today, ::nextFor) }
+
         val upcomingFixed = if (nextIncomeDate != null) {
             val fromRules = fixedRules.mapNotNull { rule ->
                 // A payment due today is still to come until it shows. Asking only for the next
@@ -298,7 +308,7 @@ object BudgetEngine {
             // close is next month's bill. An unpaid statement stays until its payment shows,
             // even past its date - unless the debit has already left the paying account, where
             // it is counted as spending and holding the bill back too would count it twice.
-            val fromCards = cardAnalysis.bills.mapNotNull { bill ->
+            val fromCards = cardBills.mapNotNull { bill ->
                 val due = bill.dueDate ?: return@mapNotNull null
                 if (bill.dueMinor <= 0L) return@mapNotNull null
                 if (due.isAfter(nextIncomeDate)) return@mapNotNull null
@@ -338,7 +348,7 @@ object BudgetEngine {
         val cardsNextCycle = if (atPurchase || nextIncomeDate == null || followingIncomeDate == null) {
             0L
         } else {
-            cardAnalysis.bills.sumOf { bill ->
+            cardBills.sumOf { bill ->
                 CreditCardEngine.expectedPayments(bill)
                     .filter { (date, _) -> date.isAfter(nextIncomeDate) && !date.isAfter(followingIncomeDate) }
                     .sumOf { it.second }
@@ -416,7 +426,27 @@ object BudgetEngine {
                 .filter { it.accountId == pot.id && it.amountMinor < 0 && it.transactionId.startsWith(NotificationSpend.SEEN_PREFIX) }
                 .sumOf { -it.amountMinor }
         } ?: 0L
-        val rollover = potBalance?.let { it - upcomingTotal - unreportedOnPot }
+        /**
+         * Carrying over, a quarterly or yearly bill is set aside as it approaches: by the end of this
+         * cycle, the share of its period that will have gone. Without it the balance looked free
+         * for eleven months and the twelfth took the whole bill. One due before payday is already
+         * in what is to come, in full.
+         */
+        val setAside = if (budgetModel == BudgetModel.ROLLOVER && nextIncomeDate != null) {
+            fixedRules.filter { it.cadence == Cadence.QUARTERLY || it.cadence == Cadence.ANNUAL }.mapNotNull { rule ->
+                val next = nextFor(rule, today)
+                if (!next.isAfter(nextIncomeDate)) return@mapNotNull null
+                val previous = if (rule.cadence == Cadence.ANNUAL) next.minusYears(1) else next.minusMonths(3)
+                val period = ChronoUnit.DAYS.between(previous, next).toFloat()
+                val byPayday = ChronoUnit.DAYS.between(previous, nextIncomeDate).toFloat()
+                val share = (byPayday / period).coerceIn(0f, 1f)
+                (rule to (abs(rule.amountMinor) * share).toLong()).takeIf { it.second > 0L }
+            }
+        } else {
+            emptyList()
+        }
+        val setAsideTotal = setAside.sumOf { it.second }
+        val rollover = potBalance?.let { it - upcomingTotal - unreportedOnPot - setAsideTotal }
 
         val uncapped = when (budgetModel) {
             BudgetModel.FRESH_START, BudgetModel.SHOW_BOTH -> freshStart
@@ -457,7 +487,9 @@ object BudgetEngine {
             fixedRules = fixedRules,
             primaryIncomeRule = primaryIncome,
             daysUntilNextIncome = daysUntilNextIncome,
-            cardBills = cardAnalysis.bills,
+            cardBills = cardBills,
+            setAsideMinor = setAsideTotal,
+            setAside = setAside,
             // Both sides, so the credit on the card reads as a bill settlement rather
             // than as salary. The filter above deliberately uses the payer side only.
             cardPaymentKeys = cardAnalysis.cardPaymentKeys + cardAnalysis.cardSettlementKeys,
@@ -511,6 +543,9 @@ object BudgetEngine {
     /** How early a payment may show and still be the one due, for payments due today or overdue. */
     private const val SEEN_EARLY_DAYS = 3L
 
+    /** How far from its due date a card charge can be and still be that regular payment. */
+    private const val CANDIDATE_WINDOW_DAYS = 5L
+
     /** How long a late salary is waited for before the cycle moves on without it. */
     private const val MAX_WAIT_FOR_INCOME_DAYS = 7L
 
@@ -540,6 +575,60 @@ object BudgetEngine {
         }
         val allowance = periodDays + periodDays / 2 + 7L
         return ChronoUnit.DAYS.between(rule.lastOccurrence, today) > allowance
+    }
+
+    /**
+     * [bill] with the regular payments still to come on its card before the statement closes, and
+     * its projection redone around them: everyday spending at its own pace, plus the known
+     * payments on their dates. Projected as a rate, one large yearly charge early in a statement
+     * read as a card heading far over, and nothing said it was coming before it landed.
+     */
+    private fun withToCome(
+        bill: CreditCardEngine.CardBill,
+        cardRules: List<RecurringRule>,
+        transactions: List<TransactionEntity>,
+        today: LocalDate,
+        nextFor: (RecurringRule, LocalDate) -> LocalDate,
+    ): CreditCardEngine.CardBill {
+        val close = bill.statementClose ?: return bill
+        val next = bill.nextStatementClose ?: return bill
+        val mine = cardRules.filter { (it.paidFrom ?: it.accountIds.singleOrNull()) == bill.cardAccountId }
+        if (mine.isEmpty()) return bill
+        val onCard = transactions.filter { tx ->
+            tx.accountId == bill.cardAccountId && tx.amountMinor < 0 &&
+                RecurringAnalyzer.parseBookingDate(tx.bookingDate)?.isAfter(close) == true
+        }
+        var charged = 0L
+        var perStatement = 0L
+        val toCome = mutableListOf<UpcomingPayment>()
+        mine.forEach { rule ->
+            val dues = generateSequence(nextFor(rule, close)) { nextFor(rule, it) }.takeWhile { !it.isAfter(next) }.take(10).toList()
+            // Only near a due date: another purchase at the same shop is not the subscription.
+            val near = generateSequence(nextFor(rule, close.minusDays(CANDIDATE_WINDOW_DAYS))) { nextFor(rule, it) }
+                .takeWhile { !it.isAfter(next.plusDays(CANDIDATE_WINDOW_DAYS)) }.take(12).toList()
+            val paid = onCard.filter { tx ->
+                RecurringAnalyzer.looselyMatches(rule, tx) &&
+                    RecurringAnalyzer.parseBookingDate(tx.bookingDate)?.let { d -> near.any { abs(ChronoUnit.DAYS.between(it, d)) <= CANDIDATE_WINDOW_DAYS } } == true
+            }
+            charged += paid.sumOf { -it.amountMinor }
+            perStatement += abs(rule.amountMinor) * dues.size
+            dues.drop(paid.size).filter { !it.isBefore(today) }.forEach { toCome += UpcomingPayment(rule, it, abs(rule.amountMinor)) }
+        }
+        val toComeMinor = toCome.sumOf { it.amountMinor }
+        val everyday = CreditCardEngine.projectStatement(
+            (bill.unbilledMinor - charged).coerceAtLeast(0L),
+            bill.usualBillMinor?.let { (it - perStatement).coerceAtLeast(0L) },
+            today,
+            close,
+            next,
+        )
+        return bill.copy(
+            toComeMinor = toComeMinor,
+            toCome = toCome.sortedBy { it.dueDate },
+            // Too early to judge a pace, the known payments still are known: at least these.
+            projectedMinor = everyday?.let { it + charged + toComeMinor }
+                ?: if (toComeMinor > 0L) bill.unbilledMinor + toComeMinor else bill.projectedMinor,
+        )
     }
 
     private fun monthlyEquivalent(rule: RecurringRule): Long = when (rule.cadence) {

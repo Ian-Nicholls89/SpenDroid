@@ -400,7 +400,7 @@ class GoCardlessRepository private constructor(
      * spending or like money moved between the user's accounts. A rule detected for the same
      * payment is set aside, so the bill is counted once.
      */
-    suspend fun treatAsBill(tx: TransactionEntity) {
+    suspend fun treatAsBill(tx: TransactionEntity, cadence: com.spendroid.domain.Cadence = com.spendroid.domain.Cadence.MONTHLY) {
         val date = runCatching { LocalDate.parse(tx.bookingDate) }.getOrElse { LocalDate.now() }
         dao.upsertManualRule(
             ManualRecurringRuleEntity(
@@ -409,9 +409,11 @@ class GoCardlessRepository private constructor(
                 direction = "OUT",
                 amountMinor = kotlin.math.abs(tx.amountMinor),
                 currency = tx.currency,
-                cadence = "MONTHLY",
+                cadence = cadence.name,
                 anchorDay = date.dayOfMonth,
                 startDate = date.toString(),
+                // Paid from where this one was: a bill on a card is counted in the card's bill.
+                accountId = tx.accountId,
             ),
         )
         secrets.setRuleIgnored(RecurringAnalyzer.groupKey(tx), true)

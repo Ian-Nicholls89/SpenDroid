@@ -98,6 +98,12 @@ object CreditCardEngine {
          * daily rate carried to its close. Null until there is enough history to have a rate.
          */
         val projectedMinor: Long? = null,
+        /**
+         * Regular payments made on this card still due before its statement closes, so the
+         * statement shows them from its first day rather than as they land.
+         */
+        val toComeMinor: Long = 0L,
+        val toCome: List<com.spendroid.domain.UpcomingPayment> = emptyList(),
         /** The middle of the bills actually paid, once there are two to go on. */
         val usualBillMinor: Long? = null,
         /** What spending on the card is measured against: the user's limit, else the usual bill. */

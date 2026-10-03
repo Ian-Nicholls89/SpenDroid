@@ -37,6 +37,8 @@ class BudgetReading(val map: DataMap) {
         fun text(key: String): String = map.getString(key).orEmpty()
         /** The account's own colour on the phone. */
         val colour: Int get() = map.getInt("colour", 0xFF9B5DE5.toInt())
+        /** The card's regular payments still to come this statement, as a share of the bar. */
+        val toComeShare: Float get() = map.getFloat("toComeShare", 0f)
         val capShare: Float? get() = map.getFloat("capShare", -1f).takeIf { it >= 0f }
         val statementGone: Float? get() = map.getFloat("statementGone", -1f).takeIf { it >= 0f }
         val over: Boolean get() = map.getBoolean("over", false)

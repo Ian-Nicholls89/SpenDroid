@@ -25,6 +25,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -44,11 +45,11 @@ import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import kotlin.math.roundToLong
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 fun ManualRuleDialog(
     onDismiss: () -> Unit,
-    onAdd: (String, String, Long, String, String, Int, String) -> Unit,
+    onAdd: (String, String, Long, String, String, Int, String, String?) -> Unit,
     onAddFromCandidate: (RecurringAnalyzer.RecurringCandidate) -> Unit,
     viewModel: RootViewModel,
 ) {
@@ -62,6 +63,8 @@ fun ManualRuleDialog(
     var candidates by remember { mutableStateOf<List<RecurringAnalyzer.RecurringCandidate>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
     var showManual by remember { mutableStateOf(false) }
+    var paidFrom by remember { mutableStateOf<String?>(null) }
+    val accounts = viewModel.state.collectAsState().value.accounts
 
     LaunchedEffect(Unit) {
         loading = true
@@ -145,6 +148,17 @@ fun ManualRuleDialog(
                         startDate = startDate,
                         onStartDateChange = { startDate = it },
                     )
+                    // Where it is paid from: one on a card is counted in that card's bill, not again.
+                    if (direction == "OUT" && accounts.isNotEmpty()) {
+                        Spacer(Modifier.height(10.dp))
+                        Text("Paid from", style = MaterialTheme.typography.labelLarge)
+                        androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            androidx.compose.material3.FilterChip(selected = paidFrom == null, onClick = { paidFrom = null }, label = { Text("Not sure") })
+                            accounts.forEach { a ->
+                                androidx.compose.material3.FilterChip(selected = paidFrom == a.id, onClick = { paidFrom = a.id }, label = { Text(a.label, maxLines = 1) })
+                            }
+                        }
+                    }
                 }
             }
         },
@@ -152,7 +166,7 @@ fun ManualRuleDialog(
             if (showManual) {
                 Button(onClick = {
                     val amountMinor = ((amount.toDoubleOrNull() ?: 0.0) * 100).roundToLong()
-                    onAdd(payee.trim(), direction, amountMinor, currency, cadence, anchorDay, startDate)
+                    onAdd(payee.trim(), direction, amountMinor, currency, cadence, anchorDay, startDate, paidFrom)
                 }, enabled = payee.isNotBlank() && amount.isNotBlank()) {
                     Text("Add")
                 }

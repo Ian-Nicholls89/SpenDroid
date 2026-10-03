@@ -156,8 +156,9 @@ class ScreensTest {
                     transaction = tx, userRules = emptyList(), onDismiss = {}, onOverrideCategory = { _, _ -> },
                     onAlwaysCategorise = { _, _ -> }, onMarkTransfer = { _, _ -> }, similarCount = 2,
                     suggestions = listOf(com.spendroid.domain.Category.WORK_LUNCH, com.spendroid.domain.Category.GROCERIES),
-                    onTreatAsBill = {}, accountLabel = "Personal Account",
+                    onTreatAsBill = { _, _ -> }, accountLabel = "Personal Account",
                     payeeCycle = com.spendroid.ui.PayeeCycle(1_936, 2, 2_400),
+                    billNote = "Monthly regular bill · counted in the Nectar Card bill",
                 )
             }
         }

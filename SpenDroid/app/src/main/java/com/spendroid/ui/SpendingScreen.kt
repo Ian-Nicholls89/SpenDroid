@@ -58,7 +58,7 @@ fun SpendingScreen(
     onSetBudgetGoal: (Category, Long) -> Unit,
     /** Questions about payments read from notifications, shown above the list. */
     prompts: @Composable () -> Unit = {},
-    onTreatAsBill: ((TransactionEntity) -> Unit)? = null,
+    onTreatAsBill: ((TransactionEntity, com.spendroid.domain.Cadence) -> Unit)? = null,
     /** The tab on show, held by the caller so the side menu can open Insights. */
     tabIndex: Int? = null,
     onTabIndex: (Int) -> Unit = {},

@@ -302,6 +302,7 @@ private fun AccountWalletCard(
             Spacer(Modifier.height(10.dp))
             LabelledBar(
                 fraction = cap?.let { b.unbilledMinor.toFloat() / it } ?: 0f,
+                extra = cap?.let { b.toComeMinor.toFloat() / it } ?: 0f,
                 label = "${formatMoney(b.unbilledMinor, b.currency)}" + (cap?.let { " / ${formatMoney(it, b.currency)}" } ?: " this statement"),
                 colour = colour,
                 tick = b.statementDaysElapsed?.let { e ->

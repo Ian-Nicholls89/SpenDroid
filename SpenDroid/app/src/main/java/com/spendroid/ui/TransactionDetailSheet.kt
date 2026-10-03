@@ -79,9 +79,11 @@ fun TransactionDetailSheet(
     accountLastSynced: Long? = null,
     groupMarkedAsTransfer: Boolean = false,
     onMarkTransferGroup: (TransactionEntity, Boolean) -> Unit = { _, _ -> },
-    /** Whether a regular bill already covers this payment. */
-    isRegularBill: Boolean = false,
-    onTreatAsBill: ((TransactionEntity) -> Unit)? = null,
+    /** What regular bill covers this payment and where it is paid from, said plainly; null if none. */
+    billNote: String? = null,
+    /** How often a payment like this has come, to suggest when it is made a bill. */
+    billGuess: com.spendroid.domain.Cadence = com.spendroid.domain.Cadence.MONTHLY,
+    onTreatAsBill: ((TransactionEntity, com.spendroid.domain.Cadence) -> Unit)? = null,
     accountLabel: String? = null,
     payeeCycle: PayeeCycle? = null,
 ) {
@@ -141,22 +143,65 @@ fun TransactionDetailSheet(
                     Color(0xFFCFD2D8),
                 )
                 if (transaction.isInternalTransfer) Chip("Transfer", Charcoal.PanelHigh, Color(0xFFCFD2D8))
-                if (isRegularBill) Chip("Regular bill", Charcoal.PanelHigh, Color(0xFFCFD2D8))
                 payeeCycle?.takeIf { it.visits > 1 }?.let { Chip("${ordinalOf(it.visits)} this cycle", Charcoal.PanelHigh, Color(0xFFCFD2D8)) }
             }
 
+            // Whether a regular bill covers it, and where that is paid from - never left to guess.
+            billNote?.let { note ->
+                Row(
+                    Modifier.padding(start = 14.dp, end = 14.dp, bottom = 10.dp).fillMaxWidth()
+                        .background(Charcoal.Panel, androidx.compose.foundation.shape.RoundedCornerShape(10.dp))
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(Icons.Filled.Repeat, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text(note, style = MaterialTheme.typography.bodyMedium)
+                }
+            }
+            var askingBill by rememberSaveable(transaction.transactionId) { mutableStateOf(false) }
             Row(Modifier.padding(horizontal = 14.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                BigButton("Category", Icons.Filled.Category, { choosing = !choosing }, Modifier.weight(1f))
+                BigButton("Category", Icons.Filled.Category, { choosing = !choosing }, Modifier.weight(1f), stacked = true)
                 if (!seen) {
                     BigButton(
-                        if (transaction.isInternalTransfer) "Not a transfer" else "Transfer",
+                        if (transaction.isInternalTransfer) "Not transfer" else "Transfer",
                         Icons.Filled.SwapHoriz,
                         { onMarkTransfer(transaction, !transaction.isInternalTransfer) },
                         Modifier.weight(1f),
+                        stacked = true,
                     )
                 }
-                if (onTreatAsBill != null && transaction.amountMinor < 0 && !seen && !isRegularBill) {
-                    BigButton("Bill", Icons.Filled.Repeat, { onTreatAsBill(transaction) }, Modifier.weight(1f))
+                if (onTreatAsBill != null && transaction.amountMinor < 0 && !seen && billNote == null) {
+                    BigButton("Bill", Icons.Filled.Repeat, { askingBill = !askingBill }, Modifier.weight(1f), stacked = true)
+                }
+            }
+            // Making it a bill asks how often, suggesting what its history says.
+            if (askingBill && onTreatAsBill != null) {
+                Spacer(Modifier.height(10.dp))
+                Panel(Modifier.padding(horizontal = 14.dp)) {
+                    SectionHeading("A regular bill, how often?")
+                    Spacer(Modifier.height(8.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf(
+                            com.spendroid.domain.Cadence.MONTHLY to "Monthly",
+                            com.spendroid.domain.Cadence.QUARTERLY to "Quarterly",
+                            com.spendroid.domain.Cadence.ANNUAL to "Yearly",
+                        ).forEach { (cadence, label) ->
+                            ColourPill(
+                                label,
+                                if (cadence == billGuess) MaterialTheme.colorScheme.primary else Charcoal.PanelHigh,
+                                { onTreatAsBill(transaction, cadence) },
+                                textColour = if (cadence == billGuess) Color(0xFF111111) else Color.White,
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "Paid from ${accountLabel ?: "this account"}, as this one was" +
+                            if (transaction.accountId in creditCardAccountIds) " - so it is counted in that card's bill, not again." else ".",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Charcoal.Muted,
+                    )
                 }
             }
 
@@ -294,12 +339,11 @@ fun TransactionDetailSheet(
                     if (onTreatAsBill != null && transaction.amountMinor < 0) {
                         Spacer(Modifier.height(10.dp))
                         Text(
-                            if (isRegularBill) {
-                                "A regular bill: set aside from the start of each cycle. Change it under Regular."
+                            if (billNote != null) {
+                                "A regular bill: set aside ahead of time rather than counted when it leaves. Change it under Regular."
                             } else {
-                                "Bill takes ${formatMoney(kotlin.math.abs(transaction.amountMinor), transaction.currency)} off your budget " +
-                                    "on the ${ordinal(transaction.bookingDate)} of every month, from the start of each cycle, instead of " +
-                                    "counting it when it leaves."
+                                "Bill sets ${formatMoney(kotlin.math.abs(transaction.amountMinor), transaction.currency)} aside each time it " +
+                                    "falls due, from around the ${ordinal(transaction.bookingDate)}, instead of counting it when it leaves."
                             },
                             style = MaterialTheme.typography.labelSmall,
                             color = Charcoal.Muted,

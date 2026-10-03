@@ -38,6 +38,8 @@ object PeriodRows {
         val projectedMinor: Long?,
         val pace: BudgetPace.Pace,
         val currency: String,
+        /** A card's regular payments still to come before its statement closes. */
+        val toComeMinor: Long = 0L,
     )
 
     enum class Against { BUDGET, USUAL, LIMIT }
@@ -108,6 +110,7 @@ object PeriodRows {
             projectedMinor = bill.projectedMinor,
             pace = if (over) BudgetPace.Pace.OVER else paceOf(used, gone),
             currency = bill.currency,
+            toComeMinor = bill.toComeMinor,
         )
     }
 

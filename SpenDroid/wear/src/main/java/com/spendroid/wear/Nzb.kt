@@ -85,10 +85,13 @@ internal fun CurvedTitle(text: String, colour: Color) {
 
 /** A thick bar with its figure inside and a white tick where an even pace would be. */
 @Composable
-internal fun WatchBar(fraction: Float, label: String, colour: Color, modifier: Modifier = Modifier, tick: Float? = null, height: Dp = 18.dp) {
+internal fun WatchBar(fraction: Float, label: String, colour: Color, modifier: Modifier = Modifier, tick: Float? = null, height: Dp = 18.dp, extra: Float = 0f) {
     BoxWithConstraints(
         modifier.fillMaxWidth().height(height).clip(RoundedCornerShape(height / 2)).background(Track2),
     ) {
+        if (extra > 0f) {
+            Box(Modifier.fillMaxHeight().width(maxWidth * (fraction + extra).coerceIn(0f, 1f)).clip(RoundedCornerShape(height / 2)).background(colour.copy(alpha = 0.35f)))
+        }
         Box(Modifier.fillMaxHeight().width(maxWidth * fraction.coerceIn(0f, 1f)).clip(RoundedCornerShape(height / 2)).background(colour))
         tick?.let { t ->
             Box(Modifier.offset(x = maxWidth * t.coerceIn(0f, 1f) - 1.5.dp).width(3.dp).fillMaxHeight().background(Color.White))

@@ -102,8 +102,11 @@ fun LabelledBar(
     modifier: Modifier = Modifier,
     tick: Float? = null,
     height: Dp = 22.dp,
+    /** A paler segment after the fill: what is known to be coming, as a share of the whole. */
+    extra: Float = 0f,
 ) {
     val shown by animateFloatAsState(fraction.coerceIn(0f, 1f), Motion.change(Motion.LONG), label = "bar")
+    val coming by animateFloatAsState(extra.coerceIn(0f, 1f - fraction.coerceIn(0f, 1f)), Motion.change(Motion.LONG), label = "bar extra")
     BoxWithConstraints(
         modifier
             .fillMaxWidth()
@@ -112,6 +115,15 @@ fun LabelledBar(
             .background(Color(0xFF33363E))
             .semantics { contentDescription = label },
     ) {
+        if (coming > 0f) {
+            Box(
+                Modifier
+                    .fillMaxHeight()
+                    .width(maxWidth * (shown + coming))
+                    .clip(RoundedCornerShape(height / 2))
+                    .background(colour.copy(alpha = 0.35f)),
+            )
+        }
         Box(
             Modifier
                 .fillMaxHeight()
@@ -336,7 +348,31 @@ fun HeaderGlow(colour: Color, modifier: Modifier = Modifier, height: Dp = 220.dp
 
 /** A big flat button on a panel colour, as nzb360's "Go to Movies". */
 @Composable
-fun BigButton(text: String, icon: ImageVector?, onClick: () -> Unit, modifier: Modifier = Modifier, colour: Color = Charcoal.PanelHigh, textColour: Color = Color.White) {
+fun BigButton(
+    text: String,
+    icon: ImageVector?,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    colour: Color = Charcoal.PanelHigh,
+    textColour: Color = Color.White,
+    /** Icon above the label: three side by side fit at a large text size this way. */
+    stacked: Boolean = false,
+) {
+    if (stacked) {
+        Column(
+            modifier
+                .clip(RoundedCornerShape(12.dp))
+                .background(colour)
+                .clickable(onClick = onClick)
+                .padding(vertical = 10.dp, horizontal = 6.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            icon?.let { Icon(it, contentDescription = null, tint = textColour, modifier = Modifier.size(20.dp)) }
+            Spacer(Modifier.height(4.dp))
+            Text(text, style = MaterialTheme.typography.labelMedium, color = textColour, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        return
+    }
     Row(
         modifier
             .clip(RoundedCornerShape(12.dp))

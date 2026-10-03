@@ -202,7 +202,7 @@ class ThisPeriodWidget : GlanceAppWidget() {
         val share = if (drain) row.used?.let { 1f - it } else row.used
         val tick = if (drain) row.gone?.let { 1f - it } else row.gone
         Image(
-            provider = ImageProvider(periodBarBitmap(share, tick, fill = barColour, track = TRACK, tickColour = TICK)),
+            provider = ImageProvider(periodBarBitmap(share, tick, fill = barColour, track = TRACK, tickColour = TICK, extra = toComeShare(row, drain))),
             contentDescription = spoken(row),
             modifier = GlanceModifier.fillMaxWidth().height(9.dp),
             contentScale = ContentScale.FillBounds,
@@ -218,7 +218,12 @@ class ThisPeriodWidget : GlanceAppWidget() {
                         fontSize = 9.sp,
                     ),
                 )
-                if (row.pendingMinor > 0L) {
+                if (row.toComeMinor > 0L) {
+                    Text(
+                        "+${formatMoney(row.toComeMinor, row.currency)} to come",
+                        style = TextStyle(color = GlanceTheme.colors.onSurfaceVariant, fontSize = 9.sp),
+                    )
+                } else if (row.pendingMinor > 0L) {
                     Text(
                         "incl. ${formatMoney(row.pendingMinor, row.currency)} pending",
                         style = TextStyle(color = ColorProvider(androidx.compose.ui.graphics.Color(PENDING)), fontSize = 9.sp),
@@ -226,6 +231,13 @@ class ThisPeriodWidget : GlanceAppWidget() {
                 }
             }
         }
+    }
+
+    /** A card's known payments still to come, as a share of the bar; draining, they are not drawn. */
+    private fun toComeShare(row: PeriodRows.Row, drain: Boolean): Float {
+        if (drain || row.toComeMinor <= 0L) return 0f
+        val against = row.againstMinor?.takeIf { it > 0L } ?: return 0f
+        return row.toComeMinor.toFloat() / against
     }
 
     /** One line an account: its square, its name, a short bar and the figure. */

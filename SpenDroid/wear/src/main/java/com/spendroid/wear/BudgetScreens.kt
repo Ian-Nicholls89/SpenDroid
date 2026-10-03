@@ -545,12 +545,14 @@ private fun CardScreen(c: BudgetReading.Card) {
                     colour,
                     Modifier.padding(horizontal = 6.dp),
                     tick = c.statementGone,
+                    extra = c.toComeShare,
                 )
                 Spacer(Modifier.height(4.dp))
             }
             c.text("nextBill").takeIf { it.isNotEmpty() }?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = Soft, maxLines = 1) }
                 ?: c.text("closes").takeIf { it.isNotEmpty() }?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = Soft, maxLines = 1) }
-            c.text("pending").takeIf { it.isNotEmpty() }?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = PendingBlue, maxLines = 1) }
+            c.text("toCome").takeIf { it.isNotEmpty() }?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = colour, maxLines = 1) }
+                ?: c.text("pending").takeIf { it.isNotEmpty() }?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = PendingBlue, maxLines = 1) }
         }
     }
 }

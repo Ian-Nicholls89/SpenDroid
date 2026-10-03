@@ -66,6 +66,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import com.spendroid.domain.toRecurringRule
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.Refresh
@@ -108,7 +109,7 @@ fun TransactionsScreen(
     onRestoreCategory: (TransactionEntity, String?) -> Unit = { _, _ -> },
     onMarkCardPayment: (TransactionEntity, Boolean) -> Unit,
     onCategoryFilter: (Category?) -> Unit,
-    onTreatAsBill: ((TransactionEntity) -> Unit)? = null,
+    onTreatAsBill: ((TransactionEntity, com.spendroid.domain.Cadence) -> Unit)? = null,
     /** Only what is still pending: the Pending tab. */
     pendingOnly: Boolean = false,
 ) {
@@ -478,11 +479,56 @@ fun TransactionsScreen(
             groupMarkedAsTransfer = group in state.transferGroups,
             onMarkTransferGroup = { t, v -> onMarkTransferGroup(t, v); selected = null },
             onMarkCardPayment = { t, v -> onMarkCardPayment(t, v); selected = null },
-            isRegularBill = state.budget?.fixedRules.orEmpty().any { com.spendroid.domain.RecurringAnalyzer.matches(it, tx) },
-            onTreatAsBill = onTreatAsBill?.let { treat -> { t: TransactionEntity -> treat(t); selected = null } },
+            billNote = remember(tx, state.rules, state.manualRules, state.budget) { billNote(tx, state) },
+            billGuess = remember(tx, state.transactions) { cadenceGuess(tx, state.transactions) },
+            onTreatAsBill = onTreatAsBill?.let { treat -> { t: TransactionEntity, c: com.spendroid.domain.Cadence -> treat(t, c); selected = null } },
             accountLabel = accountNames[tx.accountId],
             payeeCycle = remember(tx, state.transactions, state.budget) { payeeCycle(tx, state) },
         )
+    }
+}
+
+/**
+ * Whether [tx] is a regular bill, and where it is paid from, said plainly: "Regular bill ·
+ * counted in the Nectar Card bill". Matched loosely, as a pending payment is often named shorter
+ * than the bill it belongs to. Null when it is not one.
+ */
+private fun billNote(tx: TransactionEntity, state: RootUiState): String? {
+    if (tx.amountMinor >= 0) return null
+    val rules = state.rules.filter { it.key !in state.ignoredRules } + state.manualRules.mapNotNull { it.toRecurringRule() }
+    val rule = rules.firstOrNull { it.direction == com.spendroid.domain.Direction.OUT && com.spendroid.domain.RecurringAnalyzer.looselyMatches(it, tx) }
+        ?: return null
+    val how = when (rule.cadence) {
+        com.spendroid.domain.Cadence.WEEKLY -> "Weekly"
+        com.spendroid.domain.Cadence.FORTNIGHTLY -> "Fortnightly"
+        com.spendroid.domain.Cadence.QUARTERLY -> "Quarterly"
+        com.spendroid.domain.Cadence.ANNUAL -> "Yearly"
+        else -> "Monthly"
+    }
+    val payer = rule.paidFrom?.let { id -> state.accounts.firstOrNull { it.id == id } }
+    val where = when {
+        payer == null -> null
+        payer.accountType == com.spendroid.data.db.AccountType.CREDIT_CARD && state.cardTiming == com.spendroid.domain.CardTiming.AT_BILL ->
+            "counted in the ${payer.label} bill"
+        else -> "from ${payer.label}"
+    }
+    return listOfNotNull("$how regular bill", where).joinToString(" · ")
+}
+
+/** How often a payment like [tx] has come, from its history: yearly, quarterly, or monthly. */
+private fun cadenceGuess(tx: TransactionEntity, all: List<TransactionEntity>): com.spendroid.domain.Cadence {
+    fun firstWord(s: String) = s.lowercase().split(Regex("[^a-z0-9.]+")).firstOrNull { it.length >= 3 }
+    val word = firstWord(tx.payee) ?: return com.spendroid.domain.Cadence.MONTHLY
+    val dates = all.filter { it.amountMinor < 0 && firstWord(it.payee) == word }
+        .mapNotNull { com.spendroid.domain.RecurringAnalyzer.parseBookingDate(it.bookingDate) }
+        .distinct()
+        .sorted()
+    if (dates.size < 2) return com.spendroid.domain.Cadence.MONTHLY
+    val gap = dates.zipWithNext { a, b -> java.time.temporal.ChronoUnit.DAYS.between(a, b) }.sorted().let { it[it.size / 2] }
+    return when {
+        gap >= 300 -> com.spendroid.domain.Cadence.ANNUAL
+        gap >= 75 -> com.spendroid.domain.Cadence.QUARTERLY
+        else -> com.spendroid.domain.Cadence.MONTHLY
     }
 }
 

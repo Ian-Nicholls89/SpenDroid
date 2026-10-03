@@ -146,6 +146,11 @@ data class ManualRecurringRuleEntity(
     val anchorDay: Int,
     val startDate: String, // ISO date string
     val isActive: Boolean = true,
+    /**
+     * The account it is paid from, when known: set by "Treat as a regular bill" from the
+     * payment it was made from, or chosen by hand. Null for one added before 4.1, or not said.
+     */
+    val accountId: String? = null,
 )
 /** A user-set monthly cap for a spending category. */
 @Entity(tableName = "budget_goals")

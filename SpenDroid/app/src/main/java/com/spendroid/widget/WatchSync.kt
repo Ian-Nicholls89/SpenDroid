@@ -294,6 +294,8 @@ internal object WatchSync {
         )
         putBoolean("over", line?.over == true)
         putString("capShort", cap?.let { poundsOnly(it, bill.currency) }.orEmpty())
+        putString("toCome", if (bill.toComeMinor > 0L) "+${money(bill.toComeMinor)} to come" else "")
+        putFloat("toComeShare", cap?.let { (bill.toComeMinor.toFloat() / it).coerceIn(0f, 1f) } ?: 0f)
         putString("closes", bill.nextStatementClose?.let { "closes ${it.format(SHORT_DAY)}" }.orEmpty())
         putString(
             "nextBill",

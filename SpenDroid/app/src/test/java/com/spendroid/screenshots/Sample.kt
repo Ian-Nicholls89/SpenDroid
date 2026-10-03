@@ -47,6 +47,8 @@ object Sample {
         add(tx("acc-nectar", LocalDate.of(2026, 9, 26), -3_565, "SALT DELI KITCHEN"))
         add(tx("acc-nectar", today, -425, "GREGGS", pending = true))
         add(tx("acc-joint", LocalDate.of(2026, 9, 28), -4_505, "EBAY"))
+        // A subscription on the card, due again on 3 Oct: shown on the card as to come.
+        for (m in 6..9) add(tx("acc-nectar", LocalDate.of(2026, m, 3), -6_125, "TUMBLETOTS.COM SALISBURY ENG GBR 0218"))
     }.sortedByDescending { it.bookingDate }
 
     fun state(): RootUiState {

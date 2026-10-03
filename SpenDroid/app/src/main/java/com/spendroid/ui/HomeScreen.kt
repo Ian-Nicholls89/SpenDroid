@@ -564,6 +564,23 @@ internal fun StatementsPanel(bill: CreditCardEngine.CardBill, colour: Color) {
             style = MaterialTheme.typography.labelMedium,
             color = Charcoal.Muted,
         )
+        // Regular payments on the card still to come before this statement closes.
+        if (bill.toCome.isNotEmpty()) {
+            Spacer(Modifier.height(12.dp))
+            Text(
+                "To come this statement · ${money(bill.toComeMinor)}",
+                style = MaterialTheme.typography.labelLarge,
+            )
+            bill.toCome.forEach { p ->
+                Row(Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.size(8.dp).background(colour, androidx.compose.foundation.shape.CircleShape))
+                    Spacer(Modifier.width(8.dp))
+                    Text(p.rule.payee.tidyPayee(), style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                    Spacer(Modifier.width(8.dp))
+                    Text("${money(p.amountMinor)} · ${p.dueDate.format(dateFormat)}", style = MaterialTheme.typography.bodyMedium, color = Charcoal.Muted)
+                }
+            }
+        }
         if (bill.pastBills.isNotEmpty()) {
             Spacer(Modifier.height(10.dp))
             StatementHistory(bill, colour, tall = true)

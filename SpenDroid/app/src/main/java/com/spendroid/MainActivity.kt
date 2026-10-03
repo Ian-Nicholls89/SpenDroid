@@ -492,9 +492,9 @@ class MainActivity : ComponentActivity() {
                 if (showManualDialog) {
                     ManualRuleDialog(
                         onDismiss = { showManualDialog = false },
-                        onAdd = { payee, direction, amountMinor, currency, cadence, anchorDay, startDate ->
+                        onAdd = { payee, direction, amountMinor, currency, cadence, anchorDay, startDate, accountId ->
                             showManualDialog = false
-                            viewModel.addManualRule(payee, direction, amountMinor, currency, cadence, anchorDay, startDate)
+                            viewModel.addManualRule(payee, direction, amountMinor, currency, cadence, anchorDay, startDate, accountId)
                         },
                         onAddFromCandidate = { candidate ->
                             showManualDialog = false

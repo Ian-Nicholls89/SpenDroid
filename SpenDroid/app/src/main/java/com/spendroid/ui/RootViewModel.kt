@@ -522,9 +522,9 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun treatAsBill(tx: TransactionEntity) {
+    fun treatAsBill(tx: TransactionEntity, cadence: com.spendroid.domain.Cadence) {
         viewModelScope.launch {
-            repo.treatAsBill(tx)
+            repo.treatAsBill(tx, cadence)
             loadLocal()
         }
     }
@@ -613,7 +613,7 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun addManualRule(payee: String, direction: String, amountMinor: Long, currency: String, cadence: String, anchorDay: Int, startDate: String) {
+    fun addManualRule(payee: String, direction: String, amountMinor: Long, currency: String, cadence: String, anchorDay: Int, startDate: String, accountId: String? = null) {
         viewModelScope.launch {
             val id = "manual-${System.currentTimeMillis()}"
             val rule = ManualRecurringRuleEntity(
@@ -625,6 +625,7 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
                 cadence = cadence,
                 anchorDay = anchorDay,
                 startDate = startDate,
+                accountId = accountId,
             )
             repo.addManualRule(rule)
             loadLocal()
@@ -640,6 +641,7 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
             cadence = candidate.cadence.name,
             anchorDay = candidate.anchorDay,
             startDate = candidate.startDate.toString(),
+            accountId = candidate.sampleTransactions.maxByOrNull { it.bookingDate }?.accountId,
         )
     }
 

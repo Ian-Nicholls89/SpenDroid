@@ -271,7 +271,14 @@ private fun AccountHero(page: HeroPage.Account, colour: Color) {
             color = Color.White,
         )
         Text(
-            if (row.kind == PeriodRows.Kind.STATEMENT) "spent on the card since the last statement" else "spent from this account this pay cycle",
+            when {
+                row.kind != PeriodRows.Kind.STATEMENT -> "spent from this account this pay cycle"
+                // Known payments still to come on the card, from the statement's first day.
+                row.toComeMinor > 0L ->
+                    "spent this statement · ${formatMoney(row.toComeMinor, row.currency)} to come" +
+                        (bill?.nextStatementClose?.let { " by ${it.format(dateFormat)}" } ?: "")
+                else -> "spent on the card since the last statement"
+            },
             style = MaterialTheme.typography.labelMedium,
             color = Color.White.copy(alpha = 0.7f),
         )
@@ -344,6 +351,11 @@ private fun BudgetBelow(state: RootUiState, budget: BudgetSnapshot, onRefresh: (
             // Zero cannot say how far past zero, and the difference matters.
             if (budget.shortfallMinor > 0L) add("${money(budget.shortfallMinor)} short of covering what is still to come out")
             if (budget.cardsNextCycleMinor > 0L) add("About ${money(budget.cardsNextCycleMinor)} of card bills fall in your next cycle")
+            // Held back towards bills that come quarterly or yearly, so the cycle they land in is not hit.
+            if (budget.setAsideMinor > 0L) {
+                val n = budget.setAside.size
+                add("${money(budget.setAsideMinor)} set aside towards $n quarterly or yearly bill${if (n == 1) "" else "s"}")
+            }
         }
         if (notes.isNotEmpty()) Spacer(Modifier.height(8.dp))
         notes.forEach { Text(it, style = MaterialTheme.typography.labelMedium, color = Charcoal.Muted) }
@@ -462,6 +474,7 @@ private fun AccountBelow(state: RootUiState, page: HeroPage.Account, colour: Col
             label = if (against != null) "${formatMoney(row.spentMinor, row.currency)} / ${formatMoney(against, row.currency)}" else formatMoney(row.spentMinor, row.currency),
             colour = colour,
             tick = row.gone,
+            extra = against?.takeIf { it > 0L }?.let { row.toComeMinor.toFloat() / it } ?: 0f,
         )
         val note = bill?.let { cardPaceLine(it)?.text }
             ?: against?.let { "Measured against what this account usually spends by now" }

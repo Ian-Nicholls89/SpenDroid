@@ -57,6 +57,11 @@ data class RecurringRule(
      * children on the same day. [amountMinor] is already the total.
      */
     val perOccurrence: Int = 1,
+    /**
+     * The account the latest occurrence was paid from, or the one the user named for a manual
+     * rule. A payment that moved to a card is a card payment from then on, whatever came before.
+     */
+    val paidFrom: String? = null,
 ) {
     val isManual: Boolean get() = key.startsWith(MANUAL_KEY_PREFIX)
 
@@ -122,6 +127,12 @@ data class BudgetSnapshot(
      * on a fresh start the card bills due before payday too, which the headline takes off.
      */
     val usedThisCycle: Long = 0L,
+    /**
+     * Carrying over: what is held back towards quarterly and yearly bills not due before payday,
+     * built up a little each cycle so the one they land in takes no sudden hit.
+     */
+    val setAsideMinor: Long = 0L,
+    val setAside: List<Pair<RecurringRule, Long>> = emptyList(),
     /** How far below nothing the figure landed before it was floored at zero. */
     val shortfallMinor: Long = 0L,
     /** What is in the pot now. */
@@ -162,6 +173,8 @@ fun ManualRecurringRuleEntity.toRecurringRule(): RecurringRule? {
     // to match the convention detected rules already use.
     val signedAmount = if (directionValue == Direction.OUT) -abs(amountMinor) else abs(amountMinor)
     return RecurringRule(
+        accountIds = setOfNotNull(accountId),
+        paidFrom = accountId,
         key = "$MANUAL_KEY_PREFIX$id",
         payee = payee,
         direction = directionValue,

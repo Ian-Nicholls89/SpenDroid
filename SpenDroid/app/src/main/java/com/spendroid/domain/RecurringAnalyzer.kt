@@ -93,6 +93,7 @@ object RecurringAnalyzer {
         return rule.copy(
             accountIds = txs.mapTo(mutableSetOf()) { it.accountId },
             internalTransfer = txs.all { it.isInternalTransfer },
+            paidFrom = latestAccount(txs),
         )
     }
 
@@ -221,6 +222,7 @@ object RecurringAnalyzer {
             rule.copy(
                 accountIds = accountIds,
                 internalTransfer = internalTransfer,
+                paidFrom = latestAccount(txs),
                 amountMinor = rule.amountMinor * perOccurrence,
                 perOccurrence = perOccurrence,
             )
@@ -304,6 +306,25 @@ object RecurringAnalyzer {
 
     private fun normalize(value: String): String =
         value.lowercase().trim().replace(Regex("\\s+"), " ")
+
+    /** The account the most recent of [txs] was paid from. */
+    private fun latestAccount(txs: List<TransactionEntity>): String? =
+        txs.maxByOrNull { it.bookingDate }?.accountId
+
+    /**
+     * Whether [tx] is plausibly an occurrence of [rule] for showing it, not for counting: the same
+     * way and currency, within a quarter of the amount, and the payee's first word the same. A
+     * pending payment is often named shorter than it books - "TUMBLETOTS.COM 0218" for
+     * "TUMBLETOTS.COM SALISBURY ENG GBR 0218" - which exact matching misses.
+     */
+    fun looselyMatches(rule: RecurringRule, tx: TransactionEntity): Boolean {
+        if (matches(rule, tx)) return true
+        if (tx.currency != rule.currency || (tx.amountMinor < 0) != (rule.amountMinor < 0)) return false
+        if (abs(tx.amountMinor - rule.amountMinor) > abs(rule.amountMinor) / 4) return false
+        fun firstWord(s: String) = s.lowercase().split(Regex("[^a-z0-9.]+")).firstOrNull { it.length >= 3 }
+        val a = firstWord(tx.payee) ?: return false
+        return a == firstWord(rule.payee)
+    }
 
     /** A payee as rules compare them: case and spacing ignored. */
     fun normalizedPayee(value: String): String = normalize(value)
