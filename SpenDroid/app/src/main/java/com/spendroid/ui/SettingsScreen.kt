@@ -72,6 +72,7 @@ private enum class SettingsTab(val label: String) {
     SETUP("Setup & data"),
     CARD_ALERTS("Card alerts"),
     WATCH("Watch"),
+    COMPUTER("Computer"),
     ABOUT("About"),
 }
 
@@ -184,6 +185,8 @@ fun SettingsScreen(
                 SettingsTab.CARD_ALERTS -> Panel { cardAlerts() }
 
                 SettingsTab.WATCH -> Panel { WatchSection() }
+
+                SettingsTab.COMPUTER -> WebSection()
 
                 SettingsTab.ABOUT -> Panel { UpdatesSection(
                     state = state,

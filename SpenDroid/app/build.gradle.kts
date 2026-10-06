@@ -63,8 +63,8 @@ android {
         applicationId = "com.spendroid"
         minSdk = 26
         targetSdk = 35
-        versionCode = 115
-        versionName = "4.1.3"
+        versionCode = 116
+        versionName = "4.2"
 
         // Where the update checker looks for releases.
         buildConfigField("String", "GITHUB_OWNER", "\"Ian-Nicholls89\"")
@@ -140,6 +140,8 @@ dependencies {
     implementation(libs.bouncycastle.pkix)
     implementation(libs.hiddenapibypass)
     implementation(libs.kotlinx.coroutines.play.services)
+    // "Open on my computer": a small web server, running only while the user has it on.
+    implementation(libs.nanohttpd)
     debugImplementation(libs.androidx.compose.ui.tooling)
     testImplementation(libs.junit)
     // Android ships org.json; a JVM unit test needs a real implementation.

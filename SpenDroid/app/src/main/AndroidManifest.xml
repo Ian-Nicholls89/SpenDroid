@@ -3,6 +3,10 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- "Open on my computer": serving the page over the home Wi-Fi while switched on. -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <!-- A manual update check downloads the release and asks Android to install it. -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
@@ -122,6 +126,19 @@
 
         <receiver
             android:name=".data.InstallResultReceiver"
+            android:exported="false" />
+
+        <!-- "Open on my computer": the page for the user's own computer, only while they have it on. -->
+        <service
+            android:name=".web.WebService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Serves the user's own budget to their own computer over their home Wi-Fi, while they have it switched on" />
+        </service>
+        <receiver
+            android:name=".web.WebStopReceiver"
             android:exported="false" />
 
         <!-- A category chosen for a payment on the watch. -->
