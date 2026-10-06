@@ -20,7 +20,10 @@ object WebAccess {
     data class Computer(val hash: String, val name: String, val created: Long, val expires: Long, val lastSeen: Long)
 
     /** What the phone shows while the page is on. */
-    data class Running(val address: String, val code: String)
+    data class Running(val addresses: List<Served>, val code: String)
+
+    /** One place the page is served: Wi-Fi or the hotspot, and its address with the port. */
+    data class Served(val label: String, val address: String)
 
     private val _running = MutableStateFlow<Running?>(null)
     val running: StateFlow<Running?> = _running
@@ -32,8 +35,8 @@ object WebAccess {
 
     @Volatile var lastActivity: Long = 0L
 
-    fun started(address: String) {
-        _running.value = Running(address, newCode())
+    fun started(addresses: List<Served>) {
+        _running.value = Running(addresses, newCode())
         failures = 0
         lastActivity = System.currentTimeMillis()
     }

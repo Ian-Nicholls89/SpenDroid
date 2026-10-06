@@ -30,7 +30,7 @@ class WebServerTest {
 
     @Before fun up() {
         server = WebServer(ApplicationProvider.getApplicationContext(), "127.0.0.1", port).also { it.start(5000, false) }
-        WebAccess.started("127.0.0.1:$port")
+        WebAccess.started(listOf(WebAccess.Served("test", "127.0.0.1:$port")))
     }
 
     @After fun down() {

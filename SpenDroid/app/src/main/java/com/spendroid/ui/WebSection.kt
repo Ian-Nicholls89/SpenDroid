@@ -47,14 +47,14 @@ internal fun WebSection() {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     SectionHeading("Open on my computer")
-                    Text("Your figures on a bigger screen, over your home Wi-Fi. Read-only.", style = MaterialTheme.typography.labelMedium, color = Charcoal.Muted)
+                    Text("Your figures on a bigger screen, over your Wi-Fi or your phone's hotspot. Read-only.", style = MaterialTheme.typography.labelMedium, color = Charcoal.Muted)
                 }
                 Switch(
                     checked = running != null,
                     onCheckedChange = { on ->
                         note = null
                         if (on) {
-                            if (WebService.wifiAddress(context) == null) note = "Connect to Wi-Fi first - it only runs on Wi-Fi."
+                            if (!WebService.canServe(context)) note = "Connect to Wi-Fi, or turn on your phone's hotspot and connect the computer to it."
                             else WebService.start(context)
                         } else {
                             WebService.stop(context)
@@ -66,12 +66,16 @@ internal fun WebSection() {
             running?.let { r ->
                 Spacer(Modifier.height(14.dp))
                 Text("On your computer, type", style = MaterialTheme.typography.labelMedium, color = Charcoal.Muted)
-                Text("http://${r.address}", fontFamily = Lato, fontWeight = FontWeight.Black, fontSize = 20.sp)
+                r.addresses.forEach { place ->
+                    // Both, when the phone is on Wi-Fi and sharing a hotspot: whichever the computer is on.
+                    if (r.addresses.size > 1) Text(place.label, style = MaterialTheme.typography.labelSmall, color = Charcoal.Muted, modifier = Modifier.padding(top = 4.dp))
+                    Text("http://${place.address}", fontFamily = Lato, fontWeight = FontWeight.Black, fontSize = 20.sp)
+                }
                 Spacer(Modifier.height(10.dp))
                 Text("Then this code", style = MaterialTheme.typography.labelMedium, color = Charcoal.Muted)
                 Text(r.code.chunked(3).joinToString(" "), fontFamily = Lato, fontWeight = FontWeight.Black, fontSize = 34.sp, letterSpacing = 4.sp, color = MaterialTheme.colorScheme.primary)
                 Text(
-                    "Works once; a new one appears after. It turns off when you leave Wi-Fi, or after 15 minutes unused.",
+                    "Works once; a new one appears after. It turns off when you leave Wi-Fi or switch the hotspot off, or after 15 minutes unused.",
                     style = MaterialTheme.typography.labelSmall,
                     color = Charcoal.Muted,
                 )
@@ -103,7 +107,7 @@ internal fun WebSection() {
         }
         Spacer(Modifier.height(8.dp))
         Text(
-            "Only use it on your home Wi-Fi: on a shared network others on it could see the traffic.",
+            "Use it on your home Wi-Fi or your own hotspot: on a shared network others on it could see the traffic.",
             style = MaterialTheme.typography.labelSmall,
             color = Charcoal.Muted,
         )

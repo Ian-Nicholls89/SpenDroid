@@ -33,7 +33,8 @@ import kotlinx.coroutines.launch
  */
 class WebService : Service() {
 
-    private var server: WebServer? = null
+    private val servers = mutableListOf<WebServer>()
+    private var hosts: Set<String> = emptySet()
     private val handler = Handler(Looper.getMainLooper())
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var callback: ConnectivityManager.NetworkCallback? = null
@@ -41,22 +42,23 @@ class WebService : Service() {
     override fun onBind(intent: android.content.Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (server != null) return START_NOT_STICKY
-        val address = wifiAddress(this)
-        if (address == null) {
+        if (servers.isNotEmpty()) return START_NOT_STICKY
+        val places = LocalAddresses.find(this)
+        // One server for each place - the Wi-Fi joined and the hotspot shared - so the computer
+        // can be on either. Each answers only to its own address.
+        val served = places.mapNotNull { place ->
+            PORTS.firstNotNullOfOrNull { port ->
+                runCatching { WebServer(applicationContext, place.host, port).also { it.start(SOCKET_TIMEOUT, false) } }.getOrNull()
+                    ?.let { server -> servers += server; WebAccess.Served(place.kind.label, "${place.host}:$port") }
+            }
+        }
+        if (served.isEmpty()) {
             WebAccess.stopped()
             stopSelf()
             return START_NOT_STICKY
         }
-        val started = PORTS.firstNotNullOfOrNull { port ->
-            runCatching { WebServer(applicationContext, address, port).also { it.start(SOCKET_TIMEOUT, false) } }.getOrNull()?.let { it to port }
-        }
-        if (started == null) {
-            stopSelf()
-            return START_NOT_STICKY
-        }
-        server = started.first
-        WebAccess.started("$address:${started.second}")
+        hosts = places.map { it.host }.toSet()
+        WebAccess.started(served)
         startForegroundCompat(notification())
         // The notification follows the code, which changes as it is used.
         scope.launch { WebAccess.running.collectLatest { if (it != null) notify(notification()) } }
@@ -67,7 +69,10 @@ class WebService : Service() {
 
     private val idleCheck = object : Runnable {
         override fun run() {
-            if (System.currentTimeMillis() - WebAccess.lastActivity > IDLE_MS) stopSelf() else handler.postDelayed(this, IDLE_CHECK_MS)
+            // Unused for 15 minutes, or nowhere left to serve - the Wi-Fi left and the hotspot
+            // switched off, which Android announces nowhere an app can hear - and it stops.
+            val gone = LocalAddresses.find(this@WebService).none { it.host in hosts }
+            if (gone || System.currentTimeMillis() - WebAccess.lastActivity > IDLE_MS) stopSelf() else handler.postDelayed(this, IDLE_CHECK_MS)
         }
     }
 
@@ -75,7 +80,7 @@ class WebService : Service() {
         val cm = getSystemService(ConnectivityManager::class.java)
         val cb = object : ConnectivityManager.NetworkCallback() {
             override fun onLost(network: Network) {
-                if (wifiAddress(this@WebService) == null) handler.post { stopSelf() }
+                handler.post { if (LocalAddresses.find(this@WebService).none { it.host in hosts }) stopSelf() }
             }
         }
         callback = cb
@@ -85,8 +90,8 @@ class WebService : Service() {
     override fun onDestroy() {
         handler.removeCallbacksAndMessages(null)
         callback?.let { runCatching { getSystemService(ConnectivityManager::class.java).unregisterNetworkCallback(it) } }
-        server?.stop()
-        server = null
+        servers.forEach { runCatching { it.stop() } }
+        servers.clear()
         WebAccess.stopped()
         scope.cancel()
         super.onDestroy()
@@ -103,8 +108,8 @@ class WebService : Service() {
         val stop = PendingIntent.getBroadcast(this, 0, Intent(this, WebStopReceiver::class.java), PendingIntent.FLAG_IMMUTABLE)
         return NotificationCompat.Builder(this, CHANNEL)
             .setSmallIcon(android.R.drawable.ic_menu_share)
-            .setContentTitle("SpenDroid is open on your Wi-Fi")
-            .setContentText(running?.let { "http://${it.address} · code ${it.code.chunked(3).joinToString(" ")}" } ?: "Starting")
+            .setContentTitle("SpenDroid is open for your computer")
+            .setContentText(running?.let { r -> r.addresses.joinToString(" or ") { "http://${it.address}" } + " · code ${r.code.chunked(3).joinToString(" ")}" } ?: "Starting")
             .setOngoing(true)
             .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
             .addAction(0, "Stop", stop)
@@ -134,6 +139,9 @@ class WebService : Service() {
         fun start(context: Context) = ContextCompat.startForegroundService(context, Intent(context, WebService::class.java))
 
         fun stop(context: Context) = context.stopService(Intent(context, WebService::class.java))
+
+        /** Whether there is anywhere to serve the page: Wi-Fi joined, or a hotspot shared. */
+        fun canServe(context: Context): Boolean = LocalAddresses.find(context).isNotEmpty()
 
         /** This phone's address on the Wi-Fi it is on, or null when it is not on Wi-Fi. */
         fun wifiAddress(context: Context): String? {
