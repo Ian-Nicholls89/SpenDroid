@@ -114,7 +114,10 @@ function pairing() {
     err.textContent = r ? (await r.text().catch(() => "")) || `The phone answered ${r.status}.` : `Can't reach your phone. Is "Open on my computer" still on?`;
   };
   document.getElementById("open").onclick = go;
-  document.getElementById("code").onkeydown = (e) => e.key === "Enter" && go();
+  // A block, not "e.key === 'Enter' && go()": a handler returning false cancels the key, and every digit with it.
+  document.getElementById("code").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") go();
+  });
 }
 
 // ---- the frame ----------------------------------------------------------------------------
