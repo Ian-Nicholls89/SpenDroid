@@ -424,6 +424,19 @@ class GoCardlessRepository private constructor(
         dao.upsertManualRule(rule.copy(accountId = accountId))
     }
 
+    /** Every stored row for one account, imported ones included. */
+    suspend fun storedTransactions(accountId: String): List<TransactionEntity> = dao.transactionsFor(accountId)
+
+    suspend fun addImported(rows: List<TransactionEntity>) {
+        dao.upsertTransactions(rows)
+        reanalyze()
+    }
+
+    suspend fun undoImport(accountId: String, batchId: String) {
+        dao.deleteTransactionsWithPrefix(accountId, "${DuplicateCheck.IMPORTED_PREFIX}$batchId:")
+        reanalyze()
+    }
+
     suspend fun deleteManualRule(id: String) {
         dao.deleteManualRule(id)
     }

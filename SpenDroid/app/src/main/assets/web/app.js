@@ -91,14 +91,14 @@ function pairing() {
 
 // ---- the frame ----------------------------------------------------------------------------
 
-const PAGES = [["overview", "▦", "Overview"], ["transactions", "▤", "Transactions"], ["regular", "⇄", "Regular"], ["insights", "◔", "Insights"]];
+const PAGES = [["overview", "▦", "Overview"], ["transactions", "▤", "Transactions"], ["regular", "⇄", "Regular"], ["insights", "◔", "Insights"], ["import", "⇪", "Import"]];
 
 function render() {
   const d = S.data;
   if (!PAGES.some((p) => p[0] === S.route)) S.route = "overview";
   const nav = PAGES.map(([id, icon, label]) => `<button class="ni ${S.route === id ? "on" : ""}" data-go="${id}"><span class="sq">${icon}</span><span class="t">${label}</span></button>`).join("");
   const accts = d.accounts.map((a) => `<button class="ni" data-account="${esc(a.id)}"><span class="sq" style="background:${a.colour}">${esc(initial(a.institution || a.label))}</span><span class="t">${esc(a.label)}</span><span class="v">${a.balance == null ? "" : pounds(a.balance)}</span></button>`).join("");
-  const body = { overview, transactions, regular, insights }[S.route]();
+  const body = { overview, transactions, regular, insights, import: importPage }[S.route]();
   app.innerHTML = `<div class="shell">
     <nav class="side"><div class="ban"><b>SPENDROID</b><div>${d.accounts.length} accounts · ${esc(d.updated)}</div></div>
       ${nav}<div class="sec">Accounts</div>${accts}<span class="ro">READ-ONLY</span></nav>
@@ -129,6 +129,7 @@ function wire() {
   if ($("cat")) $("cat").onchange = (e) => { S.category = e.target.value; render(); };
   if ($("period")) $("period").onchange = (e) => { S.period = e.target.value; render(); };
   if ($("close")) $("close").onclick = () => { S.selected = null; render(); };
+  if (S.route === "import") importWire();
 }
 
 function renderKeepingFocus(id) {

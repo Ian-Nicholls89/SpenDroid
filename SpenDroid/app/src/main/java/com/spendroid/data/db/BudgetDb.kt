@@ -323,6 +323,10 @@ interface BudgetDao {
     @Query("DELETE FROM transactions WHERE accountId = :accountId AND transactionId = :transactionId")
     suspend fun deleteTransaction(accountId: String, transactionId: String)
 
+    /** Undoes an import: every row it added, by the batch named in their ids. */
+    @Query("DELETE FROM transactions WHERE accountId = :accountId AND transactionId LIKE :prefix || '%'")
+    suspend fun deleteTransactionsWithPrefix(accountId: String, prefix: String)
+
     /** A sync's rows and the account's checks, written together. */
     @Transaction
     suspend fun replaceSync(accountId: String, rows: List<TransactionEntity>, checks: List<DuplicateCheckEntity>) {

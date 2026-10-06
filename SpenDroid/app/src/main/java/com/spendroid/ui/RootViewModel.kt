@@ -522,6 +522,19 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** Undoes one import from the computer: every row it added. */
+    fun undoImport(batch: com.spendroid.web.WebImport.Batch) {
+        viewModelScope.launch {
+            com.spendroid.web.WebImport.undo(getApplication(), batch)
+            loadLocal()
+        }
+    }
+
+    /** Shows what changed elsewhere - an import allowed from the notification. */
+    fun reloadLocal() {
+        viewModelScope.launch { loadLocal() }
+    }
+
     fun setManualRulePaidFrom(rule: ManualRecurringRuleEntity, accountId: String?) {
         viewModelScope.launch {
             repo.setManualRulePaidFrom(rule, accountId)

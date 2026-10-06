@@ -82,6 +82,7 @@ fun AccountManagementScreen(
     onUpdateAccount: (AccountEntity) -> Unit,
     balanceTypesFor: (AccountEntity) -> List<Pair<String, Boolean>> = { emptyList() },
     onSeeTransactions: (AccountEntity) -> Unit = {},
+    onUndoImport: (com.spendroid.web.WebImport.Batch) -> Unit = {},
 ) {
     var showLinkDialog by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<AccountEntity?>(null) }
@@ -93,6 +94,9 @@ fun AccountManagementScreen(
         }
     }
 
+    val context = androidx.compose.ui.platform.LocalContext.current
+    // Read again whenever the transactions change: after an import is allowed or undone.
+    val imports = remember(state.transactions) { com.spendroid.web.WebImport.batches(context) }
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -118,6 +122,29 @@ fun AccountManagementScreen(
                 colour = colourOf(account, state.accounts),
                 bill = state.budget?.cardBills?.firstOrNull { it.cardAccountId == account.id },
             )
+        }
+        // History added from a file on the computer, each import undoable on its own.
+        if (imports.isNotEmpty()) {
+            item {
+                Panel {
+                    SectionHeading("Imported history", trailing = "from your computer")
+                    imports.sortedByDescending { it.at }.forEach { b ->
+                        val label = state.accounts.firstOrNull { it.id == b.accountId }?.label ?: "an account"
+                        Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text("${b.count} into $label", style = MaterialTheme.typography.titleSmall)
+                                Text(
+                                    "${b.fileName}" + (if (b.from != null && b.to != null) " · ${b.from} to ${b.to}" else ""),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Charcoal.Muted,
+                                    maxLines = 1,
+                                )
+                            }
+                            TextButton(onClick = { onUndoImport(b) }) { Text("Undo", color = Charcoal.Bad) }
+                        }
+                    }
+                }
+            }
         }
         item {
             Spacer(Modifier.height(4.dp))

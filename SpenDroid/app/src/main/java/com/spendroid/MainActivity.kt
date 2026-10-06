@@ -380,6 +380,7 @@ class MainActivity : ComponentActivity() {
                                                 viewModel.setAccountFilter(account.id)
                                                 navigate(AppScreen.Spending)
                                             },
+                                            onUndoImport = viewModel::undoImport,
                                         )
 
                                         AppScreen.Rules -> RecurringRulesScreen(
@@ -524,6 +525,8 @@ class MainActivity : ComponentActivity() {
      */
     override fun onStart() {
         super.onStart()
+        // An import allowed from its notification while the app was in the background shows at once.
+        viewModel.reloadLocal()
         lifecycleScope.launch {
             com.spendroid.widget.refreshWidgets(applicationContext)
             com.spendroid.widget.refreshCardWidgets(applicationContext)

@@ -28,6 +28,9 @@ object DuplicateCheck {
         KEPT,
     }
 
+    /** Ids of rows added from an imported file start with this, then the batch. */
+    const val IMPORTED_PREFIX = "imp:"
+
     /** Syncs in a row a row must be missing from before the user is asked. */
     const val MISSED_SYNCS = 2
 
@@ -56,7 +59,8 @@ object DuplicateCheck {
         today: LocalDate,
     ): List<DuplicateCheckEntity> {
         val fetchedById = fetchedBooked.associateBy { it.transactionId }
-        val storedBooked = stored.filter { !it.isPending }
+        // Imported history is the user's own file, not the bank's word, and lies outside what the bank sends.
+        val storedBooked = stored.filter { !it.isPending && !it.transactionId.startsWith(IMPORTED_PREFIX) }
         val storedIds = storedBooked.mapTo(HashSet()) { it.transactionId }
         // What the bank's answer covered. Rows older than this simply fell out of its window.
         val windowStart = fetchedBooked.mapNotNull { date(it) }.minOrNull()

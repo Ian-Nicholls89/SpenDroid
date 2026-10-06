@@ -20,9 +20,45 @@ class WebServer(private val context: Context, private val host: String, port: In
         return when {
             session.method == Method.POST && session.uri == "/api/pair" -> pair(session)
             session.uri == "/api/me" -> json(JSONObject().put("allowed", WebAccess.allowed(context, token)).toString())
+            session.uri.startsWith("/api/import") || session.uri == "/api/layouts" ->
+                if (WebAccess.allowed(context, token)) importApi(session) else plain(Response.Status.UNAUTHORIZED, "Pair first.")
             session.uri == "/api/data" ->
                 if (WebAccess.allowed(context, token)) json(runBlocking { WebData.json(context) }) else plain(Response.Status.UNAUTHORIZED, "Pair first.")
             else -> asset(session.uri)
+        }
+    }
+
+    /**
+     * The import: checking a file's rows reads only; sending them makes a request the user must
+     * allow on the phone, and only then is anything added.
+     */
+    private fun importApi(session: IHTTPSession): Response {
+        if (session.uri == "/api/layouts") return json(WebImport.layouts(context).toString())
+        if (session.method == Method.GET && session.uri.startsWith("/api/import/")) {
+            return json(JSONObject().put("status", WebImport.status(session.uri.substringAfterLast('/')).name).toString())
+        }
+        if (session.method != Method.POST) return plain(Response.Status.METHOD_NOT_ALLOWED, "")
+        val body = HashMap<String, String>()
+        runCatching { session.parseBody(body) }
+        val o = runCatching { JSONObject(body["postData"].orEmpty()) }.getOrNull() ?: return plain(Response.Status.BAD_REQUEST, "Couldn't read that.")
+        val accountId = o.optString("accountId")
+        val arr = o.optJSONArray("rows") ?: return plain(Response.Status.BAD_REQUEST, "No rows.")
+        if (arr.length() > MAX_ROWS) return plain(Response.Status.BAD_REQUEST, "That's more than $MAX_ROWS rows - split the file.")
+        val rows = (0 until arr.length()).mapNotNull { i ->
+            val r = arr.optJSONObject(i) ?: return@mapNotNull null
+            val date = runCatching { java.time.LocalDate.parse(r.optString("date")) }.getOrNull() ?: return@mapNotNull null
+            WebImport.Row(date, r.optLong("amount"), r.optString("payee").take(200))
+        }
+        return runBlocking {
+            if (session.uri == "/api/import/check") {
+                val c = WebImport.check(context, accountId, rows)
+                json(JSONObject().put("toAdd", c.toAdd.size).put("alreadyThere", c.alreadyThere).put("coveredByBank", c.coveredByBank).put("bankFrom", c.from?.toString() ?: JSONObject.NULL).toString())
+            } else if (!WebImport.canAsk(context)) {
+                plain(Response.Status.CONFLICT, "Your phone can't ask - allow SpenDroid's notifications on the phone, then send it again.")
+            } else {
+                val (id, c) = WebImport.send(context, accountId, o.optString("fileName").take(120), rows, o.optJSONObject("layout"))
+                json(JSONObject().put("id", id).put("toAdd", c.toAdd.size).toString())
+            }
         }
     }
 
@@ -77,5 +113,6 @@ class WebServer(private val context: Context, private val host: String, port: In
 
     companion object {
         const val COOKIE = "spendroid"
+        private const val MAX_ROWS = 20_000
     }
 }

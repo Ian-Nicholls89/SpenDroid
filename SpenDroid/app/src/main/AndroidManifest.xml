@@ -140,6 +140,9 @@
         <receiver
             android:name=".web.WebStopReceiver"
             android:exported="false" />
+        <receiver
+            android:name=".web.WebImportReceiver"
+            android:exported="false" />
 
         <!-- A category chosen for a payment on the watch. -->
         <service

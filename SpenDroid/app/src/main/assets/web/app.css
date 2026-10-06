@@ -101,3 +101,14 @@ tr.day td:last-child{color:var(--muted);font-size:12px;text-align:right;font-wei
   th.acc,td.acc{display:none}
 }
 @media (pointer:coarse){ .chip,.tabs button{padding:9px 14px} }
+
+/* Import: the file as it is, and the role chosen for each column. */
+table.raw{border-spacing:0;font-family:"DejaVu Sans Mono",Menlo,Consolas,monospace;font-size:12px}
+table.raw td{background:none;border-bottom:1px solid var(--line);border-radius:0;padding:6px 10px;white-space:nowrap}
+table.raw td.n{color:#5a5f68;font-family:Lato;font-size:11px;text-align:right;width:30px}
+table.raw tr.pre td{color:#5a5f68;text-decoration:line-through}
+table.raw tr.hd td{color:#cfd2d8;font-weight:700;background:var(--high)}
+select.role{min-width:120px}
+select.rsure{background-color:#1f3a2a;color:var(--in)}
+select.rcheck{background-color:#3a2f18;color:var(--warn)}
+select.rignore{color:var(--muted)}
