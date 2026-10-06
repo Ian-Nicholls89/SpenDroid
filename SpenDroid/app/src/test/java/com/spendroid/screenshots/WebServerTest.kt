@@ -89,6 +89,21 @@ class WebServerTest {
     }
 
     @Test
+    fun `log out lets that computer in no more, remembered or not`() {
+        for (remember in listOf(false, true)) {
+            val (_, _, cookie) = call("/api/pair", "POST", "{\"code\":\"${WebAccess.running.value!!.code}\",\"remember\":$remember}")
+            val token = cookie!!.substringBefore(';')
+            assertTrue(call("/api/me", cookie = token).second.contains("\"allowed\":true"))
+            val (status, _, cleared) = call("/api/logout", "POST", "", cookie = token)
+            assertEquals(200, status)
+            assertTrue(cleared!!.contains("Max-Age=0"))
+            assertTrue(call("/api/me", cookie = token).second.contains("\"allowed\":false"))
+            assertEquals(401, call("/api/data", cookie = token).first)
+        }
+        assertTrue(WebAccess.computers(ApplicationProvider.getApplicationContext()).isEmpty())
+    }
+
+    @Test
     fun `nothing outside the page's own folder is served`() {
         val (code, text) = call("/../../AndroidManifest.xml")
         assertTrue(code == 200 && text.contains("app.js") || code == 404)

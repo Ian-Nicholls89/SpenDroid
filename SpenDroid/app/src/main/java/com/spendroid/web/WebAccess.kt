@@ -97,6 +97,14 @@ object WebAccess {
         }.filter { it.expires > now }
     }
 
+    /** The page's Log out: [token] lets no one in again, remembered or not. */
+    fun logout(context: Context, token: String?) {
+        if (token.isNullOrBlank()) return
+        val h = hash(token)
+        synchronized(sessions) { sessions -= h }
+        if (computers(context).any { it.hash == h }) forget(context, h)
+    }
+
     fun forget(context: Context, hash: String) = save(context, computers(context).filterNot { it.hash == hash })
 
     private fun save(context: Context, all: List<Computer>) {

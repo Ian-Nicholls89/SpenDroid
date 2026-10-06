@@ -20,6 +20,10 @@ class WebServer(private val context: Context, private val host: String, port: In
         val token = session.cookies.read(COOKIE)
         return when {
             session.method == Method.POST && session.uri == "/api/pair" -> pair(session)
+            session.method == Method.POST && session.uri == "/api/logout" -> {
+                WebAccess.logout(context, token)
+                plain(Response.Status.OK, "").apply { addHeader("Set-Cookie", "$COOKIE=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0") }
+            }
             session.uri == "/api/me" -> json(JSONObject().put("allowed", WebAccess.allowed(context, token)).toString())
             session.uri.startsWith("/api/import") || session.uri == "/api/layouts" ->
                 if (WebAccess.allowed(context, token)) importApi(session) else plain(Response.Status.UNAUTHORIZED, "Pair first.")

@@ -23,7 +23,7 @@ function esc(s) {
 }
 const gbp = new Intl.NumberFormat("en-GB", { style: "currency", currency: "GBP" });
 const money = (minor) => (minor < 0 ? "−" : "") + gbp.format(Math.abs(minor) / 100);
-const pounds = (minor) => (minor < 0 ? "−" : "") + "£" + Math.round(Math.abs(minor) / 100).toLocaleString("en-GB");
+const pounds = (minor) => (minor < 0 ? "−\u2060" : "") + "£" + Math.round(Math.abs(minor) / 100).toLocaleString("en-GB");
 const day = (iso) => new Date(iso + "T12:00:00");
 const fmtDay = (iso, opts) => day(iso).toLocaleDateString("en-GB", opts || { weekday: "short", day: "numeric", month: "short" });
 const initial = (s) => ((String(s).match(/[A-Za-z0-9]/) || ["£"])[0]).toUpperCase();
@@ -71,10 +71,11 @@ async function boot() {
 
 /** Fetches and draws the figures; true when they are on screen. A refresh in the background keeps quiet about failures. */
 async function load(quiet) {
+  if (quiet && !S.data) return false; // on the code screen: nothing to refresh
   if (!quiet && !S.data) notice("Fetching your figures from the phone…");
   const r = await fetch("/api/data").catch(() => null);
   if (!r) return quiet || notice(`Can't reach your phone. Is "Open on my computer" still on?`, true), false;
-  if (r.status === 401) return pairing(), false;
+  if (r.status === 401) return (S.data = null), pairing(), false;
   if (!r.ok) return quiet || notice((await r.text().catch(() => "")) || `The phone answered ${r.status}.`, true), false;
   try {
     S.data = await r.json();
@@ -86,6 +87,15 @@ async function load(quiet) {
     if (!quiet) notice(`Something went wrong showing your figures: ${e.message}`, true);
     return false;
   }
+}
+
+/** Ends this computer's access on the phone - remembered or not - and clears it from the browser. */
+async function logout() {
+  const r = await fetch("/api/logout", { method: "POST" }).catch(() => null);
+  if (!r || !r.ok) return notice(`Couldn't reach your phone to log out. Stopping "Open on my computer" on the phone logs this computer out too, unless it's remembered - then Forget it under Settings → Computer.`, true);
+  S.data = null;
+  history.replaceState(null, "", location.pathname);
+  pairing();
 }
 
 function pairing() {
@@ -128,14 +138,16 @@ function render() {
   const d = S.data;
   if (!PAGES.some((p) => p[0] === S.route)) S.route = "overview";
   const nav = PAGES.map(([id, icon, label]) => `<button class="ni ${S.route === id ? "on" : ""}" data-go="${id}"><span class="sq">${icon}</span><span class="t">${label}</span></button>`).join("");
-  const accts = d.accounts.map((a) => `<button class="ni" data-account="${esc(a.id)}"><span class="sq" style="background:${a.colour}">${esc(initial(a.institution || a.label))}</span><span class="t">${esc(a.label)}</span><span class="v">${a.balance == null ? "" : pounds(a.balance)}</span></button>`).join("");
+  const accts = d.accounts.map((a) => `<button class="ni" data-account="${esc(a.id)}" title="${esc(a.label)}"><span class="sq" style="background:${a.colour}">${esc(initial(a.institution || a.label))}</span><span class="two"><span class="t">${esc(a.label)}</span>${a.balance == null ? "" : `<span class="v">${pounds(a.balance)}</span>`}</span></button>`).join("");
   const body = { overview, transactions, regular, insights, import: importPage }[S.route]();
   app.innerHTML = `<div class="shell">
     <nav class="side"><div class="ban"><b>SPENDROID</b><div>${d.accounts.length} accounts · ${esc(d.updated)}</div></div>
-      ${nav}<div class="sec">Accounts</div>${accts}<span class="ro">READ-ONLY</span></nav>
+      ${nav}<div class="sec">Accounts</div>${accts}<span class="ro">READ-ONLY</span>
+      <button class="ni out" id="logout" title="Log out - this computer will need a new code"><span class="sq">⎋</span><span class="t">Log out</span></button></nav>
     <main class="main"><div class="glow"></div>${body}</main></div>`;
   app.querySelectorAll("[data-go]").forEach((b) => (b.onclick = () => go(b.dataset.go)));
   app.querySelectorAll("[data-account]").forEach((b) => (b.onclick = () => { S.account = b.dataset.account; S.tab = "all"; go("transactions"); }));
+  document.getElementById("logout").onclick = logout;
   wire();
 }
 
