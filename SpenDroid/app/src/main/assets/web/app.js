@@ -51,21 +51,41 @@ const paceWord = (p) => (p === "OVER" ? "OVER PACE" : p === "TIGHT" ? "TIGHT" : 
 
 // ---- loading ------------------------------------------------------------------------------
 
+/** A screen of its own for waiting and for failures, so the page never just sits there. */
+function notice(text, retry) {
+  app.innerHTML = `<div class="pair"><div class="box"><div class="word">SPENDROID</div>
+    <p class="${retry ? "err" : "wait"}">${esc(text)}</p>${retry ? `<button class="btn" id="retry">Try again</button>` : ""}</div></div>`;
+  if (retry) document.getElementById("retry").onclick = () => boot();
+}
+
 async function boot() {
-  const me = await fetch("/api/me").then((r) => r.json()).catch(() => ({ allowed: false }));
+  const me = await fetch("/api/me").then((r) => r.json()).catch(() => null);
+  if (!me) return notice(`Can't reach your phone. Is "Open on my computer" still on, and this computer on the same Wi-Fi or hotspot?`, true);
   if (!me.allowed) return pairing();
-  await load();
+  if (!(await load())) return;
+  if (S.refreshing) return;
+  S.refreshing = true;
   setInterval(() => document.visibilityState === "visible" && load(true), 60000);
   document.addEventListener("visibilitychange", () => document.visibilityState === "visible" && load(true));
 }
 
+/** Fetches and draws the figures; true when they are on screen. A refresh in the background keeps quiet about failures. */
 async function load(quiet) {
+  if (!quiet && !S.data) notice("Fetching your figures from the phone…");
   const r = await fetch("/api/data").catch(() => null);
-  if (!r) return quiet || (app.innerHTML = `<div class="pair"><div class="box"><div class="word">SPENDROID</div><p class="err">Can't reach your phone. Is "Open on my computer" still on?</p></div></div>`);
-  if (r.status === 401) return pairing();
-  S.data = await r.json();
-  document.documentElement.style.setProperty("--accent", S.data.accent);
-  render();
+  if (!r) return quiet || notice(`Can't reach your phone. Is "Open on my computer" still on?`, true), false;
+  if (r.status === 401) return pairing(), false;
+  if (!r.ok) return quiet || notice((await r.text().catch(() => "")) || `The phone answered ${r.status}.`, true), false;
+  try {
+    S.data = await r.json();
+    document.documentElement.style.setProperty("--accent", S.data.accent);
+    render();
+    return true;
+  } catch (e) {
+    console.error(e);
+    if (!quiet) notice(`Something went wrong showing your figures: ${e.message}`, true);
+    return false;
+  }
 }
 
 function pairing() {
@@ -76,14 +96,22 @@ function pairing() {
     <label class="check"><input type="checkbox" id="remember" checked> Remember this computer for 30 days</label>
     <button class="btn" id="open">Open</button>
     <p class="err" id="err"></p>
-    <p class="k2" style="margin-top:14px">Only on your home Wi-Fi · the phone can forget this computer at any time</p>
+    <p class="k2" style="margin-top:14px">On your home Wi-Fi or your phone's hotspot · the phone can forget this computer at any time</p>
   </div></div>`;
   const go = async () => {
     const code = document.getElementById("code").value.replace(/\D/g, "");
+    const err = document.getElementById("err");
     const remember = document.getElementById("remember").checked;
+    const open = document.getElementById("open");
+    if (code.length !== 6) return (err.textContent = "The code is six digits - it's on your phone, under Settings → Computer.");
+    open.disabled = true;
+    open.textContent = "Checking…";
+    err.textContent = "";
     const r = await fetch("/api/pair", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code, remember }) }).catch(() => null);
     if (r && r.ok) return boot();
-    document.getElementById("err").textContent = r ? await r.text() : "Can't reach your phone.";
+    open.disabled = false;
+    open.textContent = "Open";
+    err.textContent = r ? (await r.text().catch(() => "")) || `The phone answered ${r.status}.` : `Can't reach your phone. Is "Open on my computer" still on?`;
   };
   document.getElementById("open").onclick = go;
   document.getElementById("code").onkeydown = (e) => e.key === "Enter" && go();

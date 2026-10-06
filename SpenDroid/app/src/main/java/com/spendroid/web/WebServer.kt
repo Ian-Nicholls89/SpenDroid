@@ -1,6 +1,7 @@
 package com.spendroid.web
 
 import android.content.Context
+import android.util.Log
 import fi.iki.elonen.NanoHTTPD
 import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
@@ -23,7 +24,12 @@ class WebServer(private val context: Context, private val host: String, port: In
             session.uri.startsWith("/api/import") || session.uri == "/api/layouts" ->
                 if (WebAccess.allowed(context, token)) importApi(session) else plain(Response.Status.UNAUTHORIZED, "Pair first.")
             session.uri == "/api/data" ->
-                if (WebAccess.allowed(context, token)) json(runBlocking { WebData.json(context) }) else plain(Response.Status.UNAUTHORIZED, "Pair first.")
+                if (!WebAccess.allowed(context, token)) plain(Response.Status.UNAUTHORIZED, "Pair first.")
+                // A failure says what it was, for the page to show, rather than leaving it waiting.
+                else runCatching { json(runBlocking { WebData.json(context) }) }.getOrElse {
+                    Log.e("WebServer", "Couldn't build the page's data", it)
+                    plain(Response.Status.INTERNAL_ERROR, "The phone couldn't put your figures together (${it.javaClass.simpleName}: ${it.message}).")
+                }
             else -> asset(session.uri)
         }
     }
@@ -65,7 +71,7 @@ class WebServer(private val context: Context, private val host: String, port: In
     private fun pair(session: IHTTPSession): Response {
         val body = HashMap<String, String>()
         runCatching { session.parseBody(body) }
-        val o = runCatching { JSONObject(body["postData"].orEmpty()) }.getOrNull() ?: return plain(Response.Status.BAD_REQUEST, "")
+        val o = runCatching { JSONObject(body["postData"].orEmpty()) }.getOrNull() ?: return plain(Response.Status.BAD_REQUEST, "The phone couldn't read that - try again.")
         val agent = session.headers["user-agent"].orEmpty()
         val name = when {
             "Windows" in agent -> "Windows computer"
