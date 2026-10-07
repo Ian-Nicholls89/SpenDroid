@@ -179,4 +179,22 @@ class ScreensTest {
         compose.setContent { BudgetTheme { com.spendroid.ui.AppDrawer(state, com.spendroid.ui.DrawerTarget.OVERVIEW, {}, {}) } }
         compose.onRoot().captureRoboImage("build/screenshots/drawer.png")
     }
+
+    @Test
+    @Config(qualifiers = "w411dp-h900dp-xxhdpi")
+    fun moveImport() {
+        val state = Sample.state()
+        compose.setContent {
+            Frame(AppScreen.Accounts) {
+                com.spendroid.ui.MoveImportDialog(
+                    batch = com.spendroid.web.WebImport.Batch("b1", "acc-joint", "Statement-export.csv", 326, 0L, "2025-01-02", "2025-12-30"),
+                    accounts = state.accounts,
+                    amounts = List(312) { 1_000L } + List(14) { -1_000L },
+                    onMove = { _, _ -> },
+                    onDismiss = {},
+                )
+            }
+        }
+        com.github.takahirom.roborazzi.captureScreenRoboImage("build/screenshots/move-import.png")
+    }
 }

@@ -437,6 +437,13 @@ class GoCardlessRepository private constructor(
         reanalyze()
     }
 
+    /** An import moved to another account: its rows taken off the one they went to, [rows] added in their place. */
+    suspend fun replaceImport(fromAccountId: String, batchId: String, rows: List<TransactionEntity>) {
+        dao.deleteTransactionsWithPrefix(fromAccountId, "${DuplicateCheck.IMPORTED_PREFIX}$batchId:")
+        if (rows.isNotEmpty()) dao.upsertTransactions(rows)
+        reanalyze()
+    }
+
     suspend fun deleteManualRule(id: String) {
         dao.deleteManualRule(id)
     }

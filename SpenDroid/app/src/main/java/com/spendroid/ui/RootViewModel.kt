@@ -530,6 +530,15 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** Moves one import to the account it was meant for; [done] hears what happened. */
+    fun moveImport(batch: com.spendroid.web.WebImport.Batch, toAccountId: String, swap: Boolean, done: (com.spendroid.web.WebImport.Check) -> Unit) {
+        viewModelScope.launch {
+            val result = com.spendroid.web.WebImport.move(getApplication(), batch, toAccountId, swap)
+            loadLocal()
+            done(result)
+        }
+    }
+
     /** Shows what changed elsewhere - an import allowed from the notification. */
     fun reloadLocal() {
         viewModelScope.launch { loadLocal() }

@@ -83,7 +83,10 @@ fun AccountManagementScreen(
     balanceTypesFor: (AccountEntity) -> List<Pair<String, Boolean>> = { emptyList() },
     onSeeTransactions: (AccountEntity) -> Unit = {},
     onUndoImport: (com.spendroid.web.WebImport.Batch) -> Unit = {},
+    onMoveImport: (com.spendroid.web.WebImport.Batch, String, Boolean, (com.spendroid.web.WebImport.Check) -> Unit) -> Unit = { _, _, _, _ -> },
 ) {
+    var moving by remember { mutableStateOf<com.spendroid.web.WebImport.Batch?>(null) }
+    var moved by remember { mutableStateOf<String?>(null) }
     var showLinkDialog by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<AccountEntity?>(null) }
     // Ticks so the countdowns and reset bars move while the screen is open.
@@ -140,6 +143,7 @@ fun AccountManagementScreen(
                                     maxLines = 1,
                                 )
                             }
+                            TextButton(onClick = { moving = b }) { Text("Move") }
                             TextButton(onClick = { onUndoImport(b) }) { Text("Undo", color = Charcoal.Bad) }
                         }
                     }
@@ -151,6 +155,34 @@ fun AccountManagementScreen(
             BigButton("Add another bank", Icons.Filled.AccountBalance, { showLinkDialog = true }, Modifier.fillMaxWidth(), colour = MaterialTheme.colorScheme.primary, textColour = Color(0xFF111111))
             Spacer(Modifier.height(24.dp))
         }
+    }
+
+    moving?.let { b ->
+        MoveImportDialog(
+            batch = b,
+            accounts = state.accounts,
+            amounts = state.transactions.filter { it.accountId == b.accountId && it.transactionId.startsWith("${com.spendroid.domain.DuplicateCheck.IMPORTED_PREFIX}${b.id}:") }.map { it.amountMinor },
+            onMove = { to, swap ->
+                val toLabel = state.accounts.firstOrNull { it.id == to.id }?.label ?: "that account"
+                moving = null
+                onMoveImport(b, to.id, swap) { c ->
+                    val skipped = listOfNotNull(
+                        c.alreadyThere.takeIf { it > 0 }?.let { "$it already there" },
+                        c.coveredByBank.takeIf { it > 0 }?.let { "$it your bank already sends" },
+                    )
+                    moved = "Moved ${c.toAdd.size} to $toLabel." + if (skipped.isEmpty()) "" else " Left out ${skipped.joinToString(" and ")}, so nothing is counted twice."
+                }
+            },
+            onDismiss = { moving = null },
+        )
+    }
+    moved?.let { text ->
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { moved = null },
+            confirmButton = { TextButton(onClick = { moved = null }) { Text("OK") } },
+            title = { Text("Moved") },
+            text = { Text(text) },
+        )
     }
 
     editing?.let { account ->
@@ -705,4 +737,70 @@ private fun ordinal(day: Int?): String {
         else -> "th"
     }
     return "$day$suffix"
+}
+
+/** Choosing the account an import should have gone to. */
+@Composable
+internal fun MoveImportDialog(
+    batch: com.spendroid.web.WebImport.Batch,
+    accounts: List<AccountEntity>,
+    amounts: List<Long>,
+    onMove: (AccountEntity, Boolean) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val others = accounts.filter { it.id != batch.accountId }
+    var chosen by remember { mutableStateOf<AccountEntity?>(null) }
+    val out = amounts.count { it < 0 }
+    val into = amounts.count { it > 0 }
+    var swap by remember { mutableStateOf(false) }
+    // A card's file read for an account that isn't a card can show its spending as money in:
+    // most of a card's rows are spending, so mostly money in suggests it was read the wrong way.
+    fun choose(a: AccountEntity) {
+        chosen = a
+        swap = a.accountType == AccountType.CREDIT_CARD && into > out
+    }
+    val from = accounts.firstOrNull { it.id == batch.accountId }?.label ?: "an account"
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = { TextButton(onClick = { chosen?.let { onMove(it, swap) } }, enabled = chosen != null) { Text("Move") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        title = { Text("Move to another account") },
+        text = {
+            Column {
+                Text(
+                    "${batch.count} from ${batch.fileName}, now in $from. They're checked against the account you choose, as a new import would be.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Charcoal.Muted,
+                )
+                Spacer(Modifier.height(8.dp))
+                others.forEach { a ->
+                    Row(
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).clickable { choose(a) }.padding(vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        androidx.compose.material3.RadioButton(selected = chosen?.id == a.id, onClick = { choose(a) })
+                        Column {
+                            Text(a.label, style = MaterialTheme.typography.titleSmall)
+                            Text(a.institutionName, style = MaterialTheme.typography.labelSmall, color = Charcoal.Muted)
+                        }
+                    }
+                }
+                Spacer(Modifier.height(6.dp))
+                Row(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).clickable { swap = !swap },
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    androidx.compose.material3.Checkbox(checked = swap, onCheckedChange = { swap = it })
+                    Column {
+                        Text("Swap money in and out", style = MaterialTheme.typography.titleSmall)
+                        Text(
+                            "Now $out money out, $into money in. For a card's file whose spending came in as money in.",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Charcoal.Muted,
+                        )
+                    }
+                }
+            }
+        },
+    )
 }

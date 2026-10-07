@@ -381,6 +381,7 @@ class MainActivity : ComponentActivity() {
                                                 navigate(AppScreen.Spending)
                                             },
                                             onUndoImport = viewModel::undoImport,
+                                            onMoveImport = viewModel::moveImport,
                                         )
 
                                         AppScreen.Rules -> RecurringRulesScreen(

@@ -202,6 +202,43 @@ object WebImport {
         com.spendroid.widget.refreshWidgets(context)
     }
 
+    /**
+     * Moves an import to the account it was meant for. Its rows are checked against that account
+     * as a new import would be - one already stored there, or within what its bank sends, is
+     * dropped rather than doubled - and the batch, with what is left, belongs to it after. [swap]
+     * turns money in and out around, for a card's file read as if spending were money in.
+     */
+    suspend fun move(context: Context, batch: Batch, toAccountId: String, swap: Boolean = false): Check {
+        val repo = (context.applicationContext as BudgetApplication).repository
+        val prefix = "${DuplicateCheck.IMPORTED_PREFIX}${batch.id}:"
+        val rows = repo.storedTransactions(batch.accountId).filter { it.transactionId.startsWith(prefix) }
+        val checked = check(context, toAccountId, rows.mapNotNull { t -> runCatching { LocalDate.parse(t.bookingDate) }.getOrNull()?.let { Row(it, if (swap) -t.amountMinor else t.amountMinor, t.payee) } })
+        val currency = repo.accounts().firstOrNull { it.id == toAccountId }?.currency ?: "GBP"
+        val moved = checked.toAdd.mapIndexed { i, r ->
+            TransactionEntity(
+                accountId = toAccountId,
+                transactionId = "$prefix$i",
+                bookingDate = r.date.toString(),
+                valueDate = null,
+                amountMinor = r.amountMinor,
+                currency = currency,
+                payee = r.payee,
+                description = "Imported from ${batch.fileName}",
+                isPending = false,
+                rawJson = null,
+            )
+        }
+        repo.replaceImport(batch.accountId, batch.id, moved)
+        val rest = batches(context).filterNot { it.id == batch.id }
+        saveBatches(
+            context,
+            if (moved.isEmpty()) rest
+            else rest + batch.copy(accountId = toAccountId, count = moved.size, from = checked.toAdd.minOf { it.date }.toString(), to = checked.toAdd.maxOf { it.date }.toString()),
+        )
+        com.spendroid.widget.refreshWidgets(context)
+        return checked
+    }
+
     // ---- layouts the user matched by hand, recognised next time by their headings ----
 
     fun layouts(context: Context): JSONObject =
