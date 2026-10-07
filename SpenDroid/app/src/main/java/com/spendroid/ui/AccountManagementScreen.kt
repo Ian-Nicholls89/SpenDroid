@@ -161,7 +161,7 @@ fun AccountManagementScreen(
         MoveImportDialog(
             batch = b,
             accounts = state.accounts,
-            amounts = state.transactions.filter { it.accountId == b.accountId && it.transactionId.startsWith("${com.spendroid.domain.DuplicateCheck.IMPORTED_PREFIX}${b.id}:") }.map { it.amountMinor },
+            rows = state.transactions.filter { it.accountId == b.accountId && it.transactionId.startsWith("${com.spendroid.domain.DuplicateCheck.IMPORTED_PREFIX}${b.id}:") }.map { it.payee to it.amountMinor },
             onMove = { to, swap ->
                 val toLabel = state.accounts.firstOrNull { it.id == to.id }?.label ?: "that account"
                 moving = null
@@ -744,14 +744,17 @@ private fun ordinal(day: Int?): String {
 internal fun MoveImportDialog(
     batch: com.spendroid.web.WebImport.Batch,
     accounts: List<AccountEntity>,
-    amounts: List<Long>,
+    rows: List<Pair<String, Long>>,
     onMove: (AccountEntity, Boolean) -> Unit,
     onDismiss: () -> Unit,
+    initial: String? = null,
 ) {
     val others = accounts.filter { it.id != batch.accountId }
     var chosen by remember { mutableStateOf<AccountEntity?>(null) }
-    val out = amounts.count { it < 0 }
-    val into = amounts.count { it > 0 }
+    val out = rows.count { it.second < 0 }
+    val into = rows.count { it.second > 0 }
+    // One of the file's own rows, of the kind most of them are, to show what swapping does.
+    val example = rows.firstOrNull { if (into > out) it.second > 0 else it.second < 0 } ?: rows.firstOrNull()
     var swap by remember { mutableStateOf(false) }
     // A card's file read for an account that isn't a card can show its spending as money in:
     // most of a card's rows are spending, so mostly money in suggests it was read the wrong way.
@@ -759,6 +762,7 @@ internal fun MoveImportDialog(
         chosen = a
         swap = a.accountType == AccountType.CREDIT_CARD && into > out
     }
+    androidx.compose.runtime.LaunchedEffect(Unit) { others.firstOrNull { it.id == initial }?.let(::choose) }
     val from = accounts.firstOrNull { it.id == batch.accountId }?.label ?: "an account"
     androidx.compose.material3.AlertDialog(
         onDismissRequest = onDismiss,
@@ -785,16 +789,60 @@ internal fun MoveImportDialog(
                         }
                     }
                 }
-                Spacer(Modifier.height(6.dp))
+                Spacer(Modifier.height(12.dp))
+                Text("Is the spending the right way round?", style = MaterialTheme.typography.titleSmall)
+                Text(
+                    "Some card files show purchases as positive numbers, so spending can arrive as money coming in. " +
+                        "On a card nearly every row is spending.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Charcoal.Muted,
+                )
+                Text(
+                    "In this file: $out spent, $into money in.",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = if (into > out) Charcoal.Warn else Charcoal.Muted,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+                example?.let { (payee, amount) ->
+                    // The example as it is and as it would be; the one that will be used stands out.
+                    fun said(minor: Long) = if (minor < 0) "spent ${formatMoney(-minor, "GBP")}" else "${formatMoney(minor, "GBP")} money in"
+                    Column(
+                        Modifier.padding(top = 8.dp).fillMaxWidth().clip(RoundedCornerShape(10.dp))
+                            .background(Charcoal.Background).padding(horizontal = 12.dp, vertical = 8.dp),
+                    ) {
+                        Text("For example", style = MaterialTheme.typography.labelSmall, color = Charcoal.Muted)
+                        Text(payee.tidyPayee(), style = MaterialTheme.typography.titleSmall, maxLines = 1)
+                        listOf("As it is" to amount, "Swapped" to -amount).forEach { (label, minor) ->
+                            val used = (label == "Swapped") == swap
+                            Row(Modifier.fillMaxWidth().padding(top = 2.dp)) {
+                                Text(
+                                    label + if (used) " ✓" else "",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = if (used) Charcoal.Text else Charcoal.Faint,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                Text(
+                                    said(minor),
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = if (used) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (!used) Charcoal.Faint else if (minor < 0) Charcoal.Text else Charcoal.In,
+                                )
+                            }
+                        }
+                    }
+                }
                 Row(
-                    Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).clickable { swap = !swap },
+                    Modifier.padding(top = 4.dp).fillMaxWidth().clip(RoundedCornerShape(8.dp)).clickable { swap = !swap },
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     androidx.compose.material3.Checkbox(checked = swap, onCheckedChange = { swap = it })
                     Column {
                         Text("Swap money in and out", style = MaterialTheme.typography.titleSmall)
                         Text(
-                            "Now $out money out, $into money in. For a card's file whose spending came in as money in.",
+                            if (swap) (if (into > out) "Ticked for you, as most rows came in as money in. " else "") +
+                                "Every row is turned round: money in becomes spent, and spent becomes money in."
+                            else "Leave every row as it is.",
                             style = MaterialTheme.typography.labelSmall,
                             color = Charcoal.Muted,
                         )

@@ -181,7 +181,7 @@ class ScreensTest {
     }
 
     @Test
-    @Config(qualifiers = "w411dp-h900dp-xxhdpi")
+    @Config(qualifiers = "w411dp-h1100dp-xxhdpi")
     fun moveImport() {
         val state = Sample.state()
         compose.setContent {
@@ -189,9 +189,10 @@ class ScreensTest {
                 com.spendroid.ui.MoveImportDialog(
                     batch = com.spendroid.web.WebImport.Batch("b1", "acc-joint", "Statement-export.csv", 326, 0L, "2025-01-02", "2025-12-30"),
                     accounts = state.accounts,
-                    amounts = List(312) { 1_000L } + List(14) { -1_000L },
+                    rows = List(312) { "SAINSBURYS S/MKTS" to 4_210L } + List(14) { "PAYMENT RECEIVED - THANK YOU" to -20_000L },
                     onMove = { _, _ -> },
                     onDismiss = {},
+                    initial = state.accounts.first { it.accountType == com.spendroid.data.db.AccountType.CREDIT_CARD }.id,
                 )
             }
         }
