@@ -50,6 +50,35 @@
                 <data android:scheme="spendroid" android:host="link-complete" />
             </intent-filter>
 
+            <!-- A bank's own file, shared or opened from another app - email, Drive, Files, a
+                 bank's app that exports - to import. CSV goes by many names. -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/csv" />
+                <data android:mimeType="text/comma-separated-values" />
+                <data android:mimeType="application/csv" />
+                <data android:mimeType="application/vnd.ms-excel" />
+                <data android:mimeType="application/x-ofx" />
+                <data android:mimeType="application/ofx" />
+                <data android:mimeType="application/vnd.intu.qfx" />
+                <data android:mimeType="application/qif" />
+                <data android:mimeType="application/x-qif" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" />
+                <data android:mimeType="text/csv" />
+                <data android:mimeType="text/comma-separated-values" />
+                <data android:mimeType="application/csv" />
+                <data android:mimeType="application/x-ofx" />
+                <data android:mimeType="application/ofx" />
+                <data android:mimeType="application/vnd.intu.qfx" />
+                <data android:mimeType="application/qif" />
+                <data android:mimeType="application/x-qif" />
+            </intent-filter>
+
             <!-- The watch app's "Open on phone": opens the app as it is. -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />

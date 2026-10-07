@@ -1,0 +1,9 @@
+{
+  "firstdirect.csv": {"known": "first direct", "rows": [["2025-01-02", -420, "CORNER CAFE"], ["2025-01-03", -1860, "TRAIN TICKETS"], ["2025-01-31", 210000, "SALARY ACME LTD"]]},
+  "natwest.csv": {"known": "NatWest", "rows": [["2025-02-05", -1299, "'BOOK SHOP, HIGH ST"], ["2025-02-06", -3150, "WATER CO"]]},
+  "tesco.csv": {"known": "Tesco Bank", "rows": [["2025-03-01", -2345, "GARDEN CENTRE"], ["2025-03-04", 10000, "PAYMENT RECEIVED"]]},
+  "paypal.csv": {"known": "PayPal", "left": 4, "rows": [["2026-04-10", -2000, "Garden Shop"], ["2026-04-10", 2000, "PayPal top-up from bank"], ["2026-04-12", -780, "Web Host Inc"], ["2026-04-12", 780, "PayPal top-up from card"]]},
+  "unknown.csv": {"known": "", "rows": [["2025-01-02", -420, "CORNER CAFE"], ["2025-01-03", -2500, "GYM"], ["2025-01-04", 999, "REFUND SHOP"]]},
+  "sample.ofx": {"known": "", "rows": [["2025-01-07", -850, "BAKERY"], ["2025-01-08", 5000, "FRIEND"]]},
+  "sample.qif": {"known": "", "rows": [["2025-01-09", -310, "NEWSAGENT"], ["2025-01-10", -1500, "CINEMA TICKETS"]]}
+}

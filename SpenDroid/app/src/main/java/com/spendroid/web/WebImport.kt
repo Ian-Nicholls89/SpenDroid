@@ -110,29 +110,37 @@ object WebImport {
             return
         }
         p.status = Status.ALLOWED
-        val app = context.applicationContext as BudgetApplication
-        CoroutineScope(Dispatchers.IO).launch {
-            val currency = app.repository.accounts().firstOrNull { it.id == p.accountId }?.currency ?: "GBP"
-            app.repository.addImported(
-                p.rows.mapIndexed { i, r ->
-                    TransactionEntity(
-                        accountId = p.accountId,
-                        transactionId = "${DuplicateCheck.IMPORTED_PREFIX}${p.id}:$i",
-                        bookingDate = r.date.toString(),
-                        valueDate = null,
-                        amountMinor = r.amountMinor,
-                        currency = currency,
-                        payee = r.payee,
-                        description = "Imported from ${p.fileName}",
-                        isPending = false,
-                        rawJson = null,
-                    )
-                },
-            )
-            remember(context, Batch(p.id, p.accountId, p.fileName, p.rows.size, System.currentTimeMillis(), p.rows.minOfOrNull { it.date }?.toString(), p.rows.maxOfOrNull { it.date }?.toString()))
-            p.layout?.let { saveLayout(context, it) }
-            com.spendroid.widget.refreshWidgets(context)
-        }
+        CoroutineScope(Dispatchers.IO).launch { add(context, p.accountId, p.fileName, p.rows, p.layout, p.id) }
+    }
+
+    /**
+     * Adds checked rows to an account as one batch - Undo and Move see it as one import - and
+     * remembers a layout matched by hand. Allowed from the notification, or straight from the
+     * phone's own import, where the user is already holding the phone.
+     */
+    suspend fun add(context: Context, accountId: String, fileName: String, rows: List<Row>, layout: JSONObject?, id: String = UUID.randomUUID().toString().take(8)) {
+        if (rows.isEmpty()) return
+        val repo = (context.applicationContext as BudgetApplication).repository
+        val currency = repo.accounts().firstOrNull { it.id == accountId }?.currency ?: "GBP"
+        repo.addImported(
+            rows.mapIndexed { i, r ->
+                TransactionEntity(
+                    accountId = accountId,
+                    transactionId = "${DuplicateCheck.IMPORTED_PREFIX}$id:$i",
+                    bookingDate = r.date.toString(),
+                    valueDate = null,
+                    amountMinor = r.amountMinor,
+                    currency = currency,
+                    payee = r.payee,
+                    description = "Imported from $fileName",
+                    isPending = false,
+                    rawJson = null,
+                )
+            },
+        )
+        remember(context, Batch(id, accountId, fileName, rows.size, System.currentTimeMillis(), rows.minOf { it.date }.toString(), rows.maxOf { it.date }.toString()))
+        layout?.let { saveLayout(context, it) }
+        com.spendroid.widget.refreshWidgets(context)
     }
 
     private fun ask(context: Context, id: String, accountId: String, fileName: String, c: Check) {

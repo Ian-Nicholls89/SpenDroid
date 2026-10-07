@@ -82,6 +82,9 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-gradle-
             
+      - name: The computer page reads statements as the phone does
+        run: node app/src/test/web/import-parity.mjs
+
       - name: Build Debug APK
         run: ./gradlew assembleDebug
         

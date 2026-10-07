@@ -189,6 +189,19 @@ class MainActivity : ComponentActivity() {
     /** Opened from the roundup notification: show the roundup until it is dismissed. */
     private val showRoundup = mutableStateOf(false)
 
+    /** An import open on the phone: from Accounts, or a file shared or opened from another app. */
+    private val importRequest = mutableStateOf<com.spendroid.ui.ImportRequest?>(null)
+
+    /** A bank's file handed over by another app - Share, or Open with - to import. */
+    private fun importFrom(intent: Intent?): com.spendroid.ui.ImportRequest? {
+        val uri = when (intent?.action) {
+            Intent.ACTION_SEND -> androidx.core.content.IntentCompat.getParcelableExtra(intent, Intent.EXTRA_STREAM, android.net.Uri::class.java)
+            Intent.ACTION_VIEW -> intent.data?.takeIf { it.scheme == "content" || it.scheme == "file" }
+            else -> null
+        } ?: return null
+        return com.spendroid.ui.ImportRequest(uri = uri)
+    }
+
     /** A category tapped on a widget, waiting to be opened. */
     private val widgetCategory = mutableStateOf<String?>(null)
 
@@ -197,6 +210,7 @@ class MainActivity : ComponentActivity() {
         if (savedInstanceState == null) {
             widgetCategory.value = intent?.getStringExtra(MAIN_EXTRA_CATEGORY)
             showRoundup.value = intent?.getBooleanExtra(com.spendroid.work.EXTRA_OPEN_ROUNDUP, false) == true
+            importRequest.value = importFrom(intent)
         }
         enableEdgeToEdge(
             statusBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
@@ -382,6 +396,7 @@ class MainActivity : ComponentActivity() {
                                             },
                                             onUndoImport = viewModel::undoImport,
                                             onMoveImport = viewModel::moveImport,
+                                            onImport = { accountId -> importRequest.value = com.spendroid.ui.ImportRequest(accountId = accountId) },
                                         )
 
                                         AppScreen.Rules -> RecurringRulesScreen(
@@ -459,6 +474,18 @@ class MainActivity : ComponentActivity() {
                             navigate(AppScreen.Spending)
                         },
                     )
+                }
+
+                importRequest.value?.takeIf { state.hasCredentials }?.let { request ->
+                    // Keyed on the request, so a second file shared while one is open starts afresh.
+                    androidx.compose.runtime.key(request) {
+                        com.spendroid.ui.ImportScreen(
+                            request = request,
+                            accounts = state.accounts,
+                            onClose = { importRequest.value = null },
+                            onAdded = viewModel::reloadLocal,
+                        )
+                    }
                 }
 
                 state.justLinked?.let { linkedName ->
@@ -540,5 +567,6 @@ class MainActivity : ComponentActivity() {
         setIntent(intent)
         intent.getStringExtra(MAIN_EXTRA_CATEGORY)?.let { widgetCategory.value = it }
         if (intent.getBooleanExtra(com.spendroid.work.EXTRA_OPEN_ROUNDUP, false)) showRoundup.value = true
+        importFrom(intent)?.let { importRequest.value = it }
     }
 }

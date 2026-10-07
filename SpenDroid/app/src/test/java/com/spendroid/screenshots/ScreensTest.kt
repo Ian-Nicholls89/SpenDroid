@@ -198,4 +198,39 @@ class ScreensTest {
         }
         com.github.takahirom.roborazzi.captureScreenRoboImage("build/screenshots/move-import.png")
     }
+
+    @Test
+    @Config(qualifiers = "w411dp-h1600dp-xxhdpi")
+    fun phoneImport() {
+        val state = Sample.state()
+        val text = javaClass.classLoader!!.getResource("statements/unknown.csv")!!.readText()
+        val parsed = com.spendroid.importer.StatementFile.parse(text)
+        val guess = com.spendroid.importer.StatementFile.guess(parsed, null, false)
+        // As if Ref had been guessed for who, to show the amber "?".
+        val layout = guess.copy(roles = guess.roles.mapIndexed { i, r -> if (i == 1) "payee" else if (r == "payee") "" else r }, sure = guess.sure.mapIndexed { i, s -> if (i == 1) false else s })
+        val loaded = com.spendroid.ui.Loaded("statement-2025.csv", parsed)
+        val rows = com.spendroid.importer.StatementFile.read(parsed, guess)
+        val check = com.spendroid.web.WebImport.Check(
+            rows.filter { it.ok }.map { com.spendroid.web.WebImport.Row(it.date!!, it.amount!!, it.payee) }, 1, 0, null,
+        )
+        val which = androidx.compose.runtime.mutableIntStateOf(0)
+        compose.setContent {
+            Frame(AppScreen.Accounts) {
+                androidx.compose.foundation.layout.Column(androidx.compose.ui.Modifier.padding(8.dp), verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(12.dp)) {
+                    when (which.intValue) {
+                        0 -> com.spendroid.ui.FileStep(loaded, null, state.accounts, state.accounts[1].id, {}, {})
+                        1 -> com.spendroid.ui.MatchStep(parsed, layout, com.spendroid.importer.StatementFile.read(parsed, layout), {})
+                        else -> com.spendroid.ui.CheckStep(loaded, guess, rows, check, state.accounts[1], {})
+                    }
+                }
+            }
+        }
+        compose.onRoot().captureRoboImage("build/screenshots/import-file.png")
+        which.intValue = 1
+        compose.waitForIdle()
+        compose.onRoot().captureRoboImage("build/screenshots/import-match.png")
+        which.intValue = 2
+        compose.waitForIdle()
+        compose.onRoot().captureRoboImage("build/screenshots/import-check.png")
+    }
 }

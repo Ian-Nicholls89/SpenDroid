@@ -1,0 +1,3 @@
+Transaction Date,Posting Date,Billing Amount,Merchant,Merchant City,Merchant County,Merchant Postal Code,Reference,Debit/Credit Flag,SICMCC Code
+2025-03-01,2025-03-02,23.45,GARDEN CENTRE,TOWN,,,REF1,D,5261
+2025-03-04,2025-03-05,100.00,PAYMENT RECEIVED,,,,REF2,C,0000

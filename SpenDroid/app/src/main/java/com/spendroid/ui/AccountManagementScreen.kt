@@ -26,6 +26,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountBalance
 import androidx.compose.material.icons.filled.CreditCard
+import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.Savings
@@ -84,6 +85,7 @@ fun AccountManagementScreen(
     onSeeTransactions: (AccountEntity) -> Unit = {},
     onUndoImport: (com.spendroid.web.WebImport.Batch) -> Unit = {},
     onMoveImport: (com.spendroid.web.WebImport.Batch, String, Boolean, (com.spendroid.web.WebImport.Check) -> Unit) -> Unit = { _, _, _, _ -> },
+    onImport: (String?) -> Unit = {},
 ) {
     var moving by remember { mutableStateOf<com.spendroid.web.WebImport.Batch?>(null) }
     var moved by remember { mutableStateOf<String?>(null) }
@@ -126,11 +128,11 @@ fun AccountManagementScreen(
                 bill = state.budget?.cardBills?.firstOrNull { it.cardAccountId == account.id },
             )
         }
-        // History added from a file on the computer, each import undoable on its own.
-        if (imports.isNotEmpty()) {
+        // History added from a bank's own file, each import undoable on its own; and a new one.
+        if (state.accounts.isNotEmpty()) {
             item {
                 Panel {
-                    SectionHeading("Imported history", trailing = "from your computer")
+                    SectionHeading("Imported history", trailing = "older transactions")
                     imports.sortedByDescending { it.at }.forEach { b ->
                         val label = state.accounts.firstOrNull { it.id == b.accountId }?.label ?: "an account"
                         Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -147,6 +149,14 @@ fun AccountManagementScreen(
                             TextButton(onClick = { onUndoImport(b) }) { Text("Undo", color = Charcoal.Bad) }
                         }
                     }
+                    Spacer(Modifier.height(12.dp))
+                    BigButton("Import a file", Icons.Filled.FileUpload, { onImport(null) }, Modifier.fillMaxWidth(), colour = MaterialTheme.colorScheme.primary, textColour = Color(0xFF111111))
+                    Text(
+                        "From your bank's website or app · CSV, OFX or QIF. Or share the file to SpenDroid.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Charcoal.Muted,
+                        modifier = Modifier.padding(top = 8.dp),
+                    )
                 }
             }
         }
@@ -191,6 +201,10 @@ fun AccountManagementScreen(
             allAccounts = state.accounts,
             balanceTypes = balanceTypesFor(account),
             bill = state.budget?.cardBills?.firstOrNull { it.cardAccountId == account.id },
+            onImport = {
+                editing = null
+                onImport(account.id)
+            },
             onSeeTransactions = {
                 editing = null
                 onSeeTransactions(account)
@@ -411,6 +425,7 @@ private fun AccountDetailSheet(
     onSeeTransactions: () -> Unit,
     onDismiss: () -> Unit,
     onSave: (AccountEntity) -> Unit,
+    onImport: () -> Unit = {},
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var label by remember(account.id) { mutableStateOf(account.label) }
@@ -440,6 +455,9 @@ private fun AccountDetailSheet(
             Spacer(Modifier.height(4.dp))
             TextButton(onClick = onSeeTransactions, contentPadding = PaddingValues(0.dp)) {
                 Text("See this account's transactions")
+            }
+            TextButton(onClick = onImport, contentPadding = PaddingValues(0.dp)) {
+                Text("Import older history from a file")
             }
             Spacer(Modifier.height(6.dp))
 
