@@ -122,10 +122,26 @@ function findStart(grid) {
 const signature = (heads) => heads.map((h) => h.toLowerCase().replace(/[^a-z/]/g, "")).join("|");
 
 /** Each column's role, from its heading where it has a telling one, else from what it holds. */
+/** PayPal's activity download: its own headings, and several lines for each purchase. */
+function isPayPal() {
+  const h = (I.grid[I.start] || []).map((x) => (x || "").trim().toLowerCase());
+  return h.includes("type") && h.includes("status") && h.includes("currency") && h.includes("transaction id") && h.includes("time zone");
+}
+
 function guess() {
   const heads = I.start >= 0 ? I.grid[I.start] : [];
   const data = I.grid.slice(I.start + 1, I.start + 40);
   const width = Math.max(...I.grid.slice(Math.max(0, I.start), I.start + 40).map((r) => r.length));
+  if (isPayPal()) {
+    // Its layout is known outright: the date, who was paid, and the amount; the rest is read
+    // by name when the rows are read.
+    const h = heads.map((x) => (x || "").trim().toLowerCase());
+    I.roles = h.map((x) => (x === "date" ? "date" : x === "name" ? "payee" : x === "amount" || x === "gross" ? "amount" : ""));
+    I.sure = I.roles.map(() => true);
+    I.dayFirst = true; I.flip = false;
+    I.known = "PayPal";
+    return;
+  }
   const saved = I.layouts && heads.length ? I.layouts[signature(heads)] : null;
   if (saved) {
     I.roles = saved.roles.slice(0, width);
@@ -193,7 +209,7 @@ function readRows() {
   }
   const col = (role) => I.roles.indexOf(role);
   const [d, p, a, o, n, f] = ["date", "payee", "amount", "out", "in", "flag"].map(col);
-  return I.grid.slice(I.start + 1).map((r, i) => {
+  const rows = I.grid.slice(I.start + 1).map((r, i) => {
     const line = I.start + 2 + i;
     const date = d >= 0 ? parseDate(r[d], I.dayFirst) : null;
     if (!date) return { ok: false, line, payee: r[p] || r.join(" ").slice(0, 40), why: d < 0 ? "choose the date column" : `"${(r[d] || "").slice(0, 16)}" isn't a date` };
@@ -211,7 +227,42 @@ function readRows() {
       else if (out === 0 || inn === 0) amount = 0;
     }
     if (amount === null) return { ok: false, line, payee: r[p] || "", why: a < 0 && o < 0 && n < 0 ? "choose the amount column" : "no amount it can read" };
-    return { ok: true, date, amount, payee: (p >= 0 ? r[p] : "") || "Unknown" };
+    return { ok: true, line, date, amount, payee: ((p >= 0 ? r[p] : "") || "").trim() || "Unknown" };
+  });
+  return isPayPal() ? payPal(rows) : rows;
+}
+
+/**
+ * PayPal writes one purchase as several lines: holds ("General Authorisation", often two or
+ * three), the payment itself, the top-up it took from the bank or card, and, when the merchant
+ * charged in another currency, a pair of conversions. Only the payment and the top-up moved
+ * money; the rest are left out. A foreign payment takes the pound figure PayPal converted it
+ * into, which is what the bank was charged. The top-ups stay so the bank's "PAYPAL *..." debit
+ * is matched to its purchase and not counted twice.
+ */
+function payPal(rows) {
+  const heads = (I.grid[I.start] || []).map((x) => (x || "").trim().toLowerCase());
+  const [ty, st, cu, tm] = ["type", "status", "currency", "time"].map((n) => heads.indexOf(n));
+  const raw = I.grid.slice(I.start + 1);
+  const cell = (i, c) => (c >= 0 ? ((raw[i] || [])[c] || "").trim() : "");
+  const moment = (i) => `${rows[i].date} ${cell(i, tm)}`;
+  const pounds = {};
+  rows.forEach((r, i) => {
+    if (r.ok && /currency conversion/i.test(cell(i, ty)) && /^gbp$/i.test(cell(i, cu)) && r.amount < 0) pounds[moment(i)] = r.amount;
+  });
+  return rows.map((r, i) => {
+    if (!r.ok) return r;
+    const type = cell(i, ty), status = cell(i, st), currency = cell(i, cu) || "GBP";
+    const leave = (why) => ({ ok: false, left: true, line: r.line, payee: r.payee, why });
+    if (/authori[sz]ation/i.test(type)) return leave("a hold, not a payment");
+    if (/currency conversion/i.test(type)) return leave("PayPal changing currency");
+    if (/denied|cancel|void|revers|fail/i.test(status)) return leave(status.toLowerCase());
+    if (!/^gbp$/i.test(currency)) {
+      const gbp = pounds[moment(i)];
+      return gbp !== undefined && r.amount < 0 ? { ...r, amount: gbp } : leave(`in ${currency}, with no pound figure`);
+    }
+    if (r.amount > 0 && /deposit/i.test(type)) return { ...r, payee: /card/i.test(type) ? "PayPal top-up from card" : "PayPal top-up from bank" };
+    return r;
   });
 }
 
@@ -242,7 +293,7 @@ function importPage() {
 
 function matching() {
   const rows = readRows();
-  const good = rows.filter((r) => r.ok), bad = rows.filter((r) => !r.ok);
+  const good = rows.filter((r) => r.ok), bad = rows.filter((r) => !r.ok && !r.left), left = rows.filter((r) => r.left);
   const width = I.roles.length;
   let grid = "";
   if (!I.fromFile) {
@@ -271,6 +322,7 @@ function matching() {
         ${c.alreadyThere ? `<div><b style="color:var(--muted)">${c.alreadyThere}</b> already in SpenDroid - skipped</div>` : ""}
         ${c.coveredByBank ? `<div><b style="color:var(--muted)">${c.coveredByBank}</b> your bank already sends${c.bankFrom ? ` (from ${fmtDay(c.bankFrom, { day: "numeric", month: "short" })})` : ""} - skipped</div>` : ""}`
       : `<div class="k2">${I.checking ? "Asking your phone what's new…" : good.length ? "" : "Match the date and amount columns to see what would be added."}</div>`}
+      ${left.length ? `<div title="${esc([...new Set(left.map((r) => r.why))].join(", "))}"><b style="color:var(--muted)">${left.length}</b> PayPal lines that aren't payments - holds and currency changes - left out</div>` : ""}
       ${bad.length ? `<div><b style="color:var(--bad)">${bad.length}</b> can't be read - skipped</div>` : ""}
       ${good.length ? `<div>Money out <b>${money(out)}</b> · in <b>${money(inn)}</b></div>` : ""}
     </div>
