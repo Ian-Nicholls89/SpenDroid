@@ -2,6 +2,7 @@ package com.spendroid.web
 
 import com.spendroid.web.LocalAddresses.Iface
 import com.spendroid.web.LocalAddresses.hotspot
+import com.spendroid.web.LocalAddresses.hotspots
 import com.spendroid.web.LocalAddresses.isPrivate
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -62,4 +63,17 @@ class LocalAddressesTest {
         assertFalse(isPrivate("192.0.0.4"))
         assertFalse(isPrivate("not.an.ip.x"))
     }
+
+    @Test fun everyCandidateIsKeptLikeliestFirst() = assertEquals(
+        listOf("wlan1" to "192.168.43.1", "wlan2" to "192.168.49.1", "odd0" to "10.0.0.5"),
+        hotspots(
+            listOf(
+                Iface("odd0", true, listOf("10.0.0.5")),
+                Iface("wlan2", true, listOf("192.168.49.1")),
+                Iface("rmnet_data0", true, listOf("10.84.12.7")),
+                Iface("wlan1", true, listOf("192.168.43.1")),
+            ),
+            setOf("rmnet_data0"),
+        ),
+    )
 }

@@ -112,7 +112,8 @@ class WebServer(private val context: Context, private val host: String, port: In
             "svg" -> "image/svg+xml"
             else -> "application/octet-stream"
         }
-        return newChunkedResponse(Response.Status.OK, type, stream)
+        // Never kept by the browser: an update to the app updates the page.
+        return newChunkedResponse(Response.Status.OK, type, stream).apply { addHeader("Cache-Control", "no-store") }
     }
 
     private fun json(text: String) = newFixedLengthResponse(Response.Status.OK, "application/json; charset=utf-8", text).apply {

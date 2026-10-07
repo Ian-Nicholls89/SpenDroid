@@ -35,6 +35,11 @@ object WebAccess {
 
     @Volatile var lastActivity: Long = 0L
 
+    /** The phone's addresses changed while running - the hotspot came back on a new one: same code. */
+    fun moved(addresses: List<Served>) {
+        _running.value = _running.value?.copy(addresses = addresses)
+    }
+
     fun started(addresses: List<Served>) {
         _running.value = Running(addresses, newCode())
         failures = 0

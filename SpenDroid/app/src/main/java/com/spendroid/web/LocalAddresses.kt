@@ -17,9 +17,17 @@ import java.net.NetworkInterface
  */
 object LocalAddresses {
 
-    enum class Kind(val label: String) { WIFI("On your Wi-Fi"), HOTSPOT("On your phone's hotspot") }
+    enum class Kind { WIFI, HOTSPOT, OTHER }
 
-    data class Address(val kind: Kind, val host: String)
+    /** Where the page can be served, on which of the phone's interfaces, and how to name it. */
+    data class Address(val kind: Kind, val host: String, val iface: String = "") {
+        val label: String
+            get() = when (kind) {
+                Kind.WIFI -> "On your Wi-Fi"
+                Kind.HOTSPOT -> "On your phone's hotspot"
+                Kind.OTHER -> "Or, on this phone's $iface"
+            }
+    }
 
     /** One of the phone's network interfaces, as far as choosing between them goes. */
     data class Iface(val name: String, val up: Boolean, val ipv4: List<String>)
@@ -42,13 +50,18 @@ object LocalAddresses {
      * The hotspot's address among [ifaces], or null when there is none. [listed] are the interface
      * names of the networks Android lists - Wi-Fi joined, mobile data, VPN - none of which is it.
      */
-    fun hotspot(ifaces: List<Iface>, listed: Set<String>): String? {
-        val candidates = ifaces.filter { i ->
-            i.up && i.name !in listed && !NEVER.containsMatchIn(i.name) && i.ipv4.any(::isPrivate)
-        }
-        val ranked = candidates.sortedBy { i -> LIKELY.indexOfFirst { it.containsMatchIn(i.name) }.let { if (it < 0) LIKELY.size else it } }
-        return ranked.firstOrNull()?.ipv4?.firstOrNull(::isPrivate)
-    }
+    fun hotspot(ifaces: List<Iface>, listed: Set<String>): String? = hotspots(ifaces, listed).firstOrNull()?.second
+
+    /**
+     * Every interface that could be the hotspot, as (name, address), likeliest first. All are
+     * served: a phone can have more than one - HyperOS keeps links for its own sharing - and
+     * which one the hotspot is on can change from one day to the next.
+     */
+    fun hotspots(ifaces: List<Iface>, listed: Set<String>): List<Pair<String, String>> = ifaces
+        .filter { i -> i.up && i.name !in listed && !NEVER.containsMatchIn(i.name) && i.ipv4.any(::isPrivate) }
+        .sortedWith(compareBy({ i -> LIKELY.indexOfFirst { it.containsMatchIn(i.name) }.let { if (it < 0) LIKELY.size else it } }, { it.name }))
+        .map { it.name to it.ipv4.first(::isPrivate) }
+        .distinctBy { it.second }
 
     /** 10/8, 172.16/12 and 192.168/16: a local network's addresses, never the internet's. */
     fun isPrivate(ip: String): Boolean {
@@ -74,7 +87,8 @@ object LocalAddresses {
                 )
             }
         }.getOrDefault(emptyList())
-        val hotspot = hotspot(ifaces, listed)?.takeIf { it != wifi }
-        return listOfNotNull(wifi?.let { Address(Kind.WIFI, it) }, hotspot?.let { Address(Kind.HOTSPOT, it) })
+        val others = hotspots(ifaces, listed).filter { it.second != wifi }
+            .mapIndexed { i, (name, ip) -> Address(if (i == 0) Kind.HOTSPOT else Kind.OTHER, ip, name) }
+        return listOfNotNull(wifi?.let { Address(Kind.WIFI, it) }) + others
     }
 }

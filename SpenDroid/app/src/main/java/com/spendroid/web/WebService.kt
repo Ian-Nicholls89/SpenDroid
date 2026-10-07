@@ -27,14 +27,14 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
 /**
- * "Open on my computer": the page, served while the user has it on, and only over Wi-Fi. A
- * notification says so and stops it. It stops by itself when the Wi-Fi goes, and after 15
- * minutes with no visit, so it is never left running by accident.
+ * "Open on my computer": the page, served while the user has it on, over the Wi-Fi the phone has
+ * joined or the hotspot it shares. A notification says so and stops it. It stops by itself when
+ * neither is left, and after 15 minutes with no visit, so it is never left running by accident.
  */
 class WebService : Service() {
 
-    private val servers = mutableListOf<WebServer>()
-    private var hosts: Set<String> = emptySet()
+    /** Each address served, with its server and port. */
+    private val servers = mutableMapOf<String, Pair<WebServer, Int>>()
     private val handler = Handler(Looper.getMainLooper())
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var callback: ConnectivityManager.NetworkCallback? = null
@@ -43,44 +43,60 @@ class WebService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (servers.isNotEmpty()) return START_NOT_STICKY
-        val places = LocalAddresses.find(this)
-        // One server for each place - the Wi-Fi joined and the hotspot shared - so the computer
-        // can be on either. Each answers only to its own address.
-        val served = places.mapNotNull { place ->
-            PORTS.firstNotNullOfOrNull { port ->
-                runCatching { WebServer(applicationContext, place.host, port).also { it.start(SOCKET_TIMEOUT, false) } }.getOrNull()
-                    ?.let { server -> servers += server; WebAccess.Served(place.kind.label, "${place.host}:$port") }
-            }
-        }
-        if (served.isEmpty()) {
+        if (follow().isEmpty()) {
             WebAccess.stopped()
             stopSelf()
             return START_NOT_STICKY
         }
-        hosts = places.map { it.host }.toSet()
-        WebAccess.started(served)
         startForegroundCompat(notification())
         // The notification follows the code, which changes as it is used.
         scope.launch { WebAccess.running.collectLatest { if (it != null) notify(notification()) } }
-        watchWifi()
-        handler.postDelayed(idleCheck, IDLE_CHECK_MS)
+        watchNetworks()
+        handler.postDelayed(addressCheck, ADDRESS_CHECK_MS)
         return START_NOT_STICKY
     }
 
-    private val idleCheck = object : Runnable {
+    /**
+     * Serves on every address the phone has right now and no other: one server for each - the
+     * Wi-Fi joined, the hotspot, anything else that could be it - each answering only to its own
+     * address. Run again as things change, it keeps the servers still wanted, starts any new, and
+     * stops any gone: a hotspot switched off and on comes back on a new address, which Android
+     * announces nowhere an app can hear, so it is looked for every few seconds.
+     */
+    private fun follow(): List<WebAccess.Served> {
+        val places = LocalAddresses.find(this)
+        val wanted = places.map { it.host }.toSet()
+        servers.keys.filter { it !in wanted }.forEach { host -> servers.remove(host)?.let { runCatching { it.first.stop() } } }
+        places.filter { it.host !in servers }.forEach { place ->
+            PORTS.firstNotNullOfOrNull { port ->
+                runCatching { WebServer(applicationContext, place.host, port).also { it.start(SOCKET_TIMEOUT, false) } }.getOrNull()?.let { it to port }
+            }?.let { servers[place.host] = it }
+        }
+        val served = places.mapNotNull { place -> servers[place.host]?.let { WebAccess.Served(place.label, "${place.host}:${it.second}") } }
+        if (served.isNotEmpty()) {
+            if (WebAccess.running.value == null) WebAccess.started(served)
+            else if (WebAccess.running.value?.addresses != served) WebAccess.moved(served)
+        }
+        return served
+    }
+
+    private val addressCheck = object : Runnable {
         override fun run() {
             // Unused for 15 minutes, or nowhere left to serve - the Wi-Fi left and the hotspot
-            // switched off, which Android announces nowhere an app can hear - and it stops.
-            val gone = LocalAddresses.find(this@WebService).none { it.host in hosts }
-            if (gone || System.currentTimeMillis() - WebAccess.lastActivity > IDLE_MS) stopSelf() else handler.postDelayed(this, IDLE_CHECK_MS)
+            // switched off - and it stops.
+            if (follow().isEmpty() || System.currentTimeMillis() - WebAccess.lastActivity > IDLE_MS) stopSelf()
+            else handler.postDelayed(this, ADDRESS_CHECK_MS)
         }
     }
 
-    private fun watchWifi() {
+    private fun watchNetworks() {
         val cm = getSystemService(ConnectivityManager::class.java)
         val cb = object : ConnectivityManager.NetworkCallback() {
             override fun onLost(network: Network) {
-                handler.post { if (LocalAddresses.find(this@WebService).none { it.host in hosts }) stopSelf() }
+                handler.post { if (follow().isEmpty()) stopSelf() }
+            }
+            override fun onAvailable(network: Network) {
+                handler.post { follow() }
             }
         }
         callback = cb
@@ -90,7 +106,7 @@ class WebService : Service() {
     override fun onDestroy() {
         handler.removeCallbacksAndMessages(null)
         callback?.let { runCatching { getSystemService(ConnectivityManager::class.java).unregisterNetworkCallback(it) } }
-        servers.forEach { runCatching { it.stop() } }
+        servers.values.forEach { runCatching { it.first.stop() } }
         servers.clear()
         WebAccess.stopped()
         scope.cancel()
@@ -134,7 +150,7 @@ class WebService : Service() {
         private val PORTS = 8765..8770
         private const val SOCKET_TIMEOUT = 15_000
         private const val IDLE_MS = 15 * 60 * 1000L
-        private const val IDLE_CHECK_MS = 60 * 1000L
+        private const val ADDRESS_CHECK_MS = 10 * 1000L
 
         fun start(context: Context) = ContextCompat.startForegroundService(context, Intent(context, WebService::class.java))
 

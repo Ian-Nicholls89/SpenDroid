@@ -71,6 +71,11 @@ internal fun WebSection() {
                     if (r.addresses.size > 1) Text(place.label, style = MaterialTheme.typography.labelSmall, color = Charcoal.Muted, modifier = Modifier.padding(top = 4.dp))
                     Text("http://${place.address}", fontFamily = Lato, fontWeight = FontWeight.Black, fontSize = 20.sp)
                 }
+                if (r.addresses.size > 1) Text(
+                    // The computer reaches the phone at its own gateway: the address that starts the same.
+                    "Use the one that starts like your computer's own address. On Windows, ipconfig shows it as the Default Gateway.",
+                    style = MaterialTheme.typography.labelSmall, color = Charcoal.Muted, modifier = Modifier.padding(top = 6.dp),
+                )
                 Spacer(Modifier.height(10.dp))
                 Text("Then this code", style = MaterialTheme.typography.labelMedium, color = Charcoal.Muted)
                 Text(r.code.chunked(3).joinToString(" "), fontFamily = Lato, fontWeight = FontWeight.Black, fontSize = 34.sp, letterSpacing = 4.sp, color = MaterialTheme.colorScheme.primary)
