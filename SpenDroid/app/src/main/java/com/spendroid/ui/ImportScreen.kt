@@ -46,7 +46,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -172,6 +171,8 @@ fun ImportScreen(
     }
     BackHandler(onBack = back)
 
+    // Drawn over the app rather than inside its frame, so the frame's white text has to be set here.
+    androidx.compose.runtime.CompositionLocalProvider(androidx.compose.material3.LocalContentColor provides Charcoal.Text) {
     Box(Modifier.fillMaxSize().background(Charcoal.Background)) {
         HeaderGlow(accent, height = 260.dp, strength = 0.36f)
         Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
@@ -236,16 +237,18 @@ fun ImportScreen(
                     Step.DONE -> onClose()
                 }
             }
+            // Waiting reads as waiting - grey, its words still legible - rather than fading away.
             Box(
                 Modifier.padding(14.dp).fillMaxWidth().clip(RoundedCornerShape(14.dp))
-                    .background(accent).alpha(if (enabled) 1f else 0.45f)
+                    .background(if (enabled) accent else Charcoal.PanelHigh)
                     .clickable(enabled = enabled, onClick = action)
                     .padding(vertical = 15.dp),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(label, color = Color(0xFF111111), fontWeight = FontWeight.Black, style = MaterialTheme.typography.titleSmall)
+                Text(label, color = if (enabled) Color(0xFF111111) else Charcoal.Muted, fontWeight = FontWeight.Black, style = MaterialTheme.typography.titleSmall)
             }
         }
+    }
     }
 }
 
@@ -322,6 +325,7 @@ internal fun FileStep(
                     style = MaterialTheme.typography.labelSmall, color = Charcoal.Muted,
                 )
             }
+            Spacer(Modifier.width(10.dp))
             Text(if (loaded == null) "Choose" else "Change", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelLarge)
         }
         problem?.let { Text(it, color = Charcoal.Bad, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp)) }
@@ -346,7 +350,7 @@ internal fun FileStep(
                 RadioButton(selected = a.id == accountId, onClick = { onAccount(a.id) })
                 Box(Modifier.size(14.dp).clip(RoundedCornerShape(4.dp)).background(colourOf(a, accounts)))
                 Spacer(Modifier.width(10.dp))
-                Text(a.label, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                Text(a.label.trim(), style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
                 Text(a.institutionName, style = MaterialTheme.typography.labelSmall, color = Charcoal.Muted)
             }
         }

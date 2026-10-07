@@ -233,4 +233,23 @@ class ScreensTest {
         compose.waitForIdle()
         compose.onRoot().captureRoboImage("build/screenshots/import-check.png")
     }
+
+    /** The import as the app shows it - over everything, outside the frame - from a shared file. */
+    @Test
+    @Config(qualifiers = "w411dp-h900dp-xxhdpi")
+    fun phoneImportAsShown() {
+        val state = Sample.state()
+        val file = java.io.File.createTempFile("statement", ".csv")
+        file.writeText(javaClass.classLoader!!.getResource("statements/unknown.csv")!!.readText())
+        compose.setContent {
+            BudgetTheme {
+                com.spendroid.ui.ImportScreen(
+                    com.spendroid.ui.ImportRequest(accountId = state.accounts[1].id, uri = android.net.Uri.fromFile(file)),
+                    state.accounts, onClose = {}, onAdded = {},
+                )
+            }
+        }
+        compose.waitUntil(5_000) { compose.onAllNodes(androidx.compose.ui.test.hasText("statement", substring = true)).fetchSemanticsNodes().isNotEmpty() }
+        compose.onRoot().captureRoboImage("build/screenshots/import-shown.png")
+    }
 }
