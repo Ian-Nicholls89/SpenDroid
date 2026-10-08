@@ -242,7 +242,7 @@ internal object WatchSync {
                             s.upcomingFixed.map { p ->
                                 DataMap().apply {
                                     val isCard = p.rule.key.startsWith(CARD_BILL_KEY_PREFIX)
-                                    putString("name", p.rule.payee)
+                                    putString("name", p.rule.payee.tidyPayee())
                                     putString("date", (if (isCard) "~" else "") + p.dueDate.format(SHORT_DAY))
                                     putString("amount", money(p.amountMinor))
                                     putString("short", (if (p.rule.isVariable) "about " else "") + poundsOnly(p.amountMinor, p.rule.currency))

@@ -1,5 +1,6 @@
 package com.spendroid.widget
 
+import com.spendroid.ui.tidyPayee
 import android.content.Context
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
@@ -129,7 +130,7 @@ class AvailableToSpendWidget : GlanceAppWidget() {
                 .filterNot { it.rule.key.startsWith(CARD_BILL_KEY_PREFIX) }
                 .map { payment ->
                 Line(
-                    label = payment.rule.payee,
+                    label = payment.rule.payee.tidyPayee(),
                     amount = formatMoney(payment.amountMinor, payment.rule.currency),
                     due = payment.dueDate.format(DUE_FORMAT),
                 )

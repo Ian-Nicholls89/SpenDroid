@@ -35,4 +35,10 @@ fun recurringAmount(totalMinor: Long, perOccurrence: Int, currency: String, vari
  * 90-day window never sync again - without this, the accumulated history keeps its padding
  * for good.
  */
-fun String.tidyPayee(): String = trim().replace(Regex("\\s+"), " ")
+fun String.tidyBankName(): String = trim().replace(Regex("\\s+"), " ")
+
+/**
+ * A payee's name as shown: the user's own name for it where they've given one, else the bank's,
+ * tidied. Every screen, widget, the watch and the computer page show names through this.
+ */
+fun String.tidyPayee(): String = tidyBankName().let { com.spendroid.data.PayeeNames.nameFor(it) ?: it }

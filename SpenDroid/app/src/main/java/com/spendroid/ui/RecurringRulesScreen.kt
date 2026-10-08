@@ -248,7 +248,7 @@ private fun UpcomingRow(p: com.spendroid.domain.UpcomingPayment, today: LocalDat
     ) {
         ArtTile(payeeColour(p.rule.payee), size = 44.dp, height = 56.dp) {
             if (isCard) Icon(Icons.Filled.CreditCard, contentDescription = null, tint = Color.White, modifier = Modifier.size(22.dp))
-            else Monogram(p.rule.payee, 44.dp)
+            else Monogram(p.rule.payee.tidyPayee(), 44.dp)
         }
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
@@ -299,7 +299,7 @@ private fun ManualRuleRow(
             ArtTile(payeeColour(rule.payee), size = 38.dp) { Monogram(rule.payee, 38.dp) }
             Spacer(Modifier.width(10.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text(rule.payee, style = MaterialTheme.typography.titleSmall, maxLines = 1)
+                Text(rule.payee.tidyPayee(), style = MaterialTheme.typography.titleSmall, maxLines = 1)
                 Text(
                     "${describeManualRule(rule)} · added by you · " + (payer?.let { "from ${it.label}" } ?: "account not set"),
                     style = MaterialTheme.typography.labelSmall,

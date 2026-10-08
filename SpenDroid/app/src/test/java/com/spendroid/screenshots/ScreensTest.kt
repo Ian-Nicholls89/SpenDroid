@@ -1,5 +1,6 @@
 package com.spendroid.screenshots
 
+import androidx.compose.ui.test.performClick
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -251,5 +252,29 @@ class ScreensTest {
         }
         compose.waitUntil(5_000) { compose.onAllNodes(androidx.compose.ui.test.hasText("statement", substring = true)).fetchSemanticsNodes().isNotEmpty() }
         compose.onRoot().captureRoboImage("build/screenshots/import-shown.png")
+    }
+
+    @OptIn(com.github.takahirom.roborazzi.ExperimentalRoborazziApi::class)
+    @Test
+    @Config(qualifiers = "w411dp-h1100dp-xxhdpi")
+    fun transactionRenamed() {
+        val state = Sample.state()
+        val tx = state.transactions.first { it.payee == "PORTON STORES" }
+        com.spendroid.data.PayeeNames.load(androidx.test.core.app.ApplicationProvider.getApplicationContext())
+        com.spendroid.data.PayeeNames.set("PORTON STORES", "Corner shop")
+        try {
+            compose.setContent {
+                BudgetTheme {
+                    com.spendroid.ui.TransactionDetailSheet(
+                        transaction = tx, userRules = emptyList(), onDismiss = {}, onOverrideCategory = { _, _ -> },
+                        onAlwaysCategorise = { _, _ -> }, onMarkTransfer = { _, _ -> }, accountLabel = "Personal Account",
+                    )
+                }
+            }
+            compose.waitForIdle()
+            com.github.takahirom.roborazzi.captureScreenRoboImage("build/screenshots/transaction-renamed.png")
+        } finally {
+            com.spendroid.data.PayeeNames.set("PORTON STORES", null)
+        }
     }
 }

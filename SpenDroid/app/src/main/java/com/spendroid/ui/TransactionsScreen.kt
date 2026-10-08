@@ -144,6 +144,7 @@ fun TransactionsScreen(
         // rule didn't reach a list filtered by category until something else changed.
         pendingOnly,
         state.categoryRules,
+        com.spendroid.data.PayeeNames.version,
         state.budget?.cardPayerKeys,
         state.budget?.cardPaymentKeys,
         state.budget?.creditCardAccountIds,
@@ -758,7 +759,7 @@ internal fun visibleTransactions(
     cardPaymentKeys: Set<String> = emptySet(),
     creditCardAccountIds: Set<String> = emptySet(),
 ): List<TransactionEntity> {
-    val query = filters.query.tidyPayee().lowercase()
+    val query = filters.query.tidyBankName().lowercase()
     return transactions.filter { tx ->
         val id = "${tx.accountId}|${tx.transactionId}"
         // Paying a card posts a credit on the card and a debit on the account that paid.
@@ -786,6 +787,8 @@ internal fun visibleTransactions(
             (
                 query.isEmpty() ||
                     tx.payee.tidyPayee().lowercase().contains(query) ||
+                    // The bank's own name finds it too, renamed or not.
+                    tx.payee.tidyBankName().lowercase().contains(query) ||
                     tx.description?.tidyPayee()?.lowercase()?.contains(query) == true
                 )
     }

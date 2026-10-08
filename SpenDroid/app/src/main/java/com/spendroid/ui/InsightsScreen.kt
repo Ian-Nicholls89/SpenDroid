@@ -170,7 +170,7 @@ fun InsightsScreen(
             )
             Spacer(Modifier.height(12.dp))
         }
-        val payees = remember(windowed) { topPayees(windowed, state.budget?.cardPaymentKeys.orEmpty()) }
+        val payees = remember(windowed, com.spendroid.data.PayeeNames.version) { topPayees(windowed, state.budget?.cardPaymentKeys.orEmpty()) }
         if (payees.isNotEmpty()) {
             val first = payees.first().first
             TopFive(

@@ -440,7 +440,7 @@ private fun UpcomingPoster(payment: UpcomingPayment, state: RootUiState, budget:
         colour = colour,
         glyph = {
             if (isCard) Icon(Icons.Filled.CreditCard, contentDescription = null, tint = Color.White, modifier = Modifier.size(30.dp))
-            else Monogram(payment.rule.payee, 52.dp)
+            else Monogram(payment.rule.payee.tidyPayee(), 52.dp)
         },
     )
 }

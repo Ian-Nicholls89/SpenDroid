@@ -120,7 +120,7 @@ fun RoundupScreen(state: RootUiState, onBack: () -> Unit, onSeeQuestions: () -> 
                     ) {
                         ArtTile(payeeColour(p.rule.payee), size = 38.dp) {
                             if (isCard) Icon(Icons.Filled.CreditCard, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
-                            else Monogram(p.rule.payee, 38.dp)
+                            else Monogram(p.rule.payee.tidyPayee(), 38.dp)
                         }
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {

@@ -1,5 +1,6 @@
 package com.spendroid.widget
 
+import com.spendroid.ui.tidyPayee
 import android.content.Context
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
@@ -89,7 +90,7 @@ class PaydayTimelineWidget : GlanceAppWidget() {
                         payment.rule.key.startsWith(CARD_BILL_KEY_PREFIX)
                 },
                 spoken = due.joinToString("; ") { payment ->
-                    "${payment.rule.payee}, ${formatMoney(payment.amountMinor, payment.rule.currency)}, " +
+                    "${payment.rule.payee.tidyPayee()}, ${formatMoney(payment.amountMinor, payment.rule.currency)}, " +
                         payment.dueDate.format(DAY_FORMAT)
                 },
                 billsTotal = formatMoney(due.sumOf { it.amountMinor }, snapshot.baseCurrency),

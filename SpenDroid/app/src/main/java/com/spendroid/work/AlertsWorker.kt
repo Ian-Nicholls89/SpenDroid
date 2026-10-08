@@ -1,5 +1,6 @@
 package com.spendroid.work
 
+import com.spendroid.ui.tidyPayee
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
@@ -157,7 +158,7 @@ class AlertsWorker(
         if (due.isEmpty()) return null
 
         val total = due.sumOf { it.amountMinor }
-        val names = due.joinToString(", ") { it.rule.payee }
+        val names = due.joinToString(", ") { it.rule.payee.tidyPayee() }
         val estimated = due.any { it.rule.key.startsWith(CARD_BILL_KEY_PREFIX) }
         val prefix = if (estimated) "About " else ""
         return "$prefix${formatMoney(total, snapshot.baseCurrency)} leaves tomorrow ($names). " +
@@ -204,7 +205,7 @@ class AlertsWorker(
 
         val multiple = abs(recent.amountMinor) / median
         return LargeTransaction(
-            "${formatMoney(recent.amountMinor, recent.currency)} at ${recent.payee} — " +
+            "${formatMoney(recent.amountMinor, recent.currency)} at ${recent.payee.tidyPayee()} — " +
                 "about ${multiple}× your usual transaction.",
             keys,
         )

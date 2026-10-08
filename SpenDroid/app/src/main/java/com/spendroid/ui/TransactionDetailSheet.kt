@@ -27,6 +27,9 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.foundation.clickable
+import androidx.compose.material.icons.filled.Edit
+import kotlinx.coroutines.launch
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -92,8 +95,14 @@ fun TransactionDetailSheet(
     val visual = current.visual
     val seen = transaction.transactionId.startsWith(NotificationSpend.SEEN_PREFIX)
     val name = transaction.payee.tidyPayee().ifBlank { "Unknown" }
+    val bankName = transaction.payee.tidyBankName()
+    val renamed = com.spendroid.data.PayeeNames.nameFor(bankName) != null
+    var renaming by rememberSaveable(transaction.transactionId) { mutableStateOf(false) }
     var choosing by rememberSaveable(transaction.transactionId) { mutableStateOf(false) }
 
+    if (renaming) {
+        RenameDialog(bankName, name.takeIf { renamed }, onDone = { renaming = false })
+    }
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState, containerColor = Charcoal.Background) {
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(bottom = 28.dp)) {
             // The hero: the category's colour washing down into the charcoal, the tile as a poster.
@@ -109,7 +118,24 @@ fun TransactionDetailSheet(
                     }
                     Spacer(Modifier.width(14.dp))
                     Column {
-                        Text(name, fontFamily = Lato, fontWeight = FontWeight.Black, fontSize = 23.sp, maxLines = 2)
+                        // Tap the name to give it one you'll recognise.
+                        Row(
+                            Modifier.clickable(enabled = bankName.isNotBlank()) { renaming = true },
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(name, fontFamily = Lato, fontWeight = FontWeight.Black, fontSize = 23.sp, maxLines = 2, modifier = Modifier.weight(1f, fill = false))
+                            if (bankName.isNotBlank()) {
+                                Icon(
+                                    Icons.Filled.Edit,
+                                    contentDescription = "Rename",
+                                    tint = Color.White.copy(alpha = 0.7f),
+                                    modifier = Modifier.padding(start = 8.dp).size(18.dp),
+                                )
+                            }
+                        }
+                        if (renamed) {
+                            Text(bankName, style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.7f), maxLines = 1)
+                        }
                         val day = runCatching { LocalDate.parse(transaction.bookingDate).format(LONG_DAY) }.getOrDefault(transaction.bookingDate)
                         Text(
                             listOfNotNull(day, accountLabel).joinToString(" · "),
@@ -399,4 +425,57 @@ private fun syncedLabel(epochMillis: Long): String =
 private fun ordinal(bookingDate: String): String {
     val day = runCatching { java.time.LocalDate.parse(bookingDate).dayOfMonth }.getOrElse { return "same day" }
     return ordinalOf(day)
+}
+
+/**
+ * Naming a payee: shown instead of the bank's name on every transaction from it, here, on the
+ * widgets, the watch and the computer page. Only what's shown changes - categories, regular
+ * payments and the figures go on as before.
+ */
+@Composable
+private fun RenameDialog(bankName: String, current: String?, onDone: () -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var text by rememberSaveable { mutableStateOf(current ?: bankName.lowercase().split(" ").joinToString(" ") { w -> w.replaceFirstChar { it.uppercase() } }) }
+    fun save(name: String?) {
+        com.spendroid.data.PayeeNames.set(bankName, name)
+        // The widgets and the watch show names too.
+        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Default).launch {
+            com.spendroid.widget.refreshWidgets(context.applicationContext)
+            com.spendroid.widget.refreshCardWidgets(context.applicationContext)
+        }
+        onDone()
+    }
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDone,
+        title = { Text("Give it a name") },
+        text = {
+            Column {
+                Text(
+                    "Shown instead of \"$bankName\" on every transaction from it - past and future, on your widgets, watch and computer too. Categories and bills aren't affected.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Charcoal.Muted,
+                )
+                Spacer(Modifier.height(12.dp))
+                androidx.compose.material3.OutlinedTextField(
+                    value = text,
+                    onValueChange = { text = it.take(60) },
+                    singleLine = true,
+                    label = { Text("Name") },
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(capitalization = androidx.compose.ui.text.input.KeyboardCapitalization.Words),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        },
+        confirmButton = {
+            androidx.compose.material3.TextButton(onClick = { save(text) }, enabled = text.isNotBlank()) { Text("Save") }
+        },
+        dismissButton = {
+            Row {
+                if (current != null) {
+                    androidx.compose.material3.TextButton(onClick = { save(null) }) { Text("Use the bank's name") }
+                }
+                androidx.compose.material3.TextButton(onClick = onDone) { Text("Cancel") }
+            }
+        },
+    )
 }

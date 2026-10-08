@@ -17,6 +17,7 @@ class BudgetApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        com.spendroid.data.PayeeNames.load(this)
         val db = Room.databaseBuilder(this, BudgetDb::class.java, "budget.db")
             .addMigrations(
                 BudgetDb.MIGRATION_1_2,
