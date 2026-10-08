@@ -140,6 +140,13 @@ fun TransactionsScreen(
         state.accountFilter,
         state.budget?.confirmedSettlementKeys,
         state.categoryFilter,
+        // Everything it reads: without these, Pending kept showing All's list, and a new category
+        // rule didn't reach a list filtered by category until something else changed.
+        pendingOnly,
+        state.categoryRules,
+        state.budget?.cardPayerKeys,
+        state.budget?.cardPaymentKeys,
+        state.budget?.creditCardAccountIds,
     ) {
         visibleTransactions(
             transactions = state.transactions,

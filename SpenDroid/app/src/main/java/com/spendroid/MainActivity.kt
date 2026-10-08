@@ -555,10 +555,7 @@ class MainActivity : ComponentActivity() {
         super.onStart()
         // An import allowed from its notification while the app was in the background shows at once.
         viewModel.reloadLocal()
-        lifecycleScope.launch {
-            com.spendroid.widget.refreshWidgets(applicationContext)
-            com.spendroid.widget.refreshCardWidgets(applicationContext)
-        }
+        lifecycleScope.launch { com.spendroid.widget.refreshWidgetsIfStale(applicationContext) }
     }
 
     /** singleTask: a widget tap while the app is open arrives here rather than in onCreate. */

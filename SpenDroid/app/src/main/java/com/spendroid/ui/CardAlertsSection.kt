@@ -2,7 +2,6 @@ package com.spendroid.ui
 
 import android.content.Context
 import android.content.Intent
-import android.graphics.drawable.Drawable
 import android.net.Uri
 import android.provider.Settings
 import androidx.compose.foundation.Image
@@ -57,14 +56,18 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
-/** An app from the launcher, for picking bank apps. */
-internal data class LauncherApp(val packageName: String, val label: String, val icon: Drawable?)
+/** An app from the launcher, for picking bank apps. Its icon is loaded only when it's shown. */
+internal data class LauncherApp(val packageName: String, val label: String)
 
+/**
+ * Every app with a launcher icon, by name. Slow - a phone has a hundred or more - so it's read
+ * off the main thread, and without the icons: loading every one made the tab hang on opening.
+ */
 internal fun launcherApps(context: Context): List<LauncherApp> {
     val pm = context.packageManager
     val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
     return pm.queryIntentActivities(intent, 0)
-        .map { LauncherApp(it.activityInfo.packageName, it.loadLabel(pm).toString(), runCatching { it.loadIcon(pm) }.getOrNull()) }
+        .map { LauncherApp(it.activityInfo.packageName, it.loadLabel(pm).toString()) }
         .filter { it.packageName != context.packageName }
         .distinctBy { it.packageName }
         .sortedBy { it.label.lowercase() }
@@ -97,7 +100,9 @@ internal fun CardAlertsSection(
     LaunchedEffect(lifecycle) {
         lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) { access = hasAccess(context) }
     }
-    val apps = remember { launcherApps(context) }
+    val apps by androidx.compose.runtime.produceState(emptyList<LauncherApp>()) {
+        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { launcherApps(context) }
+    }
     var picking by rememberSaveable { mutableStateOf(false) }
     var showSamples by rememberSaveable { mutableStateOf(false) }
 
@@ -155,7 +160,7 @@ internal fun CardAlertsSection(
         sources.forEach { source ->
             Spacer(Modifier.height(10.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                AppIcon(apps.firstOrNull { it.packageName == source.packageName }?.icon)
+                AppIcon(source.packageName)
                 Spacer(Modifier.width(8.dp))
                 Text(source.label, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
                 TextButton(onClick = { onSaveSources(sources - source) }) { Text("Remove") }
@@ -286,9 +291,16 @@ private fun hasAccess(context: Context): Boolean =
     context.packageName in NotificationManagerCompat.getEnabledListenerPackages(context)
 
 @Composable
-private fun AppIcon(icon: Drawable?) {
-    val bitmap = remember(icon) { icon?.let { runCatching { it.toBitmap(64, 64).asImageBitmap() }.getOrNull() } }
-    if (bitmap != null) Image(bitmap, contentDescription = null, modifier = Modifier.size(28.dp))
+private fun AppIcon(packageName: String) {
+    val context = LocalContext.current
+    // Loaded as it comes into view, off the main thread.
+    val bitmap by androidx.compose.runtime.produceState<androidx.compose.ui.graphics.ImageBitmap?>(null, packageName) {
+        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            runCatching { context.packageManager.getApplicationIcon(packageName).toBitmap(64, 64).asImageBitmap() }.getOrNull()
+        }
+    }
+    val shown = bitmap
+    if (shown != null) Image(shown, contentDescription = null, modifier = Modifier.size(28.dp))
     else Spacer(Modifier.size(28.dp))
 }
 
@@ -314,7 +326,7 @@ private fun AppPicker(apps: List<LauncherApp>, onPick: (LauncherApp) -> Unit, on
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier.fillMaxWidth().clickable { onPick(app) }.padding(vertical = 8.dp),
                         ) {
-                            AppIcon(app.icon)
+                            AppIcon(app.packageName)
                             Spacer(Modifier.width(10.dp))
                             Text(app.label, style = MaterialTheme.typography.bodyLarge)
                         }

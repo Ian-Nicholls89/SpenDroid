@@ -654,7 +654,22 @@ class AvailableToSpendWidgetReceiver : GlanceAppWidgetReceiver() {
 }
 
 /** Refreshes every placed widget. Called after a sync, when the figures have actually moved. */
+/** When the widgets were last redrawn, in this process. */
+@Volatile private var lastRefreshAt = 0L
+
+/**
+ * Redraws the widgets and the watch unless that was done in the last [maxAgeMs]. For opening
+ * the app: anything that changes the figures - a sync, a card alert, an import - redraws them
+ * itself, so on opening there's only the clock to catch up with, and every open needn't redo it.
+ */
+suspend fun refreshWidgetsIfStale(context: Context, maxAgeMs: Long = 15 * 60 * 1000L) {
+    if (System.currentTimeMillis() - lastRefreshAt < maxAgeMs) return
+    refreshWidgets(context)
+    refreshCardWidgets(context)
+}
+
 suspend fun refreshWidgets(context: Context) {
+    lastRefreshAt = System.currentTimeMillis()
     // Worked out once, fresh, for everything this refresh draws.
     runCatching { SharedSnapshot.fresh(context) }
     runCatching { AvailableToSpendWidget().updateAll(context) }

@@ -101,16 +101,16 @@ object WebImport {
     }
 
     /** The user's answer, from the notification. Allowing adds the rows as one batch. */
-    fun answer(context: Context, id: String, allow: Boolean) {
+    fun answer(context: Context, id: String, allow: Boolean): kotlinx.coroutines.Job? {
         NotificationManagerCompat.from(context).cancel(NOTIFICATION_ID)
-        val p = synchronized(pending) { pending[id] } ?: return
-        if (p.status != Status.WAITING) return
+        val p = synchronized(pending) { pending[id] } ?: return null
+        if (p.status != Status.WAITING) return null
         if (!allow || System.currentTimeMillis() - p.at > EXPIRY_MS) {
             p.status = if (allow) Status.EXPIRED else Status.CANCELLED
-            return
+            return null
         }
         p.status = Status.ALLOWED
-        CoroutineScope(Dispatchers.IO).launch { add(context, p.accountId, p.fileName, p.rows, p.layout, p.id) }
+        return CoroutineScope(Dispatchers.IO).launch { add(context, p.accountId, p.fileName, p.rows, p.layout, p.id) }
     }
 
     /**
@@ -267,6 +267,11 @@ object WebImport {
 /** Allow or Cancel, from the notification. */
 class WebImportReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        WebImport.answer(context, intent.getStringExtra("id") ?: return, intent.getBooleanExtra("allow", false))
+        val id = intent.getStringExtra("id") ?: return
+        // Kept alive until the rows are in: returning straight away let Android stop the app
+        // part-way through adding them, with the app in the background.
+        val result = goAsync()
+        val job = WebImport.answer(context, id, intent.getBooleanExtra("allow", false))
+        if (job == null) result.finish() else job.invokeOnCompletion { result.finish() }
     }
 }
