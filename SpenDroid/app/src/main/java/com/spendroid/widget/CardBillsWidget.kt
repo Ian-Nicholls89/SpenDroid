@@ -59,6 +59,12 @@ class CardBillsWidget : GlanceAppWidget() {
     override val sizeMode = SizeMode.Exact
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
+        // Locked, with figures hidden: the heading and the way in, nothing else.
+        if (!com.spendroid.data.Privacy(context).widgetFigures) {
+            val accent = widgetAccent(context)
+            provideContent { LockedBody("CARD BILLS", accent) }
+            return
+        }
         val cards = loadCards(context)
         val accent = widgetAccent(context)
         provideContent { Body(cards, accent) }

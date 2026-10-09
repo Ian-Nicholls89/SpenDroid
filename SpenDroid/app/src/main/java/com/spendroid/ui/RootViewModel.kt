@@ -124,6 +124,8 @@ data class RootUiState(
     val seenSpends: List<com.spendroid.data.db.SeenSpendEntity> = emptyList(),
     /** Rows the bank has stopped listing, put to the user. */
     val duplicateQuestions: List<com.spendroid.domain.DuplicateCheck.Question> = emptyList(),
+    /** The forecast to payday, any dip below zero ahead, and bills' price changes. */
+    val outlook: com.spendroid.domain.Outlook = com.spendroid.domain.Outlook.EMPTY,
     /** New rows held out of the budget until a question about them is answered. */
     val heldDuplicateKeys: Set<String> = emptySet(),
     /** How each payee has been filed by hand, for suggesting where a transaction belongs. */
@@ -899,6 +901,9 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
         // The same calculation the widgets and the watch show.
         val budget = repo.budgetSnapshotOf(all, budgetTime)
         val questions = com.spendroid.domain.DuplicateCheck.questions(repo.duplicateChecks(), all)
+        val outlook = runCatching {
+            repo.outlook(budget, all, com.spendroid.data.MoneyWatch(getApplication()).includeVariable)
+        }.getOrDefault(com.spendroid.domain.Outlook.EMPTY)
         _state.update {
             it.copy(
                 accounts = accounts,
@@ -924,6 +929,7 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
                 syncFailures = repo.syncFailures.first(),
                 seenSpends = repo.seenSpends.first(),
                 duplicateQuestions = questions,
+                outlook = outlook,
                 heldDuplicateKeys = repo.heldDuplicateKeys(),
                 categoryHistory = CategoryEngine.history(all),
                 connections = repo.connections.first(),

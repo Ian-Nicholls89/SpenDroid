@@ -131,6 +131,9 @@
         </activity>
 
 
+        <!-- "That's expected" on a bill that went up. -->
+        <receiver android:name=".work.MoneyWatchReceiver" android:exported="false" />
+
         <receiver
             android:name=".widget.PaydayTimelineWidgetReceiver"
             android:exported="true">
@@ -140,6 +143,17 @@
             <meta-data
                 android:name="android.appwidget.provider"
                 android:resource="@xml/payday_timeline_widget_info" />
+        </receiver>
+
+        <receiver
+            android:name=".widget.AheadWidgetReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/ahead_widget_info" />
         </receiver>
 
         <receiver

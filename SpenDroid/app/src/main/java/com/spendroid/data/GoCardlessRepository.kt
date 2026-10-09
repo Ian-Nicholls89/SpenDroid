@@ -784,6 +784,22 @@ class GoCardlessRepository private constructor(
      * The one budget calculation, for the app, the widgets and the watch alike. Each used to
      * gather its own inputs, and a setting one of them forgot showed as two different figures.
      */
+    /** What's ahead - the forecast, dips below zero, bills' price changes - from the same inputs as the budget. */
+    suspend fun outlook(snapshot: BudgetSnapshot?, all: List<TransactionEntity>, includeVariable: Boolean): com.spendroid.domain.Outlook {
+        val manual = manualRules.first().mapNotNull { it.toRecurringRule() }
+        return com.spendroid.domain.Outlook.of(
+            snapshot = snapshot,
+            accounts = accounts(),
+            rules = RecurringAnalyzer.analyze(all) + manual,
+            ignored = ignoredRules.first(),
+            transactions = all,
+            today = java.time.LocalDate.now(),
+            includeVariable = includeVariable,
+            calendar = com.spendroid.domain.WorkingDayCalendar(runCatching { bankHolidays() }.getOrDefault(emptyMap()).keys),
+            overrides = ruleOverrides.first().associateBy { it.ruleKey },
+        )
+    }
+
     suspend fun budgetSnapshotOf(all: List<TransactionEntity>, referenceTime: java.time.LocalDateTime): BudgetSnapshot {
         // A possible re-issue of a row already counted waits for the user before it counts.
         val held = DuplicateCheck.heldKeys(dao.duplicateChecks())

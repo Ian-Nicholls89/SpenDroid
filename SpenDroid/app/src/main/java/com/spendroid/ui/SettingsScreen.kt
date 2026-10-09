@@ -71,6 +71,7 @@ private enum class SettingsTab(val label: String) {
     PREFERENCES("Preferences"),
     SETUP("Setup & data"),
     CARD_ALERTS("Card alerts"),
+    PRIVACY("Privacy"),
     WATCH("Watch"),
     COMPUTER("Computer"),
     ABOUT("About"),
@@ -103,6 +104,10 @@ fun SettingsScreen(
     look: Look = Look(),
     onSetAccent: (com.spendroid.ui.theme.Accent) -> Unit = {},
     onSetAccountColours: (Boolean) -> Unit = {},
+    /** Proves the user can unlock before the app lock is turned on. */
+    onConfirmLock: ((Boolean) -> Unit) -> Unit = { it(true) },
+    onHideInRecents: (Boolean) -> Unit = {},
+    onReload: () -> Unit = {},
 ) {
     var selectedTab by rememberSaveable { mutableIntStateOf(0) }
     // A tab index saved before this row had three entries would otherwise index past the end.
@@ -147,6 +152,7 @@ fun SettingsScreen(
                         )
                     }
                     SyncingSection(state)
+                    BillsAndBalancesSection(onChanged = onReload)
                     Panel {
                         NotificationsSection(
                             selectedTime = selectedTime,
@@ -183,6 +189,8 @@ fun SettingsScreen(
                 }
 
                 SettingsTab.CARD_ALERTS -> Panel { cardAlerts() }
+
+                SettingsTab.PRIVACY -> PrivacySection(onConfirmLock, onHideInRecents)
 
                 SettingsTab.WATCH -> Panel { WatchSection() }
 

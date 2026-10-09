@@ -53,6 +53,12 @@ class ComingUpWidget : GlanceAppWidget() {
     private data class Content(val tiles: List<Tile>, val total: String?, val accent: Int)
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
+        // Locked, with figures hidden: the heading and the way in, nothing else.
+        if (!com.spendroid.data.Privacy(context).widgetFigures) {
+            val accent = widgetAccent(context)
+            provideContent { LockedBody("COMING UP", accent) }
+            return
+        }
         val content = load(context)
         provideContent { Body(content) }
     }

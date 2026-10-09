@@ -39,6 +39,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.ui.unit.dp
 import com.spendroid.data.db.ManualRecurringRuleEntity
 import androidx.compose.foundation.background
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
@@ -91,8 +92,24 @@ fun RecurringRulesScreen(
     accounts: List<com.spendroid.data.db.AccountEntity> = emptyList(),
     onSetManualPaidFrom: (ManualRecurringRuleEntity, String?) -> Unit = { _, _ -> },
     onDeleteManual: (ManualRecurringRuleEntity) -> Unit = {},
+    /** Each bill's latest change in price, by rule key. */
+    priceChanges: Map<String, com.spendroid.domain.PriceChanges.Change> = emptyMap(),
+    /** A bill to open straight away - tapped from its price-rise notification. */
+    openRuleKey: String? = null,
+    onOpenedRule: () -> Unit = {},
 ) {
     var editing by remember { mutableStateOf<RecurringRule?>(null) }
+    androidx.compose.runtime.LaunchedEffect(openRuleKey, rules) {
+        val rule = rules.firstOrNull { it.key == openRuleKey } ?: return@LaunchedEffect
+        editing = rule
+        onOpenedRule()
+    }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val showDrops = remember { com.spendroid.data.MoneyWatch(context).showDrops }
+    // A one-off isn't a rise; a drop shows only if asked for.
+    fun shownChange(key: String) = priceChanges[key]?.takeIf { c ->
+        (c.up || showDrops) && com.spendroid.data.MoneyWatch(context).decision(c.key) != com.spendroid.data.MoneyWatch.Decision.ONE_OFF
+    }
     val income = rules.filter { it.direction == Direction.IN }
     val fixed = rules.filter { it.direction == Direction.OUT }
     val manualIncome = manualRules.filter { it.direction == "IN" }
@@ -119,6 +136,7 @@ fun RecurringRulesScreen(
             rule = rule,
             override = overrides[rule.key],
             holidays = holidays,
+            change = priceChanges[rule.key],
             onDismiss = { editing = null },
             onSave = { anchorDay, shift, decemberDay ->
                 onSetOverride(rule.key, anchorDay, shift, decemberDay)
@@ -175,11 +193,13 @@ fun RecurringRulesScreen(
                 }
                 1 -> {
                     item { SectionHeading("Bills", Modifier.padding(horizontal = 18.dp, vertical = 6.dp), trailing = "switch one off to leave it out") }
+                    item { PriceSummary(fixed.filter { it.key !in ignored }.mapNotNull { shownChange(it.key) }, budget?.baseCurrency ?: "GBP", Modifier.padding(horizontal = 18.dp, vertical = 4.dp)) }
                     items(fixed.filter { it.key !in ignored }, key = { it.key }) { rule ->
                         RuleRow(
                             rule = rule,
                             ignored = false,
                             overridden = overrides.containsKey(rule.key),
+                            change = shownChange(rule.key),
                             onEdit = { editing = rule },
                         ) { onToggle(rule.key, it) }
                     }
@@ -358,6 +378,7 @@ private fun RuleRow(
     isPrimaryIncome: Boolean = false,
     canBePrimary: Boolean = false,
     overridden: Boolean = false,
+    change: com.spendroid.domain.PriceChanges.Change? = null,
     onEdit: () -> Unit = {},
     onSetPrimary: () -> Unit = {},
     onToggle: (Boolean) -> Unit,
@@ -423,6 +444,7 @@ private fun RuleRow(
                 },
                 maxLines = 1,
             )
+            change?.let { PriceChip(it, rule.currency) }
         }
 
         // Confidence as a bar rather than a percentage: the exact figure was never the point,
@@ -597,6 +619,7 @@ private fun RuleOverrideSheet(
     rule: RecurringRule,
     override: RuleOverrideEntity?,
     holidays: Set<LocalDate>,
+    change: com.spendroid.domain.PriceChanges.Change? = null,
     onDismiss: () -> Unit,
     onSave: (Int?, PaymentShift?, Int?) -> Unit,
 ) {
@@ -624,13 +647,14 @@ private fun RuleOverrideSheet(
     }.getOrNull()
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
-        Column(modifier = Modifier.padding(start = 20.dp, end = 20.dp, bottom = 28.dp)) {
+        Column(modifier = Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState()).padding(start = 20.dp, end = 20.dp, bottom = 28.dp)) {
             Text(rule.payee.tidyPayee(), style = MaterialTheme.typography.titleMedium)
             Text(
                 "Detected as ${describeRule(rule)}",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            change?.let { PriceHistory(it, rule.currency) }
 
             Spacer(Modifier.height(16.dp))
             OutlinedTextField(

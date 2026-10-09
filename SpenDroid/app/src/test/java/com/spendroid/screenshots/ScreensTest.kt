@@ -277,4 +277,63 @@ class ScreensTest {
             com.spendroid.data.PayeeNames.set("PORTON STORES", null)
         }
     }
+
+    /** 4.5: the forecast on Home, an overdraft warning, the forecast screen, price rises on Regular, the new settings and the lock. */
+    @OptIn(com.github.takahirom.roborazzi.ExperimentalRoborazziApi::class)
+    @Test
+    @Config(qualifiers = "w411dp-h1700dp-xxhdpi")
+    fun outlookScreens() {
+        val base = Sample.state()
+        val today = java.time.LocalDate.now()
+        val outlook = com.spendroid.domain.Outlook.of(base.budget, base.accounts, base.rules, emptySet(), base.transactions, today, false)
+        val joint = base.accounts.first { it.id == "acc-joint" }
+        val warning = com.spendroid.domain.Forecast.Warning(
+            joint, today.plusDays(12), 8_600,
+            com.spendroid.domain.Forecast.Event(today.plusDays(12), "MORTGAGE", -94_000, com.spendroid.domain.Forecast.Kind.BILL),
+            9_000,
+            com.spendroid.domain.Forecast.Event(today.plusDays(16), "FROM PERSONAL", 100_000, com.spendroid.domain.Forecast.Kind.TRANSFER_IN),
+        )
+        val voxi = base.rules.first { it.payee.contains("VOXI") }
+        val rise = com.spendroid.domain.PriceChanges.Change(
+            voxi.key, voxi.payee, 1_800, 2_200, today.minusDays(3), today.minusMonths(7), com.spendroid.domain.Cadence.MONTHLY,
+            (7 downTo 1).map { com.spendroid.domain.PriceChanges.Payment(today.minusMonths(it.toLong()).minusDays(3), 1_800) } +
+                com.spendroid.domain.PriceChanges.Payment(today.minusDays(3), 2_200),
+        )
+        val state = base.copy(outlook = outlook.copy(warnings = listOf(warning), priceChanges = mapOf(voxi.key to rise)))
+        val which = androidx.compose.runtime.mutableIntStateOf(0)
+        compose.setContent {
+            when (which.intValue) {
+                0 -> Frame(AppScreen.Home) {
+                    HomeScreen(state, onRefresh = {}, onRelink = {}, onSeeAllTransactions = {}, onSetBudgetGoal = { _, _ -> }, onLinkBank = {})
+                }
+                1 -> BudgetTheme { com.spendroid.ui.ForecastScreen(state, "acc-personal", onBack = {}) }
+                2 -> Frame(AppScreen.Rules) {
+                    com.spendroid.ui.RecurringRulesScreen(
+                        rules = state.rules, manualRules = emptyList(), ignored = emptySet(), onToggle = { _, _ -> }, onAddManual = {},
+                        budget = state.budget, priceChanges = state.outlook.priceChanges,
+                    )
+                }
+                3 -> Frame(AppScreen.Rules) {
+                    androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.padding(14.dp)) { com.spendroid.ui.PriceHistory(rise, "GBP") }
+                }
+                4 -> Frame(AppScreen.Settings) {
+                    androidx.compose.foundation.layout.Column(androidx.compose.ui.Modifier.padding(14.dp), verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(12.dp)) {
+                        com.spendroid.ui.BillsAndBalancesSection(onChanged = {})
+                        com.spendroid.ui.PrivacySection(onConfirmLock = { it(true) }, onHideInRecents = {})
+                    }
+                }
+                else -> BudgetTheme { com.spendroid.ui.LockScreen(onUnlock = {}) }
+            }
+        }
+        listOf("outlook-home", "outlook-forecast", "outlook-regular", "outlook-history", "outlook-settings", "outlook-lock").forEachIndexed { i, name ->
+            which.intValue = i
+            compose.waitForIdle()
+            // Regular opens on Upcoming; the price chips are on Bills.
+            if (i == 2) {
+                compose.onAllNodes(androidx.compose.ui.test.hasText("Bills")).let { it[it.fetchSemanticsNodes().size - 1] }.performClick()
+                compose.waitForIdle()
+            }
+            compose.onRoot().captureRoboImage("build/screenshots/$name.png")
+        }
+    }
 }

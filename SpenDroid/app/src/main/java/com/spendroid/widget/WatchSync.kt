@@ -47,7 +47,7 @@ internal object WatchSync {
 
     /** The roundup's lines under its headline, worded as the watch shows them. */
     internal fun roundupLines(s: com.spendroid.domain.BudgetSnapshot, toCheck: Int, today: java.time.LocalDate): List<String> {
-        val money = { minor: Long -> formatMoney(minor, s.baseCurrency) }
+        val money = { minor: Long -> if (hide) com.spendroid.data.Privacy.HIDDEN else formatMoney(minor, s.baseCurrency) }
         val tomorrow = today.plusDays(1)
         return buildList {
             add("Spent today ${money(s.spentToday)}")
@@ -72,7 +72,7 @@ internal object WatchSync {
      */
     suspend fun sendRoundup(context: Context, s: com.spendroid.domain.BudgetSnapshot, toCheck: Int) {
         runCatching {
-            val money = { minor: Long -> formatMoney(minor, s.baseCurrency) }
+            val money = { minor: Long -> if (hide) com.spendroid.data.Privacy.HIDDEN else formatMoney(minor, s.baseCurrency) }
             val lines = roundupLines(s, toCheck, java.time.LocalDate.now())
             val request = PutDataMapRequest.create(ROUNDUP_PATH).apply {
                 dataMap.putLong("at", System.currentTimeMillis())
@@ -87,11 +87,12 @@ internal object WatchSync {
     }
 
     suspend fun push(context: Context) {
+        hide = !com.spendroid.data.Privacy(context).watchFigures
         runCatching {
             val app = context.applicationContext as? BudgetApplication ?: return
             val repo = app.repository
             val s = SharedSnapshot.get(context) ?: return
-            val money = { minor: Long -> formatMoney(minor, s.baseCurrency) }
+            val money = { minor: Long -> if (hide) com.spendroid.data.Privacy.HIDDEN else formatMoney(minor, s.baseCurrency) }
             val elapsed = BudgetPace.elapsedFraction(s)
             val days = s.daysUntilNextIncome
 
@@ -309,5 +310,9 @@ internal object WatchSync {
 
     /** "£430": a complication has room for a few characters, not pence. As the widget does it. */
     private fun poundsOnly(minor: Long, currency: String): String =
-        formatMoney((minor / 100L) * 100L, currency).replace(Regex("[.,]00\\b"), "")
+        if (hide) com.spendroid.data.Privacy.HIDDEN
+        else formatMoney((minor / 100L) * 100L, currency).replace(Regex("[.,]00\\b"), "")
+
+    /** Figures hidden from the watch while SpenDroid is locked, if the user asks. */
+    @Volatile private var hide = false
 }

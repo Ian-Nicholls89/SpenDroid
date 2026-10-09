@@ -49,11 +49,13 @@ class DailyRoundupWorker(
         )
         manager.createNotificationChannel(channel)
 
+        // Locked, with figures hidden: that the roundup is ready, not what it says.
+        val shown = if (com.spendroid.data.Privacy(applicationContext).notificationFigures) body else "Your roundup is ready - open SpenDroid to see it."
         val notification = NotificationCompat.Builder(applicationContext, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setContentTitle("SpenDroid roundup")
-            .setContentText(body)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+            .setContentText(shown)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(shown))
             .setCategory(NotificationCompat.CATEGORY_REMINDER)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setContentIntent(openAppIntent(applicationContext, NOTIFICATION_ID, EXTRA_OPEN_ROUNDUP))

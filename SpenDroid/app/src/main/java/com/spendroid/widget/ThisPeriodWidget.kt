@@ -55,6 +55,12 @@ class ThisPeriodWidget : GlanceAppWidget() {
     override val sizeMode = SizeMode.Exact
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
+        // Locked, with figures hidden: the heading and the way in, nothing else.
+        if (!com.spendroid.data.Privacy(context).widgetFigures) {
+            val accent = widgetAccent(context)
+            provideContent { LockedBody("THIS PERIOD", accent) }
+            return
+        }
         val widgetId = GlanceAppWidgetManager(context).getAppWidgetId(id)
         val content = load(context, widgetId)
         val accent = widgetAccent(context)

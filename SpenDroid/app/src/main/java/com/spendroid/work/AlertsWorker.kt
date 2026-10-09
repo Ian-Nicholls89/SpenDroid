@@ -39,6 +39,11 @@ class AlertsWorker(
 
         val snapshot = repo.budgetSnapshot() ?: return Result.success()
 
+        // Bills that went up and accounts heading below zero: each its own notification, once.
+        runCatching {
+            MoneyWatchAlerts.check(applicationContext, repo.outlook(snapshot, transactions, com.spendroid.data.MoneyWatch(applicationContext).includeVariable))
+        }
+
         val goals = goalWarnings(repo, snapshot, transactions)
 
         val large = unusuallyLargeTransaction(
@@ -220,11 +225,13 @@ class AlertsWorker(
             },
         )
 
-        val body = alerts.joinToString("\n\n")
+        // Locked, with figures hidden: that there's something to look at, not what.
+        val figures = com.spendroid.data.Privacy(applicationContext).notificationFigures
+        val body = if (figures) alerts.joinToString("\n\n") else "Open SpenDroid to see ${if (alerts.size == 1) "it" else "them"}."
         val notification = NotificationCompat.Builder(applicationContext, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setContentTitle(if (alerts.size == 1) "SpenDroid" else "SpenDroid · ${alerts.size} things")
-            .setContentText(alerts.first())
+            .setContentText(if (figures) alerts.first() else body)
             .setStyle(NotificationCompat.BigTextStyle().bigText(body))
             .setContentIntent(openAppIntent(applicationContext, NOTIFICATION_ID))
             .setAutoCancel(true)

@@ -1,5 +1,7 @@
 package com.spendroid.ui
 
+import com.spendroid.domain.toRecurringRule
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -99,6 +101,8 @@ fun HomeScreen(
     onSetBudgetGoal: (Category, Long) -> Unit,
     onLinkBank: () -> Unit,
     onSeeAccount: (String) -> Unit = { onSeeAllTransactions() },
+    /** The forecast, for an account or - null - the budget's. */
+    onOpenForecast: (String?) -> Unit = {},
     /** Which page the hero opens on; for screenshots. */
     initialPage: Int = 0,
 ) {
@@ -159,8 +163,8 @@ fun HomeScreen(
             Spacer(Modifier.height(14.dp))
 
             when (page) {
-                is HeroPage.Account -> AccountBelow(state, page, colourOf(page.account, state.accounts), onRefresh, onSeeAccount)
-                else -> BudgetBelow(state, budget, onRefresh, onSeeAllTransactions)
+                is HeroPage.Account -> AccountBelow(state, page, colourOf(page.account, state.accounts), onRefresh, onSeeAccount, onOpenForecast)
+                else -> BudgetBelow(state, budget, onRefresh, onSeeAllTransactions, onOpenForecast)
             }
 
             state.linkProgress?.let { progress ->
@@ -321,7 +325,7 @@ private fun PagerDots(count: Int, current: Int, colour: Color) {
 }
 
 @Composable
-private fun BudgetBelow(state: RootUiState, budget: BudgetSnapshot, onRefresh: () -> Unit, onSeeAllTransactions: () -> Unit) {
+private fun BudgetBelow(state: RootUiState, budget: BudgetSnapshot, onRefresh: () -> Unit, onSeeAllTransactions: () -> Unit, onOpenForecast: (String?) -> Unit = {}) {
     val money = { minor: Long -> formatMoney(minor, budget.baseCurrency) }
     val pace = BudgetPace.of(budget)
     Panel(Modifier.padding(horizontal = 14.dp)) {
@@ -373,6 +377,15 @@ private fun BudgetBelow(state: RootUiState, budget: BudgetSnapshot, onRefresh: (
     Row(Modifier.padding(horizontal = 14.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         BigButton("Transactions", Icons.AutoMirrored.Filled.ReceiptLong, onSeeAllTransactions, Modifier.weight(1f))
         BigButton("Refresh", Icons.Filled.Refresh, onRefresh, Modifier.weight(1f))
+    }
+    // Any account heading below zero in the next month, then where the budget's account is heading.
+    state.outlook.warnings.forEach { w ->
+        Spacer(Modifier.height(12.dp))
+        HeadsUpCard(w, onOpen = { onOpenForecast(w.account.id) }, modifier = Modifier.padding(horizontal = 14.dp))
+    }
+    state.outlook.ahead?.let { ahead ->
+        Spacer(Modifier.height(12.dp))
+        AheadPanel(ahead, state.outlook.payday, budget.baseCurrency, onOpen = { onOpenForecast(ahead.accountId) }, modifier = Modifier.padding(horizontal = 14.dp))
     }
     if (budget.upcomingFixed.isNotEmpty()) {
         Spacer(Modifier.height(22.dp))
@@ -460,7 +473,7 @@ internal fun payeeColour(payee: String): Color {
 }
 
 @Composable
-private fun AccountBelow(state: RootUiState, page: HeroPage.Account, colour: Color, onRefresh: () -> Unit, onSeeAccount: (String) -> Unit) {
+private fun AccountBelow(state: RootUiState, page: HeroPage.Account, colour: Color, onRefresh: () -> Unit, onSeeAccount: (String) -> Unit, onOpenForecast: (String?) -> Unit = {}) {
     val row = page.row
     val bill = page.bill
     Panel(Modifier.padding(horizontal = 14.dp)) {
@@ -495,6 +508,21 @@ private fun AccountBelow(state: RootUiState, page: HeroPage.Account, colour: Col
             Modifier.weight(1f),
         )
         BigButton("Refresh", Icons.Filled.Refresh, onRefresh, Modifier.weight(1f))
+    }
+    // Where this account is heading, to payday - for money held, not a card.
+    val ahead = remember(page.account, state.rules, state.manualRules, state.ignoredRules, state.budget, state.transactions) {
+        if (page.account.accountType == AccountType.CREDIT_CARD || page.account.accountType == AccountType.PAYPAL) null
+        else com.spendroid.domain.Forecast.forAccount(
+            page.account, state.accounts,
+            (state.rules + state.manualRules.mapNotNull { it.toRecurringRule() }).filter { it.key !in state.ignoredRules },
+            state.ignoredRules, state.budget, state.transactions, java.time.LocalDate.now(),
+            (state.budget?.nextIncomeDate ?: java.time.LocalDate.now().plusDays(30)).plusDays(1),
+            com.spendroid.domain.WorkingDayCalendar(state.bankHolidays), state.ruleOverrides,
+        )
+    }
+    ahead?.let {
+        Spacer(Modifier.height(12.dp))
+        AheadPanel(it, state.budget?.nextIncomeDate, page.account.currency, onOpen = { onOpenForecast(page.account.id) }, modifier = Modifier.padding(horizontal = 14.dp))
     }
     val since = if (row.kind == PeriodRows.Kind.STATEMENT) bill?.statementClose else state.budget?.cycleStart
     val recent = remember(state.transactions, page.account.id, since) {

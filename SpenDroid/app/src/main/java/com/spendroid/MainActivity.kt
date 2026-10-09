@@ -179,7 +179,7 @@ internal fun PillNavigationBar(screens: List<AppScreen>, selected: AppScreen, on
     }
 }
 
-class MainActivity : ComponentActivity() {
+class MainActivity : androidx.fragment.app.FragmentActivity() {
 
     private val viewModel: RootViewModel by viewModels { RootViewModel.factory(application) }
 
@@ -202,15 +202,75 @@ class MainActivity : ComponentActivity() {
         return com.spendroid.ui.ImportRequest(uri = uri)
     }
 
+    /** From a notification: a bill's sheet to open on Regular, or an account's forecast. */
+    private val openRule = mutableStateOf<String?>(null)
+    private val openForecast = mutableStateOf<String?>(null)
+
+    private fun takeOpeners(intent: Intent?) {
+        intent?.getStringExtra(com.spendroid.work.MoneyWatchAlerts.EXTRA_OPEN_RULE)?.let { openRule.value = it }
+        intent?.getStringExtra(com.spendroid.work.MoneyWatchAlerts.EXTRA_OPEN_FORECAST)?.let { openForecast.value = it }
+    }
+
+    /** Locked behind Android's own fingerprint, face or PIN prompt until unlocked. */
+    private val locked = mutableStateOf(false)
+    private var prompting = false
+
+    /** Asks Android to confirm it's the phone's owner; [done] hears whether it was. */
+    private fun authenticate(title: String, done: (Boolean) -> Unit) {
+        if (prompting) return
+        prompting = true
+        val prompt = androidx.biometric.BiometricPrompt(
+            this,
+            androidx.core.content.ContextCompat.getMainExecutor(this),
+            object : androidx.biometric.BiometricPrompt.AuthenticationCallback() {
+                override fun onAuthenticationSucceeded(result: androidx.biometric.BiometricPrompt.AuthenticationResult) {
+                    prompting = false
+                    done(true)
+                }
+                override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                    prompting = false
+                    done(false)
+                }
+            },
+        )
+        prompt.authenticate(
+            androidx.biometric.BiometricPrompt.PromptInfo.Builder()
+                .setTitle(title)
+                .setAllowedAuthenticators(
+                    androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_WEAK or
+                        androidx.biometric.BiometricManager.Authenticators.DEVICE_CREDENTIAL,
+                )
+                .build(),
+        )
+    }
+
+    private fun unlock() = authenticate("Unlock SpenDroid") { ok ->
+        if (ok) {
+            locked.value = false
+            com.spendroid.data.Privacy.unlocked = true
+        }
+    }
+
+    /** A blank card in recent apps, and no screenshots, when the user asks for it. */
+    private fun applyHideInRecents(hide: Boolean) {
+        if (hide) window.addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
+        else window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
+    }
+
     /** A category tapped on a widget, waiting to be opened. */
     private val widgetCategory = mutableStateOf<String?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val privacy = com.spendroid.data.Privacy(this)
+        applyHideInRecents(privacy.hideInRecents)
+        // A fresh start - the phone restarted, the app was closed - is locked from the off.
+        if (privacy.lockEnabled && !com.spendroid.data.Privacy.unlocked) locked.value = true
         if (savedInstanceState == null) {
             widgetCategory.value = intent?.getStringExtra(MAIN_EXTRA_CATEGORY)
             showRoundup.value = intent?.getBooleanExtra(com.spendroid.work.EXTRA_OPEN_ROUNDUP, false) == true
             importRequest.value = importFrom(intent)
+            takeOpeners(intent)
         }
         enableEdgeToEdge(
             statusBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
@@ -220,12 +280,22 @@ class MainActivity : ComponentActivity() {
             val look by viewModel.look.collectAsStateWithLifecycle()
             BudgetTheme(accent = look.accent) {
             val glow = remember { GlowState() }
-            CompositionLocalProvider(LocalAccountColours provides look.accountColours, LocalGlow provides glow) {
+            // Locked, the app isn't drawn at all - so no sheet or dialog left open can show over the lock.
+            if (locked.value) com.spendroid.ui.LockScreen(onUnlock = ::unlock)
+            else CompositionLocalProvider(LocalAccountColours provides look.accountColours, LocalGlow provides glow) {
                 val state by viewModel.state.collectAsStateWithLifecycle()
                 var screenRoute by rememberSaveable { mutableStateOf(AppScreen.Home.route) }
                 val screen = AppScreen.from(screenRoute)
                 var showLinkDialog by remember { mutableStateOf(false) }
                 var showManualDialog by remember { mutableStateOf(false) }
+                // The forecast screen, for this account; "" for the budget's own.
+                var forecastFor by rememberSaveable { mutableStateOf<String?>(null) }
+                LaunchedEffect(openForecast.value) {
+                    openForecast.value?.let { forecastFor = it; openForecast.value = null }
+                }
+                LaunchedEffect(openRule.value) {
+                    if (openRule.value != null) screenRoute = AppScreen.Rules.route
+                }
 
                 val navigate: (AppScreen) -> Unit = { target -> screenRoute = target.route }
                 // Keeps each tab's scroll position and fields while another is showing, so
@@ -346,6 +416,7 @@ class MainActivity : ComponentActivity() {
                                                 viewModel.setAccountFilter(id)
                                                 navigate(AppScreen.Spending)
                                             },
+                                            onOpenForecast = { id -> forecastFor = id ?: "" },
                                         )
 
                                         AppScreen.Spending -> SpendingScreen(
@@ -414,6 +485,9 @@ class MainActivity : ComponentActivity() {
                                             accounts = state.accounts,
                                             onSetManualPaidFrom = viewModel::setManualRulePaidFrom,
                                             onDeleteManual = viewModel::deleteManualRule,
+                                            priceChanges = state.outlook.priceChanges,
+                                            openRuleKey = openRule.value,
+                                            onOpenedRule = { openRule.value = null },
                                         )
 
                                         AppScreen.Settings -> SettingsScreen(
@@ -433,6 +507,9 @@ class MainActivity : ComponentActivity() {
                                             look = look,
                                             onSetAccent = viewModel::setAccent,
                                             onSetAccountColours = viewModel::setAccountColours,
+                                            onConfirmLock = { done -> authenticate("Confirm it's you") { ok -> done(ok); if (ok) com.spendroid.data.Privacy.unlocked = true } },
+                                            onHideInRecents = ::applyHideInRecents,
+                                            onReload = viewModel::reloadLocal,
                                             cardAlerts = {
                                                 CardAlertsSection(
                                                     accounts = state.accounts,
@@ -474,6 +551,10 @@ class MainActivity : ComponentActivity() {
                             navigate(AppScreen.Spending)
                         },
                     )
+                }
+
+                forecastFor?.takeIf { state.hasCredentials }?.let { id ->
+                    com.spendroid.ui.ForecastScreen(state, id.ifEmpty { null }, onBack = { forecastFor = null })
                 }
 
                 importRequest.value?.takeIf { state.hasCredentials }?.let { request ->
@@ -553,9 +634,24 @@ class MainActivity : ComponentActivity() {
      */
     override fun onStart() {
         super.onStart()
+        // Away longer than the user allows, and it locks again.
+        val privacy = com.spendroid.data.Privacy(this)
+        val away = com.spendroid.data.Privacy.leftAt
+        if (privacy.lockEnabled && away > 0L && System.currentTimeMillis() - away >= privacy.lockAfter.millis) {
+            com.spendroid.data.Privacy.unlocked = false
+            locked.value = true
+        }
+        com.spendroid.data.Privacy.leftAt = 0L
         // An import allowed from its notification while the app was in the background shows at once.
         viewModel.reloadLocal()
         lifecycleScope.launch { com.spendroid.widget.refreshWidgetsIfStale(applicationContext) }
+    }
+
+    override fun onStop() {
+        super.onStop()
+        // Asking to unlock takes the app off screen on some phones; that isn't leaving it.
+        // Nor is turning the phone, which stops and restarts the screen.
+        if (!prompting && !locked.value && !isChangingConfigurations) com.spendroid.data.Privacy.leftAt = System.currentTimeMillis()
     }
 
     /** singleTask: a widget tap while the app is open arrives here rather than in onCreate. */
@@ -565,5 +661,6 @@ class MainActivity : ComponentActivity() {
         intent.getStringExtra(MAIN_EXTRA_CATEGORY)?.let { widgetCategory.value = it }
         if (intent.getBooleanExtra(com.spendroid.work.EXTRA_OPEN_ROUNDUP, false)) showRoundup.value = true
         importFrom(intent)?.let { importRequest.value = it }
+        takeOpeners(intent)
     }
 }
