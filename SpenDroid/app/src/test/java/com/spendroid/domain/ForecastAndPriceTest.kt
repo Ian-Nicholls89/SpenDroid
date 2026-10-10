@@ -121,4 +121,13 @@ class ForecastAndPriceTest {
         assertTrue(PriceChanges.all(listOf(variable), txs, today).isEmpty())
         assertNotNull(PriceChanges.all(listOf(variable), txs, today, includeVariable = true)[variable.key])
     }
+
+    @Test
+    fun `drifting below zero on everyday spending alone isn't blamed on a bill`() {
+        // £100 in the account, £20 a day of spending, and a small bill a few days in.
+        val small = AccountEntity("small", "Bank", "Small", "GBP", 10_000, 0L, AccountType.PERSONAL)
+        val txs = (1..60).map { tx("small", today.minusDays(it.toLong()), -2_000, "SHOP $it") }
+        val rules = listOf(rule("PHONE", -1_000, 14, "small", LocalDate.of(2026, 9, 14)))
+        assertTrue(Forecast.warnings(listOf(small), rules, emptySet(), null, txs, today, today.plusDays(31)).isEmpty())
+    }
 }

@@ -170,11 +170,10 @@ object Forecast {
         if ((account.balanceMinor ?: 0L) < 0L) return@mapNotNull null
         val result = forAccount(account, accounts, rules, ignored, snapshot, transactions, today, until, calendar, overrides) ?: return@mapNotNull null
         val first = result.firstBelowZero ?: return@mapNotNull null
-        // Only a dip a known payment causes: day-to-day spending alone running it down is the
-        // budget's to say, not a warning's.
-        val cause = result.days.filter { !it.date.isAfter(first.date) }.flatMap { it.events }
-            .filter { it.amountMinor < 0 }.maxByOrNull { -it.amountMinor + if (it.date == first.date) Long.MAX_VALUE / 2 else 0 }
-            ?: return@mapNotNull null
+        // Only a dip a known payment causes - one landing the day it goes under. Day-to-day
+        // spending alone running it down is the budget's to say, not a warning's, and naming some
+        // earlier bill as the cause would be wrong.
+        val cause = first.events.filter { it.amountMinor < 0 }.minByOrNull { it.amountMinor } ?: return@mapNotNull null
         val deepest = result.days.dropWhile { it.date.isBefore(first.date) }
             .takeWhile { it.balanceMinor < 0 }.minOf { it.balanceMinor }
         val nextIn = result.events.firstOrNull { it.date.isAfter(first.date) && it.amountMinor > 0 }

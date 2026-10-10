@@ -109,8 +109,14 @@ internal fun PrivacySection(onConfirmLock: (onDone: (Boolean) -> Unit) -> Unit, 
     }
     if (lock) {
         Panel {
-            SectionHeading("While locked")
-            SettingSwitch("Figures on widgets", "Off: the widgets say \"Locked\"", widgets) { widgets = it; privacy.widgetFigures = it; refreshAll(context) }
+            SectionHeading("Outside the app")
+            Text(
+                "With the lock on, these can hide your figures anywhere outside SpenDroid - all the time, as a widget can't tell when the app locks.",
+                style = MaterialTheme.typography.labelSmall,
+                color = Charcoal.Muted,
+                modifier = Modifier.padding(top = 4.dp),
+            )
+            SettingSwitch("Figures on widgets", "Off: they show £••• and \"Locked\"", widgets) { widgets = it; privacy.widgetFigures = it; refreshAll(context) }
             SettingSwitch("Figures in notifications", "Off: notifications without amounts", notifications) { notifications = it; privacy.notificationFigures = it }
             SettingSwitch("Figures on the watch", "Your watch locks with your wrist", watch) { watch = it; privacy.watchFigures = it; refreshAll(context) }
         }
@@ -157,7 +163,6 @@ private fun SmallChoice(label: String, on: Boolean, onClick: () -> Unit) {
  */
 @Composable
 fun LockScreen(onUnlock: () -> Unit) {
-    androidx.activity.compose.BackHandler(enabled = true) {}
     androidx.compose.runtime.LaunchedEffect(Unit) { onUnlock() }
     val accent = MaterialTheme.colorScheme.primary
     androidx.compose.foundation.layout.Box(
