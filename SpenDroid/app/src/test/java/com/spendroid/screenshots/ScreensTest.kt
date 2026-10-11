@@ -336,4 +336,32 @@ class ScreensTest {
             compose.onRoot().captureRoboImage("build/screenshots/$name.png")
         }
     }
+
+    /** 4.6: subscriptions inside Regular - the filter, the tag, the yearly cost, and the sheet. */
+    @Test
+    @Config(qualifiers = "w411dp-h1500dp-xxhdpi")
+    fun subscriptionScreens() {
+        val base = Sample.state()
+        val subs = com.spendroid.domain.Subscriptions.all(base.rules, base.transactions, base.accounts, emptyMap(), java.time.LocalDate.now())
+        val which = androidx.compose.runtime.mutableIntStateOf(0)
+        compose.setContent {
+            Frame(AppScreen.Rules) {
+                com.spendroid.ui.RecurringRulesScreen(
+                    rules = base.rules, manualRules = emptyList(), ignored = emptySet(), onToggle = { _, _ -> }, onAddManual = {},
+                    budget = base.budget, accounts = base.accounts, subscriptions = subs,
+                    openRuleKey = if (which.intValue == 2) base.rules.first { it.payee.contains("PUREGYM") }.key else null,
+                )
+            }
+        }
+        compose.waitForIdle()
+        compose.onAllNodes(androidx.compose.ui.test.hasText("Bills")).let { it[it.fetchSemanticsNodes().size - 1] }.performClick()
+        compose.waitForIdle()
+        compose.onRoot().captureRoboImage("build/screenshots/subs-all.png")
+        compose.onNode(androidx.compose.ui.test.hasText("Subscriptions", substring = true)).performClick()
+        compose.waitForIdle()
+        compose.onRoot().captureRoboImage("build/screenshots/subs-filtered.png")
+        which.intValue = 2
+        compose.waitForIdle()
+        com.github.takahirom.roborazzi.captureScreenRoboImage("build/screenshots/subs-sheet.png")
+    }
 }

@@ -902,7 +902,10 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
         val budget = repo.budgetSnapshotOf(all, budgetTime)
         val questions = com.spendroid.domain.DuplicateCheck.questions(repo.duplicateChecks(), all)
         val outlook = runCatching {
-            repo.outlook(budget, all, com.spendroid.data.MoneyWatch(getApplication()).includeVariable)
+            repo.outlook(
+                budget, all, com.spendroid.data.MoneyWatch(getApplication()).includeVariable,
+                com.spendroid.data.SubscriptionChoices(getApplication()).kinds(),
+            )
         }.getOrDefault(com.spendroid.domain.Outlook.EMPTY)
         _state.update {
             it.copy(

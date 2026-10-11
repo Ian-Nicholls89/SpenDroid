@@ -41,7 +41,12 @@ class AlertsWorker(
 
         // Bills that went up and accounts heading below zero: each its own notification, once.
         runCatching {
-            MoneyWatchAlerts.check(applicationContext, repo.outlook(snapshot, transactions, com.spendroid.data.MoneyWatch(applicationContext).includeVariable))
+            val outlook = repo.outlook(
+                snapshot, transactions, com.spendroid.data.MoneyWatch(applicationContext).includeVariable,
+                com.spendroid.data.SubscriptionChoices(applicationContext).kinds(),
+            )
+            MoneyWatchAlerts.check(applicationContext, outlook)
+            SubscriptionAlerts.check(applicationContext, outlook, transactions, repo.ignoredRules.first())
         }
 
         val goals = goalWarnings(repo, snapshot, transactions)

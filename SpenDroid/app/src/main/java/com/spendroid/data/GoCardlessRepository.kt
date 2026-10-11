@@ -785,7 +785,12 @@ class GoCardlessRepository private constructor(
      * gather its own inputs, and a setting one of them forgot showed as two different figures.
      */
     /** What's ahead - the forecast, dips below zero, bills' price changes - from the same inputs as the budget. */
-    suspend fun outlook(snapshot: BudgetSnapshot?, all: List<TransactionEntity>, includeVariable: Boolean): com.spendroid.domain.Outlook {
+    suspend fun outlook(
+        snapshot: BudgetSnapshot?,
+        all: List<TransactionEntity>,
+        includeVariable: Boolean,
+        subscriptionKinds: Map<String, com.spendroid.domain.Subscriptions.Kind> = emptyMap(),
+    ): com.spendroid.domain.Outlook {
         val manual = manualRules.first().mapNotNull { it.toRecurringRule() }
         return com.spendroid.domain.Outlook.of(
             snapshot = snapshot,
@@ -797,6 +802,7 @@ class GoCardlessRepository private constructor(
             includeVariable = includeVariable,
             calendar = com.spendroid.domain.WorkingDayCalendar(runCatching { bankHolidays() }.getOrDefault(emptyMap()).keys),
             overrides = ruleOverrides.first().associateBy { it.ruleKey },
+            subscriptionKinds = subscriptionKinds,
         )
     }
 

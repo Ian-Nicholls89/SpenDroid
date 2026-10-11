@@ -488,6 +488,8 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                                             priceChanges = state.outlook.priceChanges,
                                             openRuleKey = openRule.value,
                                             onOpenedRule = { openRule.value = null },
+                                            subscriptions = state.outlook.subscriptions,
+                                            onReload = viewModel::reloadLocal,
                                         )
 
                                         AppScreen.Settings -> SettingsScreen(

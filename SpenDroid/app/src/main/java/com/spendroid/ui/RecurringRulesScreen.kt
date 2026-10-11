@@ -29,6 +29,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.Modifier
 import com.spendroid.ui.theme.Charcoal
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.mutableIntStateOf
@@ -97,6 +98,10 @@ fun RecurringRulesScreen(
     /** A bill to open straight away - tapped from its price-rise notification. */
     openRuleKey: String? = null,
     onOpenedRule: () -> Unit = {},
+    /** Every regular payment out, as a subscription or a household bill. */
+    subscriptions: Map<String, com.spendroid.domain.Subscriptions.Item> = emptyMap(),
+    /** Works things out again, after a subscription choice changes. */
+    onReload: () -> Unit = {},
 ) {
     var editing by remember { mutableStateOf<RecurringRule?>(null) }
     androidx.compose.runtime.LaunchedEffect(openRuleKey, rules) {
@@ -105,6 +110,9 @@ fun RecurringRulesScreen(
         onOpenedRule()
     }
     val context = androidx.compose.ui.platform.LocalContext.current
+    val choices = remember { com.spendroid.data.SubscriptionChoices(context) }
+    var choicesVersion by remember { mutableIntStateOf(0) }
+    fun subOf(key: String) = subscriptions[key]?.takeIf { it.kind == com.spendroid.domain.Subscriptions.Kind.SUBSCRIPTION }
     val showDrops = remember { com.spendroid.data.MoneyWatch(context).showDrops }
     // A one-off isn't a rise; a drop shows only if asked for.
     fun shownChange(key: String) = priceChanges[key]?.takeIf { c ->
@@ -137,6 +145,23 @@ fun RecurringRulesScreen(
             override = overrides[rule.key],
             holidays = holidays,
             change = priceChanges[rule.key],
+            sub = subscriptions[rule.key],
+            subExtras = { item ->
+                val v = choicesVersion
+                SubscriptionFacts(
+                    item = item,
+                    remind = v >= 0 && choices.remind(rule.key),
+                    cancelled = rule.key in choices.cancelled(),
+                    onKind = { k -> choices.setKind(rule.key, k); choicesVersion++; onReload() },
+                    onRemind = { on -> choices.setRemind(rule.key, on); choicesVersion++ },
+                    onCancelled = { on ->
+                        choices.setCancelled(rule.key, on)
+                        // Cancelled, it's switched off - the budget stops expecting it.
+                        onToggle(rule.key, on)
+                        choicesVersion++
+                    },
+                )
+            },
             onDismiss = { editing = null },
             onSave = { anchorDay, shift, decemberDay ->
                 onSetOverride(rule.key, anchorDay, shift, decemberDay)
@@ -146,6 +171,7 @@ fun RecurringRulesScreen(
     }
 
     var tab by rememberSaveable { mutableIntStateOf(0) }
+    var billFilter by rememberSaveable { mutableIntStateOf(0) }
     val ignoredRules = rules.filter { it.key in ignored }
     Box(Modifier.fillMaxSize()) {
         LazyColumn(
@@ -190,20 +216,57 @@ fun RecurringRulesScreen(
                         item { DayHeading(heading) }
                         items(payments, key = { "${it.rule.key}|${it.dueDate}" }) { p -> UpcomingRow(p, today) }
                     }
+                    // Yearly ones in the next two months - so a renewal doesn't arrive out of nowhere.
+                    val yearly = com.spendroid.domain.Subscriptions.yearlyComing(subscriptions.values.filter { it.rule.key !in ignored }, today)
+                        .filter { y -> upcoming.none { it.rule.key == y.rule.key && it.dueDate == y.next } }
+                    if (yearly.isNotEmpty()) {
+                        item { DayHeading("Yearly, coming up") }
+                        items(yearly, key = { "yearly|" + it.rule.key }) { y -> YearlyRow(y, today) }
+                    }
                 }
                 1 -> {
+                    val currency = budget?.baseCurrency ?: "GBP"
+                    val active = fixed.filter { it.key !in ignored }
+                    val subs = active.mapNotNull { subOf(it.key) }
+                    val live = subs.filter { !it.lapsed }
                     item { SectionHeading("Bills", Modifier.padding(horizontal = 18.dp, vertical = 6.dp), trailing = "switch one off to leave it out") }
-                    item { PriceSummary(fixed.filter { it.key !in ignored }.mapNotNull { shownChange(it.key) }, budget?.baseCurrency ?: "GBP", Modifier.padding(horizontal = 18.dp, vertical = 4.dp)) }
-                    items(fixed.filter { it.key !in ignored }, key = { it.key }) { rule ->
-                        RuleRow(
-                            rule = rule,
-                            ignored = false,
-                            overridden = overrides.containsKey(rule.key),
-                            change = shownChange(rule.key),
-                            onEdit = { editing = rule },
-                        ) { onToggle(rule.key, it) }
+                    item { BillFilter(billFilter, live.size, { billFilter = it }, Modifier.padding(horizontal = 18.dp)) }
+                    when (billFilter) {
+                        1 -> {
+                            // Just the subscriptions, biggest a year first; any that have stopped, apart.
+                            item { SubscriptionSummary(live, currency, Modifier.padding(horizontal = 18.dp, vertical = 4.dp)) }
+                            items(live.sortedByDescending { it.yearlyMinor }.map { it.rule }, key = { it.key }) { rule ->
+                                RuleRow(rule = rule, ignored = false, overridden = overrides.containsKey(rule.key), change = shownChange(rule.key), sub = subOf(rule.key), onEdit = { editing = rule }) { onToggle(rule.key, it) }
+                            }
+                            val ended = subs.filter { it.lapsed }
+                            if (ended.isNotEmpty()) {
+                                item { SectionHeading("May have ended", Modifier.padding(horizontal = 18.dp, vertical = 6.dp), trailing = "not in the totals") }
+                                items(ended.map { it.rule }, key = { "ended|" + it.key }) { rule ->
+                                    androidx.compose.foundation.layout.Box(Modifier.alpha(0.6f)) {
+                                        RuleRow(rule = rule, ignored = false, sub = subOf(rule.key), onEdit = { editing = rule }) { onToggle(rule.key, it) }
+                                    }
+                                }
+                            }
+                            if (live.isEmpty() && ended.isEmpty()) {
+                                item { Text("No subscriptions spotted. Tap a bill to say it's one.", color = Charcoal.Muted, modifier = Modifier.padding(horizontal = 18.dp)) }
+                            }
+                        }
+                        else -> {
+                            val shown = if (billFilter == 2) active.filter { subOf(it.key) == null } else active
+                            item { PriceSummary(shown.mapNotNull { shownChange(it.key) }, currency, Modifier.padding(horizontal = 18.dp, vertical = 4.dp)) }
+                            items(shown, key = { it.key }) { rule ->
+                                RuleRow(
+                                    rule = rule,
+                                    ignored = false,
+                                    overridden = overrides.containsKey(rule.key),
+                                    change = shownChange(rule.key),
+                                    sub = subOf(rule.key),
+                                    onEdit = { editing = rule },
+                                ) { onToggle(rule.key, it) }
+                            }
+                            items(manualFixed, key = { it.id }) { rule -> ManualRuleRow(rule, accounts, onSetManualPaidFrom, onDeleteManual) }
+                        }
                     }
-                    items(manualFixed, key = { it.id }) { rule -> ManualRuleRow(rule, accounts, onSetManualPaidFrom, onDeleteManual) }
                 }
                 2 -> {
                     item {
@@ -379,6 +442,7 @@ private fun RuleRow(
     canBePrimary: Boolean = false,
     overridden: Boolean = false,
     change: com.spendroid.domain.PriceChanges.Change? = null,
+    sub: com.spendroid.domain.Subscriptions.Item? = null,
     onEdit: () -> Unit = {},
     onSetPrimary: () -> Unit = {},
     onToggle: (Boolean) -> Unit,
@@ -432,6 +496,7 @@ private fun RuleRow(
             Text(
                 buildList {
                     add(describeRule(rule))
+                    sub?.paidFrom?.let(::add)
                     if (isPrimaryIncome) add("sets the cycle")
                     if (overridden) add("corrected")
                     if (ignored) add("excluded")
@@ -444,7 +509,10 @@ private fun RuleRow(
                 },
                 maxLines = 1,
             )
-            change?.let { PriceChip(it, rule.currency) }
+            Row {
+                if (sub != null) SubscriptionTag()
+                change?.let { PriceChip(it, rule.currency) }
+            }
         }
 
         // Confidence as a bar rather than a percentage: the exact figure was never the point,
@@ -452,12 +520,15 @@ private fun RuleRow(
         ConfidenceBar(rule)
         Spacer(Modifier.width(10.dp))
 
-        Text(
-            recurringAmount(rule.amountMinor, rule.perOccurrence, rule.currency, rule.isVariable),
-            style = MaterialTheme.typography.bodyMedium.copy(fontFeatureSettings = "tnum"),
-            fontWeight = FontWeight.SemiBold,
-            color = if (rule.direction == Direction.IN) InColor else MaterialTheme.colorScheme.onSurface,
-        )
+        Column(horizontalAlignment = Alignment.End) {
+            Text(
+                recurringAmount(rule.amountMinor, rule.perOccurrence, rule.currency, rule.isVariable),
+                style = MaterialTheme.typography.bodyMedium.copy(fontFeatureSettings = "tnum"),
+                fontWeight = FontWeight.SemiBold,
+                color = if (rule.direction == Direction.IN) InColor else MaterialTheme.colorScheme.onSurface,
+            )
+            sub?.let { Text("${formatMoney(it.yearlyMinor, rule.currency).replace(Regex("[.,]00\\b"), "")} a year", style = MaterialTheme.typography.labelSmall, color = Charcoal.Muted) }
+        }
         Spacer(Modifier.width(4.dp))
         Switch(checked = !ignored, onCheckedChange = { onToggle(!it) })
     }
@@ -620,6 +691,8 @@ private fun RuleOverrideSheet(
     override: RuleOverrideEntity?,
     holidays: Set<LocalDate>,
     change: com.spendroid.domain.PriceChanges.Change? = null,
+    sub: com.spendroid.domain.Subscriptions.Item? = null,
+    subExtras: @Composable (com.spendroid.domain.Subscriptions.Item) -> Unit = {},
     onDismiss: () -> Unit,
     onSave: (Int?, PaymentShift?, Int?) -> Unit,
 ) {
@@ -655,6 +728,7 @@ private fun RuleOverrideSheet(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             change?.let { PriceHistory(it, rule.currency) }
+            sub?.let { subExtras(it) }
 
             Spacer(Modifier.height(16.dp))
             OutlinedTextField(
