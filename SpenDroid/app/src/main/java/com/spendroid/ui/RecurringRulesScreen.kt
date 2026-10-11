@@ -113,6 +113,24 @@ fun RecurringRulesScreen(
     val choices = remember { com.spendroid.data.SubscriptionChoices(context) }
     var choicesVersion by remember { mutableIntStateOf(0) }
     fun subOf(key: String) = subscriptions[key]?.takeIf { it.kind == com.spendroid.domain.Subscriptions.Kind.SUBSCRIPTION }
+    fun manualKey(m: ManualRecurringRuleEntity) = "${com.spendroid.domain.MANUAL_KEY_PREFIX}${m.id}"
+    // The subscription choices, for a bill found or added by hand alike.
+    val subControls: @Composable (String, com.spendroid.domain.Subscriptions.Item) -> Unit = { key, item ->
+        val v = choicesVersion
+        SubscriptionFacts(
+            item = item,
+            remind = v >= 0 && choices.remind(key),
+            cancelled = key in choices.cancelled(),
+            onKind = { k -> choices.setKind(key, k); choicesVersion++; onReload() },
+            onRemind = { on -> choices.setRemind(key, on); choicesVersion++ },
+            onCancelled = { on ->
+                choices.setCancelled(key, on)
+                // Cancelled, it's switched off - the budget stops expecting it.
+                onToggle(key, on)
+                choicesVersion++
+            },
+        )
+    }
     val showDrops = remember { com.spendroid.data.MoneyWatch(context).showDrops }
     // A one-off isn't a rise; a drop shows only if asked for.
     fun shownChange(key: String) = priceChanges[key]?.takeIf { c ->
@@ -146,22 +164,7 @@ fun RecurringRulesScreen(
             holidays = holidays,
             change = priceChanges[rule.key],
             sub = subscriptions[rule.key],
-            subExtras = { item ->
-                val v = choicesVersion
-                SubscriptionFacts(
-                    item = item,
-                    remind = v >= 0 && choices.remind(rule.key),
-                    cancelled = rule.key in choices.cancelled(),
-                    onKind = { k -> choices.setKind(rule.key, k); choicesVersion++; onReload() },
-                    onRemind = { on -> choices.setRemind(rule.key, on); choicesVersion++ },
-                    onCancelled = { on ->
-                        choices.setCancelled(rule.key, on)
-                        // Cancelled, it's switched off - the budget stops expecting it.
-                        onToggle(rule.key, on)
-                        choicesVersion++
-                    },
-                )
-            },
+            subExtras = { item -> subControls(rule.key, item) },
             onDismiss = { editing = null },
             onSave = { anchorDay, shift, decemberDay ->
                 onSetOverride(rule.key, anchorDay, shift, decemberDay)
@@ -227,7 +230,8 @@ fun RecurringRulesScreen(
                 1 -> {
                     val currency = budget?.baseCurrency ?: "GBP"
                     val active = fixed.filter { it.key !in ignored }
-                    val subs = active.mapNotNull { subOf(it.key) }
+                    val manualSubs = manualFixed.filter { m -> subOf(manualKey(m)) != null && manualKey(m) !in ignored }
+                    val subs = active.mapNotNull { subOf(it.key) } + manualSubs.mapNotNull { subOf(manualKey(it)) }
                     val live = subs.filter { !it.lapsed }
                     item { SectionHeading("Bills", Modifier.padding(horizontal = 18.dp, vertical = 6.dp), trailing = "switch one off to leave it out") }
                     item { BillFilter(billFilter, live.size, { billFilter = it }, Modifier.padding(horizontal = 18.dp)) }
@@ -235,9 +239,10 @@ fun RecurringRulesScreen(
                         1 -> {
                             // Just the subscriptions, biggest a year first; any that have stopped, apart.
                             item { SubscriptionSummary(live, currency, Modifier.padding(horizontal = 18.dp, vertical = 4.dp)) }
-                            items(live.sortedByDescending { it.yearlyMinor }.map { it.rule }, key = { it.key }) { rule ->
+                            items(live.filter { !it.rule.isManual }.sortedByDescending { it.yearlyMinor }.map { it.rule }, key = { it.key }) { rule ->
                                 RuleRow(rule = rule, ignored = false, overridden = overrides.containsKey(rule.key), change = shownChange(rule.key), sub = subOf(rule.key), onEdit = { editing = rule }) { onToggle(rule.key, it) }
                             }
+                            items(manualSubs, key = { it.id }) { rule -> ManualRuleRow(rule, accounts, onSetManualPaidFrom, onDeleteManual, subscriptions[manualKey(rule)], subControls) }
                             val ended = subs.filter { it.lapsed }
                             if (ended.isNotEmpty()) {
                                 item { SectionHeading("May have ended", Modifier.padding(horizontal = 18.dp, vertical = 6.dp), trailing = "not in the totals") }
@@ -264,7 +269,9 @@ fun RecurringRulesScreen(
                                     onEdit = { editing = rule },
                                 ) { onToggle(rule.key, it) }
                             }
-                            items(manualFixed, key = { it.id }) { rule -> ManualRuleRow(rule, accounts, onSetManualPaidFrom, onDeleteManual) }
+                            items(manualFixed.filter { billFilter != 2 || subOf(manualKey(it)) == null }, key = { it.id }) { rule ->
+                                ManualRuleRow(rule, accounts, onSetManualPaidFrom, onDeleteManual, subscriptions[manualKey(rule)], subControls)
+                            }
                         }
                     }
                 }
@@ -289,7 +296,7 @@ fun RecurringRulesScreen(
                             onSetPrimary = { onSetPrimaryIncome(if (rule.key == primaryIncomeKey) null else rule.key) },
                         ) { onToggle(rule.key, it) }
                     }
-                    items(manualIncome, key = { it.id }) { rule -> ManualRuleRow(rule, accounts, onSetManualPaidFrom, onDeleteManual) }
+                    items(manualIncome, key = { it.id }) { rule -> ManualRuleRow(rule, accounts, onSetManualPaidFrom, onDeleteManual, subscriptions[manualKey(rule)], subControls) }
                 }
                 else -> {
                     if (ignoredRules.isEmpty()) {
@@ -366,8 +373,11 @@ private fun ManualRuleRow(
     accounts: List<com.spendroid.data.db.AccountEntity> = emptyList(),
     onSetPaidFrom: (ManualRecurringRuleEntity, String?) -> Unit = { _, _ -> },
     onDelete: (ManualRecurringRuleEntity) -> Unit = {},
+    sub: com.spendroid.domain.Subscriptions.Item? = null,
+    subControls: @Composable (String, com.spendroid.domain.Subscriptions.Item) -> Unit = { _, _ -> },
 ) {
     var open by remember { mutableStateOf(false) }
+    val isSub = sub?.kind == com.spendroid.domain.Subscriptions.Kind.SUBSCRIPTION
     val payer = accounts.firstOrNull { it.id == rule.accountId }
     Column(
         modifier = Modifier
@@ -389,8 +399,12 @@ private fun ManualRuleRow(
                     color = if (payer == null && rule.direction == "OUT") Charcoal.Warn else Charcoal.Muted,
                     maxLines = 2,
                 )
+                if (isSub) SubscriptionTag()
             }
-            Text(formatMoney(rule.amountMinor, rule.currency), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Black)
+            Column(horizontalAlignment = Alignment.End) {
+                Text(formatMoney(rule.amountMinor, rule.currency), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Black)
+                if (isSub && sub != null) Text("${formatMoney(sub.yearlyMinor, rule.currency).replace(Regex("[.,]00\\b"), "")} a year", style = MaterialTheme.typography.labelSmall, color = Charcoal.Muted)
+            }
         }
         if (open) {
             Spacer(Modifier.height(10.dp))
@@ -416,6 +430,11 @@ private fun ManualRuleRow(
                     color = Charcoal.Muted,
                     modifier = Modifier.padding(top = 6.dp),
                 )
+                Spacer(Modifier.height(10.dp))
+            }
+            // The same subscription choices as a bill found in your transactions.
+            if (rule.direction == "OUT" && sub != null) {
+                subControls(sub.rule.key, sub)
                 Spacer(Modifier.height(10.dp))
             }
             BigButton("Delete this bill", null, { onDelete(rule) }, Modifier.fillMaxWidth(), colour = Charcoal.Bad.copy(alpha = 0.25f), textColour = Charcoal.Bad)

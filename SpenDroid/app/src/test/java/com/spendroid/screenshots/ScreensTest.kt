@@ -1,5 +1,7 @@
 package com.spendroid.screenshots
 
+import com.spendroid.domain.toRecurringRule
+
 import androidx.compose.ui.test.performClick
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -363,5 +365,34 @@ class ScreensTest {
         which.intValue = 2
         compose.waitForIdle()
         com.github.takahirom.roborazzi.captureScreenRoboImage("build/screenshots/subs-sheet.png")
+    }
+
+    /** 4.6.2: a bill added by hand can be a subscription too. */
+    @Test
+    @Config(qualifiers = "w411dp-h1500dp-xxhdpi")
+    fun manualSubscription() {
+        val base = Sample.state()
+        val manual = com.spendroid.data.db.ManualRecurringRuleEntity(
+            "av1", "Antivirus Pro", "OUT", 3_999, "GBP", "ANNUAL", 2, java.time.LocalDate.now().minusYears(1).plusDays(50).toString(), accountId = "acc-nectar",
+        )
+        val all = base.rules + listOfNotNull(manual.toRecurringRule())
+        val subs = com.spendroid.domain.Subscriptions.all(all, base.transactions, base.accounts, emptyMap(), java.time.LocalDate.now())
+        compose.setContent {
+            Frame(AppScreen.Rules) {
+                com.spendroid.ui.RecurringRulesScreen(
+                    rules = base.rules, manualRules = listOf(manual), ignored = emptySet(), onToggle = { _, _ -> }, onAddManual = {},
+                    budget = base.budget, accounts = base.accounts, subscriptions = subs,
+                )
+            }
+        }
+        compose.waitForIdle()
+        compose.onAllNodes(androidx.compose.ui.test.hasText("Bills")).let { it[it.fetchSemanticsNodes().size - 1] }.performClick()
+        compose.waitForIdle()
+        compose.onNode(androidx.compose.ui.test.hasText("Antivirus Pro")).performClick()
+        compose.waitForIdle()
+        compose.onRoot().captureRoboImage("build/screenshots/manual-sub.png")
+        compose.onNode(androidx.compose.ui.test.hasText("Subscriptions", substring = true)).performClick()
+        compose.waitForIdle()
+        compose.onRoot().captureRoboImage("build/screenshots/manual-sub-filtered.png")
     }
 }

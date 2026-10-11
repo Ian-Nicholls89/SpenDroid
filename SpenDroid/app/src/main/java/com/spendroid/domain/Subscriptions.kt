@@ -41,6 +41,7 @@ object Subscriptions {
         "gym", "fitness", "puregym", "the gym", "peloton", "easynews", "usenet", "newsgroup", "plex",
         "membership", "subscription", "times newspapers", "guardian", "telegraph", "financial times", "economist",
         "zwift", "onlyfans", "twitch", "canva", "notion", "evernote", "proton",
+        "antivirus", "norton", "mcafee", "kaspersky", "bitdefender", "avast", "malwarebytes",
     )
 
     /** Names that are household bills, whatever else they look like. */
