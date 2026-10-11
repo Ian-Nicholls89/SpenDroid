@@ -691,7 +691,8 @@ private fun TransactionRow(
         Spacer(Modifier.width(12.dp))
 
         Column(modifier = Modifier.weight(1f)) {
-            Text(name, style = MaterialTheme.typography.titleSmall, maxLines = 1)
+            // Cut short with "…", never at a word: "Nectar Credit Card" once lost "Card" silently.
+            Text(name, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
             Text(
                 buildList {
                     note?.let(::add)
@@ -702,6 +703,7 @@ private fun TransactionRow(
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
             )
         }
 

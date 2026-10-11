@@ -959,12 +959,10 @@ class GoCardlessRepository private constructor(
             return null
         }
         val payee = payeeFor(tx)
-        val txId = tx.transactionId ?: run {
-            val content = "${tx.bookingDate}|$minor|$payee"
-            val occurrence = (seen[content] ?: 0) + 1
-            seen[content] = occurrence
-            fallbackTransactionId(tx.bookingDate, minor, payee, occurrence)
-        }
+        // A pending row has no booking date yet, and often no id: the value date stands in for
+        // the date, or every £11.35 lunch at one place got the same made-up id - and a card
+        // alert matched to last week's lunch was taken to have claimed this week's too.
+        val txId = tx.transactionId ?: madeUpId(tx.bookingDate, tx.valueDate, minor, payee, seen)
         val info = when (val riu = tx.remittanceInformationUnstructured) {
             is List<*> -> riu.firstOrNull()?.toString().orEmpty()
             null -> ""
@@ -1152,6 +1150,15 @@ class GoCardlessRepository private constructor(
          * keeps the id rows have always been stored under, so nothing already stored is
          * duplicated; a second identical row on the same day is numbered rather than dropped.
          */
+        /** An id for a row the bank gave none, from its date - the value date while pending - amount and payee. */
+        internal fun madeUpId(bookingDate: String?, valueDate: String?, minor: Long, payee: String, seen: MutableMap<String, Int>): String {
+            val date = bookingDate ?: valueDate
+            val content = "$date|$minor|$payee"
+            val occurrence = (seen[content] ?: 0) + 1
+            seen[content] = occurrence
+            return fallbackTransactionId(date, minor, payee, occurrence)
+        }
+
         internal fun fallbackTransactionId(
             bookingDate: String?,
             minor: Long,
