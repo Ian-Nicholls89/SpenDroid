@@ -2,6 +2,7 @@ package com.spendroid.wear
 
 import com.spendroid.wear.BudgetArc.Kind
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class BudgetArcTest {
@@ -42,5 +43,18 @@ class BudgetArcTest {
     fun `nothing left is the gap and the spent part`() {
         assertEquals(listOf(Kind.BEHIND to "0.30", Kind.SPENT to "0.70"), kinds(0f, 0.30f))
         assertEquals(listOf(Kind.SPENT to "1.00"), kinds(0f, 0f))
+    }
+
+    /** A face that paints by position must always get three, money left third - else it's painted red. */
+    @Test
+    fun `the face always gets spent, behind and left, so money left lands on green`() {
+        val ahead = BudgetArc.forFace(BudgetArc.segments(0.70f, 0.50f))
+        assertEquals(listOf(Kind.SPENT, Kind.BEHIND, Kind.LEFT), ahead.map { it.kind })
+        assertEquals(0.70f, ahead.last().weight, 0.0001f)
+        assertTrue(ahead[1].weight < 0.01f)
+        val untouched = BudgetArc.forFace(BudgetArc.segments(1f, 1f))
+        assertEquals(listOf(Kind.SPENT, Kind.BEHIND, Kind.LEFT), untouched.map { it.kind })
+        assertTrue(untouched.all { it.weight > 0f })
+        assertEquals(listOf(Kind.SPENT, Kind.BEHIND, Kind.LEFT), BudgetArc.forFace(BudgetArc.segments(0.52f, 0.60f)).map { it.kind })
     }
 }

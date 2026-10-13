@@ -43,6 +43,19 @@ object BudgetArc {
         return segments.sortedBy { rank.getValue(it.kind) }
     }
 
+    /**
+     * What's sent to the face: always all three, in [drawOrder], any empty one a hairline. A face
+     * that paints by position needs the third for money left - with only two, ahead of pace or at
+     * the start of a cycle, money left was painted red, the colour for behind.
+     */
+    fun forFace(segments: List<Segment>): List<Segment> {
+        val weights = segments.associate { it.kind to it.weight }
+        return drawOrder(Kind.entries.map { Segment(it, weights[it]?.takeIf { w -> w > 0f } ?: HAIRLINE) })
+    }
+
+    /** Too thin to see, but there: it holds its place so the next one gets the right colour. */
+    private const val HAIRLINE = 0.001f
+
     /** The colour for the single-colour arc faces without segments fall back to. */
     enum class Pace { ON_TRACK, TIGHT, OVER }
 

@@ -100,7 +100,7 @@ class BudgetComplicationService : SuspendingComplicationDataSourceService() {
         description: ComplicationText,
     ): ComplicationData {
         val max = WeightedElementsComplicationData.getMaxElements()
-        val elements = BudgetArc.drawOrder(BudgetArc.segments(reading.budgetLeft, reading.cycleLeft))
+        val elements = BudgetArc.forFace(BudgetArc.segments(reading.budgetLeft, reading.cycleLeft))
             .takeLast(max)
             .map { segment ->
                 WeightedElementsComplicationData.Element(
