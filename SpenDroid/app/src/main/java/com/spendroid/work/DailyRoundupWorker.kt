@@ -1,5 +1,7 @@
 package com.spendroid.work
 
+import com.spendroid.domain.spentTodayLine
+
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
@@ -32,7 +34,7 @@ class DailyRoundupWorker(
 
         val dateFormat = DateTimeFormatter.ofPattern("d MMM")
         val body = buildString {
-            append("Spent today ${formatMoney(snapshot.spentToday, snapshot.baseCurrency)} · ")
+            append(snapshot.spentTodayLine { formatMoney(it, snapshot.baseCurrency) } + " · ")
             append("left to spend ${formatMoney(snapshot.availableToSpend, snapshot.baseCurrency)}")
             snapshot.nextIncomeDate?.let { append(" until income on ${it.format(dateFormat)}") }
         }

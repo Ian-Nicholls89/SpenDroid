@@ -187,3 +187,17 @@ fun ManualRecurringRuleEntity.toRecurringRule(): RecurringRule? {
         score = 1f,
     )
 }
+/**
+ * Today's spending as the roundup says it - the same figure as Home's "Spent today": from the
+ * accounts and on the credit cards, with the cards' share named. The budget's own figure leaves card
+ * spending out while it's counted at the bill, so the roundup once said less than Home did.
+ */
+fun BudgetSnapshot.spentTodayLine(money: (Long) -> String): String {
+    val total = spentTodayFromAccountsMinor + spentTodayOnCardsMinor
+    // Only the half there is: the cards' share named when there's both, said once when it's all.
+    return when {
+        spentTodayOnCardsMinor <= 0L -> "Spent today ${money(total)}"
+        spentTodayFromAccountsMinor <= 0L -> "Spent today ${money(total)} on credit cards"
+        else -> "Spent today ${money(total)} (${money(spentTodayOnCardsMinor)} on credit cards)"
+    }
+}

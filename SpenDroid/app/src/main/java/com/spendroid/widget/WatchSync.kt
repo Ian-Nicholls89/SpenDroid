@@ -1,5 +1,7 @@
 package com.spendroid.widget
 
+import com.spendroid.domain.spentTodayLine
+
 import android.content.Context
 import com.google.android.gms.wearable.DataMap
 import com.google.android.gms.wearable.PutDataMapRequest
@@ -50,7 +52,7 @@ internal object WatchSync {
         val money = { minor: Long -> if (hide) com.spendroid.data.Privacy.HIDDEN else formatMoney(minor, s.baseCurrency) }
         val tomorrow = today.plusDays(1)
         return buildList {
-            add("Spent today ${money(s.spentToday)}")
+            add(s.spentTodayLine(money))
             s.nextIncomeDate?.let { date ->
                 val d = s.daysUntilNextIncome
                 add(
