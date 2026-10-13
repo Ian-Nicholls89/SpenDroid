@@ -44,9 +44,12 @@ class AlertsWorker(
             val outlook = repo.outlook(
                 snapshot, transactions, com.spendroid.data.MoneyWatch(applicationContext).includeVariable,
                 com.spendroid.data.SubscriptionChoices(applicationContext).kinds(),
+                com.spendroid.data.ContractEnds(applicationContext).all(),
+                com.spendroid.data.ContractEnds(applicationContext).accepted(),
             )
             MoneyWatchAlerts.check(applicationContext, outlook)
             SubscriptionAlerts.check(applicationContext, outlook, transactions, repo.ignoredRules.first())
+            ContractAlerts.check(applicationContext, outlook)
         }
 
         val goals = goalWarnings(repo, snapshot, transactions)

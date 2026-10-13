@@ -17,6 +17,8 @@ data class Outlook(
     val priceChanges: Map<String, PriceChanges.Change>,
     /** Every regular payment out, as a subscription or a household bill, by rule key. */
     val subscriptions: Map<String, Subscriptions.Item> = emptyMap(),
+    /** Bills with a contract end date, where each stands, by [Contracts.keyFor] its payee. */
+    val contracts: Map<String, Contracts.Entry> = emptyMap(),
 ) {
     companion object {
         val EMPTY = Outlook(null, null, emptyList(), emptyMap())
@@ -32,6 +34,8 @@ data class Outlook(
             calendar: WorkingDayCalendar = WorkingDayCalendar(),
             overrides: Map<String, com.spendroid.data.db.RuleOverrideEntity> = emptyMap(),
             subscriptionKinds: Map<String, Subscriptions.Kind> = emptyMap(),
+            contractEnds: Map<String, LocalDate> = emptyMap(),
+            acceptedContracts: Set<String> = emptySet(),
         ): Outlook {
             val active = rules.filter { it.key !in ignored }
             val payday = snapshot?.nextIncomeDate
@@ -47,6 +51,7 @@ data class Outlook(
                 priceChanges = PriceChanges.all(active, transactions, today, includeVariable),
                 // Switched-off ones too: a cancelled subscription is switched off, and still watched.
                 subscriptions = Subscriptions.all(rules, transactions, accounts, subscriptionKinds, today),
+                contracts = Contracts.all(rules, transactions, contractEnds, acceptedContracts, today),
             )
         }
 

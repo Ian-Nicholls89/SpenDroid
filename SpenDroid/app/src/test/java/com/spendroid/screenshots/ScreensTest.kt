@@ -395,4 +395,51 @@ class ScreensTest {
         compose.waitForIdle()
         compose.onRoot().captureRoboImage("build/screenshots/manual-sub-filtered.png")
     }
+
+    /** 4.7: contract end dates - the tags on Regular, the sheet, and the card on Home. */
+    @Test
+    @Config(qualifiers = "w411dp-h1500dp-xxhdpi")
+    fun contractScreens() {
+        val base = Sample.state()
+        val today = java.time.LocalDate.now()
+        val ends = mapOf(
+            com.spendroid.domain.Contracts.keyFor("VOXI MOBILE") to today.plusDays(23),
+            com.spendroid.domain.Contracts.keyFor("BEANSTALK") to today.plusMonths(9),
+            com.spendroid.domain.Contracts.keyFor("OCTOPUS ENERGY") to java.time.LocalDate.of(2026, 8, 1),
+        )
+        val contracts = com.spendroid.domain.Contracts.all(base.rules, base.transactions, ends, emptySet(), today)
+        val state = base.copy(outlook = base.outlook.copy(contracts = contracts))
+        val which = androidx.compose.runtime.mutableIntStateOf(0)
+        compose.setContent {
+            when (which.intValue) {
+                0 -> Frame(AppScreen.Rules) {
+                    com.spendroid.ui.RecurringRulesScreen(
+                        rules = state.rules, manualRules = emptyList(), ignored = emptySet(), onToggle = { _, _ -> }, onAddManual = {},
+                        budget = state.budget, accounts = state.accounts, contracts = contracts, transactions = state.transactions,
+                        openRuleKey = null,
+                    )
+                }
+                1 -> Frame(AppScreen.Rules) {
+                    androidx.compose.foundation.layout.Column(androidx.compose.ui.Modifier.padding(14.dp)) {
+                        com.spendroid.ui.ContractSection(null, null, java.time.LocalDate.of(2025, 3, 14),
+                            listOf(18 to java.time.LocalDate.of(2026, 9, 14), 24 to java.time.LocalDate.of(2027, 3, 14)), {}, {})
+                        com.spendroid.ui.ContractSection(today.plusDays(23), contracts.values.first { it.status is com.spendroid.domain.Contracts.Status.EndingSoon }.status, null, emptyList(), {}, {})
+                    }
+                }
+                else -> Frame(AppScreen.Home) {
+                    HomeScreen(state, onRefresh = {}, onRelink = {}, onSeeAllTransactions = {}, onSetBudgetGoal = { _, _ -> }, onLinkBank = {})
+                }
+            }
+        }
+        compose.waitForIdle()
+        compose.onAllNodes(androidx.compose.ui.test.hasText("Bills")).let { it[it.fetchSemanticsNodes().size - 1] }.performClick()
+        compose.waitForIdle()
+        compose.onRoot().captureRoboImage("build/screenshots/contract-regular.png")
+        which.intValue = 1
+        compose.waitForIdle()
+        compose.onRoot().captureRoboImage("build/screenshots/contract-sheet.png")
+        which.intValue = 2
+        compose.waitForIdle()
+        compose.onRoot().captureRoboImage("build/screenshots/contract-home.png")
+    }
 }

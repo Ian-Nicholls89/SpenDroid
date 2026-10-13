@@ -790,6 +790,8 @@ class GoCardlessRepository private constructor(
         all: List<TransactionEntity>,
         includeVariable: Boolean,
         subscriptionKinds: Map<String, com.spendroid.domain.Subscriptions.Kind> = emptyMap(),
+        contractEnds: Map<String, java.time.LocalDate> = emptyMap(),
+        acceptedContracts: Set<String> = emptySet(),
     ): com.spendroid.domain.Outlook {
         val manual = manualRules.first().mapNotNull { it.toRecurringRule() }
         return com.spendroid.domain.Outlook.of(
@@ -803,6 +805,8 @@ class GoCardlessRepository private constructor(
             calendar = com.spendroid.domain.WorkingDayCalendar(runCatching { bankHolidays() }.getOrDefault(emptyMap()).keys),
             overrides = ruleOverrides.first().associateBy { it.ruleKey },
             subscriptionKinds = subscriptionKinds,
+            contractEnds = contractEnds,
+            acceptedContracts = acceptedContracts,
         )
     }
 

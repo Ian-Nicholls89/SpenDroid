@@ -1,5 +1,7 @@
 package com.spendroid.ui
 
+import com.spendroid.domain.toRecurringRule
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -102,10 +104,17 @@ fun RecurringRulesScreen(
     subscriptions: Map<String, com.spendroid.domain.Subscriptions.Item> = emptyMap(),
     /** Works things out again, after a subscription choice changes. */
     onReload: () -> Unit = {},
+    /** Bills with a contract end date, where each stands, by payee. */
+    contracts: Map<String, com.spendroid.domain.Contracts.Entry> = emptyMap(),
+    /** For when payments to a bill started - the guesses at its contract's end. */
+    transactions: List<com.spendroid.data.db.TransactionEntity> = emptyList(),
 ) {
     var editing by remember { mutableStateOf<RecurringRule?>(null) }
     androidx.compose.runtime.LaunchedEffect(openRuleKey, rules) {
-        val rule = rules.firstOrNull { it.key == openRuleKey } ?: return@LaunchedEffect
+        // A bill's own key, or its contract's - from a contract notification.
+        val rule = rules.firstOrNull { it.key == openRuleKey }
+            ?: rules.filter { com.spendroid.domain.Contracts.keyFor(it.payee) == openRuleKey }.maxByOrNull { it.lastOccurrence }
+            ?: return@LaunchedEffect
         editing = rule
         onOpenedRule()
     }
@@ -114,6 +123,24 @@ fun RecurringRulesScreen(
     var choicesVersion by remember { mutableIntStateOf(0) }
     fun subOf(key: String) = subscriptions[key]?.takeIf { it.kind == com.spendroid.domain.Subscriptions.Kind.SUBSCRIPTION }
     fun manualKey(m: ManualRecurringRuleEntity) = "${com.spendroid.domain.MANUAL_KEY_PREFIX}${m.id}"
+    val contractEnds = remember { com.spendroid.data.ContractEnds(context) }
+    var contractVersion by remember { mutableIntStateOf(0) }
+    fun contractOf(rule: RecurringRule) = contracts[com.spendroid.domain.Contracts.keyFor(rule.payee)]
+    // When its contract ends: the one thing asked, for a bill found or added by hand alike.
+    val contractControls: @Composable (RecurringRule) -> Unit = { rule ->
+        val key = com.spendroid.domain.Contracts.keyFor(rule.payee)
+        val v = contractVersion
+        val entry = contracts[key]
+        val today = LocalDate.now()
+        ContractSection(
+            end = if (v >= 0) contractEnds.all()[key] else null,
+            status = entry?.status,
+            started = com.spendroid.domain.Contracts.started(rule, transactions),
+            guesses = com.spendroid.domain.Contracts.guesses(rule, transactions, today),
+            onSet = { date -> contractEnds.set(key, date); contractVersion++; onReload() },
+            onAccept = { entry?.let { contractEnds.accept(key, it.status.end) }; contractVersion++; onReload() },
+        )
+    }
     // The subscription choices, for a bill found or added by hand alike.
     val subControls: @Composable (String, com.spendroid.domain.Subscriptions.Item) -> Unit = { key, item ->
         val v = choicesVersion
@@ -165,6 +192,7 @@ fun RecurringRulesScreen(
             change = priceChanges[rule.key],
             sub = subscriptions[rule.key],
             subExtras = { item -> subControls(rule.key, item) },
+            contractExtras = { if (rule.direction == Direction.OUT) contractControls(rule) },
             onDismiss = { editing = null },
             onSave = { anchorDay, shift, decemberDay ->
                 onSetOverride(rule.key, anchorDay, shift, decemberDay)
@@ -219,6 +247,12 @@ fun RecurringRulesScreen(
                         item { DayHeading(heading) }
                         items(payments, key = { "${it.rule.key}|${it.dueDate}" }) { p -> UpcomingRow(p, today) }
                     }
+                    // Contracts in their last six weeks: time to look for a better deal.
+                    val ending = contracts.values.filter { it.status is com.spendroid.domain.Contracts.Status.EndingSoon }.sortedBy { it.status.end }
+                    if (ending.isNotEmpty()) {
+                        item { DayHeading("Contracts ending") }
+                        items(ending, key = { "contract|" + it.key }) { e -> ContractEndingRow(e) }
+                    }
                     // Yearly ones in the next two months - so a renewal doesn't arrive out of nowhere.
                     val yearly = com.spendroid.domain.Subscriptions.yearlyComing(subscriptions.values.filter { it.rule.key !in ignored }, today)
                         .filter { y -> upcoming.none { it.rule.key == y.rule.key && it.dueDate == y.next } }
@@ -240,15 +274,15 @@ fun RecurringRulesScreen(
                             // Just the subscriptions, biggest a year first; any that have stopped, apart.
                             item { SubscriptionSummary(live, currency, Modifier.padding(horizontal = 18.dp, vertical = 4.dp)) }
                             items(live.filter { !it.rule.isManual }.sortedByDescending { it.yearlyMinor }.map { it.rule }, key = { it.key }) { rule ->
-                                RuleRow(rule = rule, ignored = false, overridden = overrides.containsKey(rule.key), change = shownChange(rule.key), sub = subOf(rule.key), onEdit = { editing = rule }) { onToggle(rule.key, it) }
+                                RuleRow(rule = rule, ignored = false, overridden = overrides.containsKey(rule.key), change = shownChange(rule.key), sub = subOf(rule.key), contract = contractOf(rule), onEdit = { editing = rule }) { onToggle(rule.key, it) }
                             }
-                            items(manualSubs, key = { it.id }) { rule -> ManualRuleRow(rule, accounts, onSetManualPaidFrom, onDeleteManual, subscriptions[manualKey(rule)], subControls) }
+                            items(manualSubs, key = { it.id }) { rule -> ManualRuleRow(rule, accounts, onSetManualPaidFrom, onDeleteManual, subscriptions[manualKey(rule)], subControls, contractControls, rule.toRecurringRule()?.let { contractOf(it) }) }
                             val ended = subs.filter { it.lapsed }
                             if (ended.isNotEmpty()) {
                                 item { SectionHeading("May have ended", Modifier.padding(horizontal = 18.dp, vertical = 6.dp), trailing = "not in the totals") }
                                 items(ended.map { it.rule }, key = { "ended|" + it.key }) { rule ->
                                     androidx.compose.foundation.layout.Box(Modifier.alpha(0.6f)) {
-                                        RuleRow(rule = rule, ignored = false, sub = subOf(rule.key), onEdit = { editing = rule }) { onToggle(rule.key, it) }
+                                        RuleRow(rule = rule, ignored = false, sub = subOf(rule.key), contract = contractOf(rule), onEdit = { editing = rule }) { onToggle(rule.key, it) }
                                     }
                                 }
                             }
@@ -266,11 +300,12 @@ fun RecurringRulesScreen(
                                     overridden = overrides.containsKey(rule.key),
                                     change = shownChange(rule.key),
                                     sub = subOf(rule.key),
+                                    contract = contractOf(rule),
                                     onEdit = { editing = rule },
                                 ) { onToggle(rule.key, it) }
                             }
                             items(manualFixed.filter { billFilter != 2 || subOf(manualKey(it)) == null }, key = { it.id }) { rule ->
-                                ManualRuleRow(rule, accounts, onSetManualPaidFrom, onDeleteManual, subscriptions[manualKey(rule)], subControls)
+                                ManualRuleRow(rule, accounts, onSetManualPaidFrom, onDeleteManual, subscriptions[manualKey(rule)], subControls, contractControls, rule.toRecurringRule()?.let { contractOf(it) })
                             }
                         }
                     }
@@ -296,7 +331,7 @@ fun RecurringRulesScreen(
                             onSetPrimary = { onSetPrimaryIncome(if (rule.key == primaryIncomeKey) null else rule.key) },
                         ) { onToggle(rule.key, it) }
                     }
-                    items(manualIncome, key = { it.id }) { rule -> ManualRuleRow(rule, accounts, onSetManualPaidFrom, onDeleteManual, subscriptions[manualKey(rule)], subControls) }
+                    items(manualIncome, key = { it.id }) { rule -> ManualRuleRow(rule, accounts, onSetManualPaidFrom, onDeleteManual, subscriptions[manualKey(rule)], subControls, contractControls, rule.toRecurringRule()?.let { contractOf(it) }) }
                 }
                 else -> {
                     if (ignoredRules.isEmpty()) {
@@ -375,6 +410,8 @@ private fun ManualRuleRow(
     onDelete: (ManualRecurringRuleEntity) -> Unit = {},
     sub: com.spendroid.domain.Subscriptions.Item? = null,
     subControls: @Composable (String, com.spendroid.domain.Subscriptions.Item) -> Unit = { _, _ -> },
+    contractControls: @Composable (RecurringRule) -> Unit = {},
+    contract: com.spendroid.domain.Contracts.Entry? = null,
 ) {
     var open by remember { mutableStateOf(false) }
     val isSub = sub?.kind == com.spendroid.domain.Subscriptions.Kind.SUBSCRIPTION
@@ -400,6 +437,7 @@ private fun ManualRuleRow(
                     maxLines = 2,
                 )
                 if (isSub) SubscriptionTag()
+                contract?.let { ContractTag(it.status, rule.currency) }
             }
             Column(horizontalAlignment = Alignment.End) {
                 Text(formatMoney(rule.amountMinor, rule.currency), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Black)
@@ -437,6 +475,10 @@ private fun ManualRuleRow(
                 subControls(sub.rule.key, sub)
                 Spacer(Modifier.height(10.dp))
             }
+            if (rule.direction == "OUT") {
+                rule.toRecurringRule()?.let { contractControls(it) }
+                Spacer(Modifier.height(10.dp))
+            }
             BigButton("Delete this bill", null, { onDelete(rule) }, Modifier.fillMaxWidth(), colour = Charcoal.Bad.copy(alpha = 0.25f), textColour = Charcoal.Bad)
         }
     }
@@ -462,6 +504,7 @@ private fun RuleRow(
     overridden: Boolean = false,
     change: com.spendroid.domain.PriceChanges.Change? = null,
     sub: com.spendroid.domain.Subscriptions.Item? = null,
+    contract: com.spendroid.domain.Contracts.Entry? = null,
     onEdit: () -> Unit = {},
     onSetPrimary: () -> Unit = {},
     onToggle: (Boolean) -> Unit,
@@ -532,6 +575,7 @@ private fun RuleRow(
                 if (sub != null) SubscriptionTag()
                 change?.let { PriceChip(it, rule.currency) }
             }
+            contract?.let { ContractTag(it.status, rule.currency) }
         }
 
         // Confidence as a bar rather than a percentage: the exact figure was never the point,
@@ -712,6 +756,7 @@ private fun RuleOverrideSheet(
     change: com.spendroid.domain.PriceChanges.Change? = null,
     sub: com.spendroid.domain.Subscriptions.Item? = null,
     subExtras: @Composable (com.spendroid.domain.Subscriptions.Item) -> Unit = {},
+    contractExtras: @Composable () -> Unit = {},
     onDismiss: () -> Unit,
     onSave: (Int?, PaymentShift?, Int?) -> Unit,
 ) {
@@ -748,6 +793,7 @@ private fun RuleOverrideSheet(
             )
             change?.let { PriceHistory(it, rule.currency) }
             sub?.let { subExtras(it) }
+            contractExtras()
 
             Spacer(Modifier.height(16.dp))
             OutlinedTextField(

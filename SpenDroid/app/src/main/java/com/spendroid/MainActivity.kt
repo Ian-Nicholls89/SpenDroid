@@ -209,6 +209,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
     private fun takeOpeners(intent: Intent?) {
         intent?.getStringExtra(com.spendroid.work.MoneyWatchAlerts.EXTRA_OPEN_RULE)?.let { openRule.value = it }
         intent?.getStringExtra(com.spendroid.work.MoneyWatchAlerts.EXTRA_OPEN_FORECAST)?.let { openForecast.value = it }
+        intent?.getStringExtra(com.spendroid.work.ContractAlerts.EXTRA_OPEN_CONTRACT)?.let { openRule.value = it }
     }
 
     /** Locked behind Android's own fingerprint, face or PIN prompt until unlocked. */
@@ -417,6 +418,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                                                 navigate(AppScreen.Spending)
                                             },
                                             onOpenForecast = { id -> forecastFor = id ?: "" },
+                                            onReload = viewModel::reloadLocal,
                                         )
 
                                         AppScreen.Spending -> SpendingScreen(
@@ -489,6 +491,8 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                                             openRuleKey = openRule.value,
                                             onOpenedRule = { openRule.value = null },
                                             subscriptions = state.outlook.subscriptions,
+                                            contracts = state.outlook.contracts,
+                                            transactions = state.transactions,
                                             onReload = viewModel::reloadLocal,
                                         )
 

@@ -103,6 +103,8 @@ fun HomeScreen(
     onSeeAccount: (String) -> Unit = { onSeeAllTransactions() },
     /** The forecast, for an account or - null - the budget's. */
     onOpenForecast: (String?) -> Unit = {},
+    /** Works things out again - after a contract end date is set, or a new price accepted. */
+    onReload: () -> Unit = {},
     /** Which page the hero opens on; for screenshots. */
     initialPage: Int = 0,
 ) {
@@ -164,7 +166,7 @@ fun HomeScreen(
 
             when (page) {
                 is HeroPage.Account -> AccountBelow(state, page, colourOf(page.account, state.accounts), onRefresh, onSeeAccount, onOpenForecast)
-                else -> BudgetBelow(state, budget, onRefresh, onSeeAllTransactions, onOpenForecast)
+                else -> BudgetBelow(state, budget, onRefresh, onSeeAllTransactions, onOpenForecast, onReload)
             }
 
             state.linkProgress?.let { progress ->
@@ -325,7 +327,7 @@ private fun PagerDots(count: Int, current: Int, colour: Color) {
 }
 
 @Composable
-private fun BudgetBelow(state: RootUiState, budget: BudgetSnapshot, onRefresh: () -> Unit, onSeeAllTransactions: () -> Unit, onOpenForecast: (String?) -> Unit = {}) {
+private fun BudgetBelow(state: RootUiState, budget: BudgetSnapshot, onRefresh: () -> Unit, onSeeAllTransactions: () -> Unit, onOpenForecast: (String?) -> Unit = {}, onReload: () -> Unit = {}) {
     val money = { minor: Long -> formatMoney(minor, budget.baseCurrency) }
     val pace = BudgetPace.of(budget)
     Panel(Modifier.padding(horizontal = 14.dp)) {
@@ -377,6 +379,18 @@ private fun BudgetBelow(state: RootUiState, budget: BudgetSnapshot, onRefresh: (
     Row(Modifier.padding(horizontal = 14.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         BigButton("Transactions", Icons.AutoMirrored.Filled.ReceiptLong, onSeeAllTransactions, Modifier.weight(1f))
         BigButton("Refresh", Icons.Filled.Refresh, onRefresh, Modifier.weight(1f))
+    }
+    // A bill that went up once out of contract stays here until it's sorted - a new end date, or
+    // the new price accepted.
+    val context = androidx.compose.ui.platform.LocalContext.current
+    state.outlook.contracts.values.filter { it.status is com.spendroid.domain.Contracts.Status.EndedUp }.forEach { e ->
+        Spacer(Modifier.height(12.dp))
+        OutOfContractCard(
+            e,
+            onSetEnd = { date -> com.spendroid.data.ContractEnds(context).set(e.key, date); onReload() },
+            onAccept = { com.spendroid.data.ContractEnds(context).accept(e.key, e.status.end); onReload() },
+            modifier = Modifier.padding(horizontal = 14.dp),
+        )
     }
     // Any account heading below zero in the next month, then where the budget's account is heading.
     state.outlook.warnings.forEach { w ->

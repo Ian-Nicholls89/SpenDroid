@@ -905,6 +905,8 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
             repo.outlook(
                 budget, all, com.spendroid.data.MoneyWatch(getApplication()).includeVariable,
                 com.spendroid.data.SubscriptionChoices(getApplication()).kinds(),
+                com.spendroid.data.ContractEnds(getApplication()).all(),
+                com.spendroid.data.ContractEnds(getApplication()).accepted(),
             )
         }.getOrDefault(com.spendroid.domain.Outlook.EMPTY)
         _state.update {
