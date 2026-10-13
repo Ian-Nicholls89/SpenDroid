@@ -24,7 +24,10 @@ import kotlinx.coroutines.tasks.await
  * - Otherwise a single arc of the budget left, coloured for the pace.
  * - Otherwise just the figure.
  */
-class BudgetComplicationService : SuspendingComplicationDataSourceService() {
+open class BudgetComplicationService : SuspendingComplicationDataSourceService() {
+
+    /** Segments where the face takes them; the simple one never offers them. */
+    protected open val segmentsAllowed: Boolean = true
 
     override suspend fun onComplicationRequest(request: ComplicationRequest): ComplicationData? {
         val reading = BudgetReading.load(this) ?: fetchFromPhone() ?: return null
@@ -62,7 +65,7 @@ class BudgetComplicationService : SuspendingComplicationDataSourceService() {
         val text = PlainComplicationText.Builder(reading.available).build()
         val description = describe(reading)
         // Segments only exist from Wear OS 4 (API 33); even naming the type before that is an error.
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && type == ComplicationType.WEIGHTED_ELEMENTS) {
+        if (segmentsAllowed && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && type == ComplicationType.WEIGHTED_ELEMENTS) {
             return segmented(reading, text, description)
         }
         return when (type) {
@@ -139,4 +142,13 @@ class BudgetComplicationService : SuspendingComplicationDataSourceService() {
         val RED = Color.rgb(0xEF, 0x53, 0x50)
         val SPENT = Color.rgb(0x3A, 0x3A, 0x40)
     }
+}
+
+/**
+ * "SpenDroid · simple": one plain bar of what's left to spend, no segments. For faces that paint a
+ * segmented ring from their own palette - where even an empty segment shows as a dot - and anyone
+ * who'd rather a single bar. Chosen in the watch face's own editor, beside the segmented one.
+ */
+class SimpleBudgetComplicationService : BudgetComplicationService() {
+    override val segmentsAllowed: Boolean = false
 }

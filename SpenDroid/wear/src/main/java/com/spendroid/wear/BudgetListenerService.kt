@@ -37,9 +37,10 @@ class BudgetListenerService : WearableListenerService() {
         const val ACTION_UPDATED = "com.spendroid.wear.BUDGET_UPDATED"
 
         fun requestRedraw(context: android.content.Context) {
-            ComplicationDataSourceUpdateRequester
-                .create(context, ComponentName(context, BudgetComplicationService::class.java))
-                .requestUpdateAll()
+            // Both complications: the segmented one and the simple one.
+            listOf(BudgetComplicationService::class.java, SimpleBudgetComplicationService::class.java).forEach {
+                ComplicationDataSourceUpdateRequester.create(context, ComponentName(context, it)).requestUpdateAll()
+            }
         }
     }
 }

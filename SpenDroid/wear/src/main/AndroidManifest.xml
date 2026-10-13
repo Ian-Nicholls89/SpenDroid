@@ -50,6 +50,24 @@
                 android:value="0" />
         </service>
 
+        <!-- The same, as one plain bar: for faces where a segmented ring shows an empty segment as a dot. -->
+        <service
+            android:name=".SimpleBudgetComplicationService"
+            android:exported="true"
+            android:icon="@drawable/ic_complication"
+            android:label="Left to spend · simple"
+            android:permission="com.google.android.wearable.permission.BIND_COMPLICATION_PROVIDER">
+            <intent-filter>
+                <action android:name="android.support.wearable.complications.ACTION_COMPLICATION_UPDATE_REQUEST" />
+            </intent-filter>
+            <meta-data
+                android:name="android.support.wearable.complications.SUPPORTED_TYPES"
+                android:value="RANGED_VALUE,SHORT_TEXT" />
+            <meta-data
+                android:name="android.support.wearable.complications.UPDATE_PERIOD_SECONDS"
+                android:value="0" />
+        </service>
+
         <!-- Tiles: a swipe from the watch face. -->
         <service
             android:name=".BudgetTileService"
