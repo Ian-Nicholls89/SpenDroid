@@ -68,6 +68,7 @@ class ContractsTest {
         val txs = listOf(tx(LocalDate.of(2025, 3, 14), 3_800), tx(LocalDate.of(2026, 9, 14), 3_800))
         val g = Contracts.guesses(rule(3_800, LocalDate.of(2026, 9, 14)), txs, today)
         assertEquals(listOf(24 to LocalDate.of(2027, 3, 14)), g.filter { it.first == 24 })
-        assertTrue(g.none { it.first == 12 })
+        // Already past - offered too, for a contract that has ended.
+        assertEquals(listOf(12 to LocalDate.of(2026, 3, 14)), g.filter { it.first == 12 })
     }
 }

@@ -73,10 +73,13 @@ object Contracts {
             .toList()
     }
 
-    /** 12, 18 and 24 months from when payments started: the usual contract lengths, as guesses. */
-    fun guesses(rule: RecurringRule, transactions: List<TransactionEntity>, today: LocalDate): List<Pair<Int, LocalDate>> {
+    /**
+     * 12, 18 and 24 months from when payments started: the usual contract lengths, as guesses -
+     * ones already past too, for a contract that has already ended.
+     */
+    fun guesses(rule: RecurringRule, transactions: List<TransactionEntity>, @Suppress("UNUSED_PARAMETER") today: LocalDate): List<Pair<Int, LocalDate>> {
         val start = payments(rule, transactions).firstOrNull()?.date ?: return emptyList()
-        return listOf(12, 18, 24).map { it to start.plusMonths(it.toLong()) }.filter { it.second.isAfter(today.minusMonths(1)) }
+        return listOf(12, 18, 24).map { it to start.plusMonths(it.toLong()) }
     }
 
     /** When payments to this payee started, if any are stored. */

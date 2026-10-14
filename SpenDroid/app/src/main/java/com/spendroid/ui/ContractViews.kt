@@ -71,7 +71,7 @@ internal fun ContractTag(status: Contracts.Status, currency: String) {
  * when payments started as one-tap guesses, and once it's dearer out of contract, "I'm happy with
  * this price".
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 internal fun ContractSection(
     end: LocalDate?,
@@ -96,14 +96,22 @@ internal fun ContractSection(
                 Text("Clear", color = Charcoal.Muted, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelLarge, modifier = Modifier.clickable { onSet(null) })
             }
         }
-        if (end == null && guesses.isNotEmpty()) {
-            started?.let {
-                Text("Paying since ${it.format(MONTH_YEAR)}. A contract of", style = MaterialTheme.typography.labelSmall, color = Charcoal.Muted, modifier = Modifier.padding(top = 8.dp))
+        if (end == null) {
+            val today = LocalDate.now()
+            if (guesses.isNotEmpty()) {
+                started?.let {
+                    Text("Paying since ${it.format(MONTH_YEAR)}. A contract of", style = MaterialTheme.typography.labelSmall, color = Charcoal.Muted, modifier = Modifier.padding(top = 8.dp))
+                }
             }
-            Row(Modifier.horizontalScroll(rememberScrollState()).padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            // Wrapped, not scrolled sideways: every choice in sight, "Already out of contract" too.
+            androidx.compose.foundation.layout.FlowRow(
+                Modifier.padding(top = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
                 guesses.forEach { (months, date) ->
                     Text(
-                        "$months months · ${date.format(DAY)}",
+                        "$months months · " + (if (date.isAfter(today)) date.format(DAY) else "ended ${date.format(DAY)}"),
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.Bold,
                         color = Color(0xFFCFD2D8),
@@ -111,13 +119,29 @@ internal fun ContractSection(
                             .padding(horizontal = 12.dp, vertical = 6.dp),
                     )
                 }
+                // Out of contract already, date unknown: ended yesterday - out of contract now, not
+                // "ends today" with its reminder - so a rise from here is caught.
+                Text(
+                    "Already out of contract",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFFCFD2D8),
+                    modifier = Modifier.clip(RoundedCornerShape(14.dp)).background(Charcoal.PanelHigh).clickable { onSet(today.minusDays(1)) }
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                )
             }
+            Text(
+                "Already ended? Pick the date it ended if you know it - SpenDroid will see whether the bill went up then.",
+                style = MaterialTheme.typography.labelSmall,
+                color = Charcoal.Muted,
+                modifier = Modifier.padding(top = 6.dp),
+            )
         }
         Text(
             when (status) {
                 null, is Contracts.Status.Running, is Contracts.Status.EndingSoon -> "Reminders 6 weeks, 2 weeks and the day before it ends."
                 is Contracts.Status.EndedUp -> "Ended - and up ${formatMoney(status.upMinor, "GBP")} a month since. Set the new end date if you've signed up again or switched."
-                is Contracts.Status.Ended -> "Ended. You'll hear if the bill goes up."
+                is Contracts.Status.Ended -> "Out of contract since ${status.end.format(DAY)}. You'll hear if the bill goes up."
             },
             style = MaterialTheme.typography.labelSmall,
             color = if (status is Contracts.Status.EndedUp) Charcoal.Bad else Charcoal.Muted,

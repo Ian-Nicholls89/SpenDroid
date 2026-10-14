@@ -422,7 +422,7 @@ class ScreensTest {
                 1 -> Frame(AppScreen.Rules) {
                     androidx.compose.foundation.layout.Column(androidx.compose.ui.Modifier.padding(14.dp)) {
                         com.spendroid.ui.ContractSection(null, null, java.time.LocalDate.of(2025, 3, 14),
-                            listOf(18 to java.time.LocalDate.of(2026, 9, 14), 24 to java.time.LocalDate.of(2027, 3, 14)), {}, {})
+                            listOf(12 to java.time.LocalDate.of(2026, 3, 14), 18 to java.time.LocalDate.of(2026, 9, 14), 24 to java.time.LocalDate.of(2027, 3, 14)), {}, {})
                         com.spendroid.ui.ContractSection(today.plusDays(23), contracts.values.first { it.status is com.spendroid.domain.Contracts.Status.EndingSoon }.status, null, emptyList(), {}, {})
                     }
                 }
