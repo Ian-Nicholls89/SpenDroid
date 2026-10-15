@@ -58,14 +58,13 @@ class PaydayTimelineWidget : GlanceAppWidget() {
     override val sizeMode = SizeMode.Exact
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
-        // Locked, with figures hidden: the heading and the way in, nothing else.
-        if (!com.spendroid.data.Privacy(context).widgetFigures) {
-            val accent = widgetAccent(context)
-            provideContent { LockedBody("PAYDAY", accent) }
-            return
+        val first = load(context)
+        val accent = widgetAccent(context)
+        provideContent {
+            val timeline = rememberFresh(first) { load(context) }
+            // Locked, with figures hidden: the heading and the way in, nothing else.
+            if (!com.spendroid.data.Privacy(context).widgetFigures) LockedBody("PAYDAY", accent) else Body(timeline)
         }
-        val timeline = load(context)
-        provideContent { Body(timeline) }
     }
 
     private data class Timeline(
@@ -215,5 +214,5 @@ class PaydayTimelineWidgetReceiver : GlanceAppWidgetReceiver() {
 }
 
 internal suspend fun refreshTimelineWidgets(context: Context) {
-    runCatching { PaydayTimelineWidget().updateAll(context) }
+    runCatching { PaydayTimelineWidget().refreshEach(context) }
 }

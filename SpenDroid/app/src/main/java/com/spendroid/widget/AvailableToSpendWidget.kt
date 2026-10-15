@@ -70,14 +70,13 @@ class AvailableToSpendWidget : GlanceAppWidget() {
     override val sizeMode = SizeMode.Exact
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
-        // Locked, with figures hidden: the heading and the way in, nothing else.
-        if (!com.spendroid.data.Privacy(context).widgetFigures) {
-            val accent = widgetAccent(context)
-            provideContent { LockedBody("LEFT TO SPEND", accent) }
-            return
+        val first = loadSummary(context)
+        val accent = widgetAccent(context)
+        provideContent {
+            val summary = rememberFresh(first) { loadSummary(context) }
+            // Locked, with figures hidden: the heading and the way in, nothing else.
+            if (!com.spendroid.data.Privacy(context).widgetFigures) LockedBody("LEFT TO SPEND", accent) else WidgetBody(summary)
         }
-        val summary = loadSummary(context)
-        provideContent { WidgetBody(summary) }
     }
 
     /** A bill or a detected outgoing, flattened to what the widget actually prints. */
@@ -679,7 +678,7 @@ suspend fun refreshWidgets(context: Context) {
     lastRefreshAt = System.currentTimeMillis()
     // Worked out once, fresh, for everything this refresh draws.
     runCatching { SharedSnapshot.fresh(context) }
-    runCatching { AvailableToSpendWidget().updateAll(context) }
+    runCatching { AvailableToSpendWidget().refreshEach(context) }
     // Drawn from the same snapshot, so it moves when this one does.
     refreshTimelineWidgets(context)
     refreshPeriodWidgets(context)

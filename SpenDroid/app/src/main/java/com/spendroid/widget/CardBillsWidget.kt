@@ -59,15 +59,14 @@ class CardBillsWidget : GlanceAppWidget() {
     override val sizeMode = SizeMode.Exact
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
-        // Locked, with figures hidden: the heading and the way in, nothing else.
-        if (!com.spendroid.data.Privacy(context).widgetFigures) {
-            val accent = widgetAccent(context)
-            provideContent { LockedBody("CARD BILLS", accent) }
-            return
+        val first = loadCards(context)
+        val firstAccent = widgetAccent(context)
+        provideContent {
+            val cards = rememberFresh(first) { loadCards(context) }
+            val accent = rememberFresh(firstAccent) { widgetAccent(context) }
+            // Locked, with figures hidden: the heading and the way in, nothing else.
+            if (!com.spendroid.data.Privacy(context).widgetFigures) LockedBody("CARD BILLS", accent) else Body(cards, accent)
         }
-        val cards = loadCards(context)
-        val accent = widgetAccent(context)
-        provideContent { Body(cards, accent) }
     }
 
     private data class CardRow(
@@ -348,5 +347,5 @@ class CardBillsWidgetReceiver : GlanceAppWidgetReceiver() {
 
 /** Refreshes every placed card-bills widget, alongside the budget one. */
 internal suspend fun refreshCardWidgets(context: Context) {
-    runCatching { CardBillsWidget().updateAll(context) }
+    runCatching { CardBillsWidget().refreshEach(context) }
 }

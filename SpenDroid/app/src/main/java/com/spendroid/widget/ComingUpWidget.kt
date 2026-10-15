@@ -53,14 +53,13 @@ class ComingUpWidget : GlanceAppWidget() {
     private data class Content(val tiles: List<Tile>, val total: String?, val accent: Int)
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
-        // Locked, with figures hidden: the heading and the way in, nothing else.
-        if (!com.spendroid.data.Privacy(context).widgetFigures) {
-            val accent = widgetAccent(context)
-            provideContent { LockedBody("COMING UP", accent) }
-            return
+        val first = load(context)
+        val accent = widgetAccent(context)
+        provideContent {
+            val content = rememberFresh(first) { load(context) }
+            // Locked, with figures hidden: the heading and the way in, nothing else.
+            if (!com.spendroid.data.Privacy(context).widgetFigures) LockedBody("COMING UP", accent) else Body(content)
         }
-        val content = load(context)
-        provideContent { Body(content) }
     }
 
     private suspend fun load(context: Context): Content {
@@ -159,5 +158,5 @@ class ComingUpWidgetReceiver : GlanceAppWidgetReceiver() {
 
 /** Redraws the Coming up widgets from what is stored. */
 suspend fun refreshComingUpWidgets(context: Context) {
-    runCatching { ComingUpWidget().updateAll(context) }
+    runCatching { ComingUpWidget().refreshEach(context) }
 }

@@ -154,6 +154,7 @@ class ThisPeriodConfigActivity : ComponentActivity() {
                                 scope.launch {
                                     runCatching {
                                         val glanceId = GlanceAppWidgetManager(this@ThisPeriodConfigActivity).getGlanceIdBy(widgetId)
+                                        androidx.glance.appwidget.state.updateAppWidgetState(this@ThisPeriodConfigActivity, glanceId) { it[REFRESHED_AT] = System.currentTimeMillis() }
                                         ThisPeriodWidget().update(this@ThisPeriodConfigActivity, glanceId)
                                     }
                                     setResult(

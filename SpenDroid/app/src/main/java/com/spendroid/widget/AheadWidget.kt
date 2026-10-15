@@ -55,12 +55,11 @@ class AheadWidget : GlanceAppWidget() {
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val accent = widgetAccent(context)
-        if (!Privacy(context).widgetFigures) {
-            provideContent { LockedBody("AHEAD", accent) }
-            return
+        val first = load(context, accent)
+        provideContent {
+            val content = rememberFresh(first) { load(context, widgetAccent(context)) }
+            if (!Privacy(context).widgetFigures) LockedBody("AHEAD", content.accent) else Body(content)
         }
-        val content = load(context, accent)
-        provideContent { Body(content) }
     }
 
     private suspend fun load(context: Context, accent: Int): Content {
@@ -163,5 +162,5 @@ class AheadWidgetReceiver : GlanceAppWidgetReceiver() {
 }
 
 suspend fun refreshAheadWidgets(context: Context) {
-    runCatching { AheadWidget().updateAll(context) }
+    runCatching { AheadWidget().refreshEach(context) }
 }

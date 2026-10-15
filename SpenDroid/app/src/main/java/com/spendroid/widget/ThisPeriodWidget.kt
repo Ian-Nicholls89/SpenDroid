@@ -55,16 +55,15 @@ class ThisPeriodWidget : GlanceAppWidget() {
     override val sizeMode = SizeMode.Exact
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
-        // Locked, with figures hidden: the heading and the way in, nothing else.
-        if (!com.spendroid.data.Privacy(context).widgetFigures) {
-            val accent = widgetAccent(context)
-            provideContent { LockedBody("THIS PERIOD", accent) }
-            return
-        }
         val widgetId = GlanceAppWidgetManager(context).getAppWidgetId(id)
-        val content = load(context, widgetId)
-        val accent = widgetAccent(context)
-        provideContent { Body(content, accent) }
+        val first = load(context, widgetId)
+        val firstAccent = widgetAccent(context)
+        provideContent {
+            val content = rememberFresh(first) { load(context, widgetId) }
+            val accent = rememberFresh(firstAccent) { widgetAccent(context) }
+            // Locked, with figures hidden: the heading and the way in, nothing else.
+            if (!com.spendroid.data.Privacy(context).widgetFigures) LockedBody("THIS PERIOD", accent) else Body(content, accent)
+        }
     }
 
     private data class Content(
@@ -335,7 +334,7 @@ class ThisPeriodWidgetReceiver : GlanceAppWidgetReceiver() {
 }
 
 internal suspend fun refreshPeriodWidgets(context: Context) {
-    runCatching { ThisPeriodWidget().updateAll(context) }
+    runCatching { ThisPeriodWidget().refreshEach(context) }
 }
 
 /** How much each account's row says, by the room there is. */

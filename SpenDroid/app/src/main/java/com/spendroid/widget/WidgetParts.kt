@@ -280,3 +280,33 @@ fun widgetColours(accent: Int): androidx.glance.color.ColorProviders {
         ),
     )
 }
+
+/** Stamped on each widget at every refresh; a widget reloads its figures whenever it changes. */
+internal val REFRESHED_AT = androidx.datastore.preferences.core.longPreferencesKey("refreshed_at")
+
+/**
+ * A widget's figures, loaded afresh on every refresh. Glance keeps a widget's drawing live for a
+ * while after it's drawn, and an update meanwhile only redrew the figures it had already loaded -
+ * so a refresh soon after a sync, or the refresh button, could show the old ones. [first] is what
+ * it was drawn with; a new refresh stamp loads again.
+ */
+@androidx.compose.runtime.Composable
+internal fun <T> rememberFresh(first: T, load: suspend () -> T): T {
+    val stamp = androidx.glance.currentState(REFRESHED_AT) ?: 0L
+    val drawnWith = androidx.compose.runtime.remember { stamp }
+    val value = androidx.compose.runtime.produceState(first, stamp) {
+        if (stamp != drawnWith) value = load()
+    }
+    return value.value
+}
+
+/** Stamps every widget of this kind and redraws it, so each loads its figures again. */
+internal suspend fun androidx.glance.appwidget.GlanceAppWidget.refreshEach(context: Context) {
+    val now = System.currentTimeMillis()
+    androidx.glance.appwidget.GlanceAppWidgetManager(context).getGlanceIds(this::class.java).forEach { id ->
+        runCatching {
+            androidx.glance.appwidget.state.updateAppWidgetState(context, id) { it[REFRESHED_AT] = now }
+            update(context, id)
+        }
+    }
+}
