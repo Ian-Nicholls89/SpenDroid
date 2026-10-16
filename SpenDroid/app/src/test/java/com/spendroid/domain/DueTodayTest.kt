@@ -55,4 +55,18 @@ class DueTodayTest {
         val taken = tx("2026-10-14", -3500, "OCTOPUS ENERGY")
         assertTrue(upcoming(LocalDate.of(2026, 10, 14), listOf(taken)).none { it.dueDate == LocalDate.of(2026, 10, 14) })
     }
+
+    /** Taken a few days before its usual date - pending today - it has gone, so not to come too. */
+    @Test
+    fun `taken early, it is not still to come`() {
+        val early = tx("2026-10-11", -3500, "OCTOPUS ENERGY").copy(isPending = true)
+        assertTrue(upcoming(LocalDate.of(2026, 10, 11), listOf(early)).none { it.dueDate == LocalDate.of(2026, 10, 14) })
+    }
+
+    /** Listed ahead of its date, it hasn't gone: still to come. */
+    @Test
+    fun `listed ahead of its date, it is still to come`() {
+        val listed = tx("2026-10-14", -3500, "OCTOPUS ENERGY").copy(isPending = true)
+        assertEquals(LocalDate.of(2026, 10, 14), upcoming(LocalDate.of(2026, 10, 11), listOf(listed)).single().dueDate)
+    }
 }

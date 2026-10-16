@@ -249,6 +249,10 @@ object BudgetEngine {
         // and "spent today" cannot disagree.
         val discretionary = booked.mapNotNull { tx ->
             val date = RecurringAnalyzer.parseBookingDate(tx.bookingDate) ?: return@mapNotNull null
+            // A payment the bank lists ahead of its date - a direct debit due on Monday, shown
+            // pending on Friday - hasn't gone yet. Counted as spent now, a card bill was counted
+            // twice: spent, and still to come. It counts from its date; until then the bill does.
+            if (date.isAfter(today)) return@mapNotNull null
             val counted = tx.amountMinor < 0 &&
                 RecurringAnalyzer.groupKey(tx) !in detectedFixedKeys &&
                 fuzzyFixedRules.none { RecurringAnalyzer.matches(it, tx) } &&
@@ -297,7 +301,15 @@ object BudgetEngine {
                                 ?.let { !it.isBefore(today.minusDays(SEEN_EARLY_DAYS)) } == true
                     }
                 val due = if (dueToday) today else nextFor(rule, today)
-                if (!due.isBefore(today) && !due.isAfter(nextIncomeDate)) {
+                // Already taken a few days early - pending or booked, dated today or before - it's
+                // out of the balance already; listed as still to come too, it was taken twice.
+                // One the bank lists ahead of its date hasn't gone yet, so it stays to come.
+                val takenEarly = due.isAfter(today) && transactions.any { tx ->
+                    (RecurringAnalyzer.matches(rule, tx) || (!rule.isManual && !rule.isVariable && isBillAtNewAmount(rule, tx))) &&
+                        RecurringAnalyzer.parseBookingDate(tx.bookingDate)
+                            ?.let { !it.isBefore(due.minusDays(CANDIDATE_WINDOW_DAYS)) && !it.isAfter(today) } == true
+                }
+                if (!takenEarly && !due.isBefore(today) && !due.isAfter(nextIncomeDate)) {
                     UpcomingPayment(rule, due, abs(rule.amountMinor))
                 } else {
                     null
@@ -314,14 +326,18 @@ object BudgetEngine {
                 if (due.isAfter(nextIncomeDate)) return@mapNotNull null
                 if (due.isBefore(today) || due == today) {
                     if (bill.statementPaid) return@mapNotNull null
-                    val leaving = transactions.any { tx ->
-                        tx.amountMinor == -bill.dueMinor &&
-                            tx.accountId !in creditCardAccountIds &&
-                            RecurringAnalyzer.parseBookingDate(tx.bookingDate)
-                                ?.let { !it.isBefore(due.minusDays(SEEN_EARLY_DAYS)) } == true
-                    }
-                    if (leaving) return@mapNotNull null
                 }
+                // The bill's payment has left - pending or booked, dated today or before - so it's
+                // counted as spending, and holding the bill back too would count it twice. Taken
+                // a few days early is still the bill. One listed ahead of its date hasn't left yet,
+                // and isn't counted as spending until it does, so the bill stays to come.
+                val leaving = transactions.any { tx ->
+                    tx.amountMinor == -bill.dueMinor &&
+                        tx.accountId !in creditCardAccountIds &&
+                        RecurringAnalyzer.parseBookingDate(tx.bookingDate)
+                            ?.let { !it.isBefore(due.minusDays(CANDIDATE_WINDOW_DAYS)) && !it.isAfter(today) } == true
+                }
+                if (leaving) return@mapNotNull null
                 UpcomingPayment(cardBillRule(bill, due), due, bill.dueMinor)
             }
             (fromRules + fromCards).sortedBy { it.dueDate }

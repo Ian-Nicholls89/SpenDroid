@@ -166,4 +166,26 @@ class CardBillDueTest {
         val s = snapshotOn(LocalDate.of(2026, 10, 2), listOf(debit))
         assertTrue(s.upcomingFixed.none { it.rule.key.startsWith(CARD_BILL_KEY_PREFIX) })
     }
+
+    /**
+     * The reported case: the bank listed Monday's bill payment as pending on Friday. It hasn't
+     * left yet, so it's still to come - once - and not spending as well until its date.
+     */
+    @Test
+    fun `a payment listed ahead of its date is counted once, as still to come`() {
+        val listedEarly = tx("2026-10-01", -2500, account = "current", payee = "TESCO BANK").copy(isPending = true)
+        val without = snapshotOn(LocalDate.of(2026, 9, 28))
+        val s = snapshotOn(LocalDate.of(2026, 9, 28), listOf(listedEarly))
+        assertEquals(2500L, s.upcomingFixed.single { it.rule.key.startsWith(CARD_BILL_KEY_PREFIX) }.amountMinor)
+        assertEquals(without.spentThisCycle, s.spentThisCycle)
+        assertEquals(without.availableToSpend, s.availableToSpend)
+    }
+
+    /** Taken a couple of days before its date, it has left: spending, and no longer to come. */
+    @Test
+    fun `a bill taken early is not still to come`() {
+        val early = tx("2026-09-29", -2500, account = "current", payee = "TESCO BANK").copy(isPending = true)
+        val s = snapshotOn(LocalDate.of(2026, 9, 29), listOf(early))
+        assertTrue(s.upcomingFixed.none { it.rule.key.startsWith(CARD_BILL_KEY_PREFIX) })
+    }
 }
