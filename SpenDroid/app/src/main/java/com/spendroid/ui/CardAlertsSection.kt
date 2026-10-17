@@ -153,7 +153,7 @@ internal fun CardAlertsSection(
         Text("2. Your bank apps, and their accounts", style = MaterialTheme.typography.labelLarge)
         Text(
             "Tick the accounts each app covers. With more than one, the card digits in a notification decide; " +
-                "where there are none, the starred account is used.",
+                "where there are none, you choose what happens.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -182,21 +182,16 @@ internal fun CardAlertsSection(
                                 },
                             )
                         },
-                        label = { Text((if (isDefault && source.accountIds.size > 1) "★ " else "") + account.label, maxLines = 1) },
+                        label = {
+                            val starred = isDefault && source.accountIds.size > 1 &&
+                                (source.unsure == NotificationSpend.Unsure.ALWAYS || source.unsure == NotificationSpend.Unsure.GUESS)
+                            Text((if (starred) "★ " else "") + account.label, maxLines = 1)
+                        },
                     )
                 }
             }
-            if (source.accountIds.size > 1) {
-                Text(
-                    "Default: tap to change",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.clickable {
-                        val ids = source.accountIds
-                        val next = ids[(ids.indexOf(source.defaultAccountId) + 1).mod(ids.size)]
-                        onSaveSources(sources.map { if (it != source) it else it.copy(defaultAccountId = next) })
-                    }.padding(vertical = 4.dp),
-                )
+            if (source.accountIds.size > 1) UnsureChoice(source, accounts) { changed ->
+                onSaveSources(sources.map { if (it != source) it else changed })
             }
         }
         Spacer(Modifier.height(8.dp))
@@ -407,5 +402,55 @@ private fun SamplesDialog(
             }
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } },
+    )
+}
+
+/**
+ * What happens when an app covering several accounts doesn't say which one paid. "Always" names
+ * the account, and moves it on with each tap; "Always guess" sends a new shop to the starred one.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun UnsureChoice(
+    source: NotificationSpend.Source,
+    accounts: List<AccountEntity>,
+    onChange: (NotificationSpend.Source) -> Unit,
+) {
+    val covered = source.accountIds.mapNotNull { id -> accounts.firstOrNull { it.id == id } }
+    val default = covered.firstOrNull { it.id == source.defaultAccountId } ?: covered.firstOrNull() ?: return
+    Text(
+        "When a notification doesn't say which account:",
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(top = 6.dp),
+    )
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        listOf(
+            NotificationSpend.Unsure.SMART to "Guess, ask if unsure",
+            NotificationSpend.Unsure.ASK to "Always ask",
+            NotificationSpend.Unsure.GUESS to "Always guess",
+        ).forEach { (mode, label) ->
+            FilterChip(selected = source.unsure == mode, onClick = { onChange(source.copy(unsure = mode)) }, label = { Text(label) })
+        }
+        FilterChip(
+            selected = source.unsure == NotificationSpend.Unsure.ALWAYS,
+            onClick = {
+                // Already "always": the next account along.
+                val next = if (source.unsure != NotificationSpend.Unsure.ALWAYS) default
+                else covered[(covered.indexOf(default) + 1).mod(covered.size)]
+                onChange(source.copy(unsure = NotificationSpend.Unsure.ALWAYS, defaultAccountId = next.id))
+            },
+            label = { Text(if (source.unsure == NotificationSpend.Unsure.ALWAYS) "Always ${default.label}" else "Always one account") },
+        )
+    }
+    Text(
+        when (source.unsure) {
+            NotificationSpend.Unsure.SMART -> "A shop you've paid 3 times from one account goes there. Anything else asks, with a button for each account."
+            NotificationSpend.Unsure.ASK -> "Every payment asks, with a button for each account. It's counted meanwhile."
+            NotificationSpend.Unsure.GUESS -> "Each goes where that shop is usually paid from; a new shop goes to ★ ${default.label}."
+            NotificationSpend.Unsure.ALWAYS -> "Every payment goes to ${default.label}. Tap again for the next account."
+        } + " You can change any payment's account in Spending.",
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
 }

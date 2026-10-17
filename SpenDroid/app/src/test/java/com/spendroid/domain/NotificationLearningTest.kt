@@ -95,18 +95,27 @@ class NotificationLearningTest {
     private val sources = listOf(NotificationSpend.Source(fd, "first direct", listOf("personal", "joint"), "personal"))
 
     @Test
-    fun `the payee's usual account is the guess`() {
+    fun `a shop paid from both accounts is asked about, counted meanwhile on the usual one`() {
         val history = listOf(tx("joint", -8_000, "TESCO STORES"), tx("joint", -6_000, "TESCO STORES"), tx("personal", -3_000, "TESCO STORES"))
         val placed = NotificationSpend.placementFor(fd, NotificationSpend.Parsed(4_500, "TESCO STORES", null), sources, accounts, history)!!
-        assertEquals("joint", placed.accountId)
-        assertTrue(placed.guessed)
-        // Never paid before: the starred default, still a guess.
+        assertEquals(NotificationSpend.Placement(null, guessed = false, provisionalAccountId = "joint"), placed)
+        // Never paid before: asked too, counted meanwhile on the starred account.
         val fresh = NotificationSpend.placementFor(fd, NotificationSpend.Parsed(4_500, "NEW SHOP", null), sources, accounts, history)!!
+        assertEquals(NotificationSpend.Placement(null, guessed = false, provisionalAccountId = "personal"), fresh)
+    }
+
+    @Test
+    fun `told to always guess, the usual account is the guess`() {
+        val guessing = sources.map { it.copy(unsure = NotificationSpend.Unsure.GUESS) }
+        val history = listOf(tx("joint", -8_000, "TESCO STORES"), tx("joint", -6_000, "TESCO STORES"), tx("personal", -3_000, "TESCO STORES"))
+        val placed = NotificationSpend.placementFor(fd, NotificationSpend.Parsed(4_500, "TESCO STORES", null), guessing, accounts, history)!!
+        assertEquals(NotificationSpend.Placement("joint", guessed = true), placed)
+        val fresh = NotificationSpend.placementFor(fd, NotificationSpend.Parsed(4_500, "NEW SHOP", null), guessing, accounts, history)!!
         assertEquals(NotificationSpend.Placement("personal", guessed = true), fresh)
     }
 
     @Test
-    fun `when the bank reports a guess on the other account, the hand-over follows the bank`() {
+    fun `when the bank reports a payment on the other account, the hand-over follows the bank`() {
         val at = LocalDateTime.of(2026, 9, 28, 12, 0).toInstant(ZoneOffset.UTC).toEpochMilli()
         val spend = SeenSpendEntity(
             id = "s", source = fd, seenAt = at, amountMinor = -4_500, currency = "GBP", merchant = "TESCO STORES",
@@ -115,7 +124,12 @@ class NotificationLearningTest {
         val row = tx("joint", -4_500, "TESCO STORES", date = "2026-09-28")
         val m = NotificationSpend.matches(listOf(spend), listOf(row), ZoneOffset.UTC) { setOf("personal", "joint") }
         assertEquals("joint", m["s"]!!.accountId)
-        // A certain account is not moved.
-        assertTrue(NotificationSpend.matches(listOf(spend.copy(accountGuessed = false)), listOf(row), ZoneOffset.UTC) { setOf("personal", "joint") }.isEmpty())
+        // Answered wrongly, the bank still wins.
+        assertEquals("joint", NotificationSpend.matches(listOf(spend.copy(accountGuessed = false)), listOf(row), ZoneOffset.UTC) { setOf("personal", "joint") }["s"]!!.accountId)
+        // Still waiting on an answer: the same.
+        val waiting = spend.copy(accountId = null, accountGuessed = false, provisionalAccountId = "personal")
+        assertEquals("joint", NotificationSpend.matches(listOf(waiting), listOf(row), ZoneOffset.UTC) { setOf("personal", "joint") }["s"]!!.accountId)
+        // The card's own digits said where it was: not moved.
+        assertTrue(NotificationSpend.matches(listOf(spend.copy(accountGuessed = false, cardDigits = "1234")), listOf(row), ZoneOffset.UTC) { setOf("personal", "joint") }.isEmpty())
     }
 }

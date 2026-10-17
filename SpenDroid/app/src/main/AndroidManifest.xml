@@ -135,6 +135,8 @@
         <receiver android:name=".work.MoneyWatchReceiver" android:exported="false" />
         <!-- "Keep it" on a subscription about to renew. -->
         <receiver android:name=".work.SubscriptionReceiver" android:exported="false" />
+        <!-- The account buttons on "which account?". -->
+        <receiver android:name=".work.SpendAnswerReceiver" android:exported="false" />
 
         <receiver
             android:name=".widget.PaydayTimelineWidgetReceiver"

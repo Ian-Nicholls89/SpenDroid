@@ -48,8 +48,25 @@ object NotificationSpend {
         val packageName: String,
         val label: String,
         val accountIds: List<String>,
+        /** With [Unsure.ALWAYS], the account used; otherwise where a new shop is guessed to be. */
         val defaultAccountId: String? = null,
+        val unsure: Unsure = Unsure.SMART,
     )
+
+    /**
+     * What to do when an app covering several accounts doesn't say which one paid: first
+     * direct names no account at all, and covers personal and joint alike.
+     */
+    enum class Unsure {
+        /** A shop always paid from one account goes there; anything else asks. */
+        SMART,
+        /** Every payment asks. */
+        ASK,
+        /** Every payment goes where that shop is usually paid from, or the default. */
+        GUESS,
+        /** Every payment goes to the default account. */
+        ALWAYS,
+    }
 
     data class Parsed(
         /** Positive: what was spent. */
@@ -201,18 +218,29 @@ object NotificationSpend {
     }
 
     /**
-     * Which account a payment was made from: the card's digits where the notification shows
-     * them; else, for Wallet, the only account marked as being in it; for a bank app, the only
-     * account it speaks for, or the one the user made its default. Null when it cannot be told -
-     * then the user is asked, and nothing is counted until they answer.
+     * Where a payment goes. [accountId] null means the user is asked; until they answer it is
+     * counted on [provisionalAccountId], the likeliest, as the money has gone either way.
      */
-    /** Which account a payment was made from, and whether that was only a best guess. */
-    data class Placement(val accountId: String, val guessed: Boolean)
+    data class Placement(val accountId: String?, val guessed: Boolean, val provisionalAccountId: String? = null)
+
+    /** The accounts a payment from [source] could have come from. Null for an app not set up. */
+    fun candidatesFor(source: String, sources: List<Source>, accounts: List<AccountEntity>): List<AccountEntity>? =
+        if (source == GOOGLE_WALLET) {
+            accounts.filter { it.walletLinked }
+        } else {
+            sources.firstOrNull { it.packageName == source }?.let { mapped -> mapped.accountIds.mapNotNull { id -> accounts.firstOrNull { it.id == id } } }
+        }
+
+    /** The key a shop's chosen account is remembered under: the app, and the shop however it's spaced. */
+    fun placeKey(source: String, merchant: String) = source + "|" + normalise(merchant)
 
     /**
-     * Like [accountFor], but where the notification does not say and the app covers several
-     * accounts, first asks the history: the account this payee has been paid from most. first
-     * direct names no account at all, and covers personal and joint alike.
+     * Which account a payment was made from. Settled when the notification shows the card's
+     * digits, the app covers one account, or the user said where this shop goes ([places], by
+     * [placeKey]). Otherwise as the app's [Unsure] says: under [Unsure.SMART], a shop paid at
+     * least [CONFIDENT_VISITS] times, always from the same account, goes there as a guess, and
+     * anything else is asked. [history] is what has been paid from where, the user's own
+     * answers included.
      */
     fun placementFor(
         source: String,
@@ -220,27 +248,40 @@ object NotificationSpend {
         sources: List<Source>,
         accounts: List<AccountEntity>,
         history: List<TransactionEntity>,
+        places: Map<String, String> = emptyMap(),
     ): Placement? {
-        val candidates = if (source == GOOGLE_WALLET) {
-            accounts.filter { it.walletLinked }
-        } else {
-            sources.firstOrNull { it.packageName == source }?.let { mapped -> accounts.filter { it.id in mapped.accountIds } }
-                ?: return null
+        val candidates = candidatesFor(source, sources, accounts) ?: return null
+        if (candidates.isEmpty()) return null
+        parsed.cardDigits?.let { digits ->
+            candidates.firstOrNull { it.cardLastFour == digits || it.identity?.endsWith(digits) == true }
+                ?.let { return Placement(it.id, guessed = false) }
         }
-        val sure = parsed.cardDigits != null &&
-            candidates.any { it.cardLastFour == parsed.cardDigits || it.identity?.endsWith(parsed.cardDigits) == true }
-        if (sure || candidates.size == 1) {
-            return accountFor(source, parsed, sources, accounts)?.let { Placement(it, guessed = false) }
-        }
+        candidates.singleOrNull()?.let { return Placement(it.id, guessed = false) }
+        places[placeKey(source, parsed.merchant)]?.takeIf { id -> candidates.any { it.id == id } }
+            ?.let { return Placement(it, guessed = false) }
+
+        val setup = sources.firstOrNull { it.packageName == source }
+        val mode = setup?.unsure ?: Unsure.SMART
+        val default = setup?.defaultAccountId?.takeIf { id -> candidates.any { it.id == id } }
+        if (mode == Unsure.ALWAYS && default != null) return Placement(default, guessed = false)
+
         val payee = normalise(parsed.merchant)
-        val usual = history
+        val visits = history
             .filter { it.accountId in candidates.map { c -> c.id } && it.amountMinor < 0 && payeeMatches(normalise(it.payee), payee) }
             .groupingBy { it.accountId }
             .eachCount()
-            .maxByOrNull { it.value }
-            ?.key
-        return (usual ?: accountFor(source, parsed, sources, accounts))?.let { Placement(it, guessed = true) }
+        val usual = visits.maxByOrNull { it.value }?.key
+        val likeliest = usual ?: default ?: candidates.first().id
+        val confident = visits.size == 1 && visits.values.single() >= CONFIDENT_VISITS
+        return when {
+            mode == Unsure.GUESS || mode == Unsure.ALWAYS -> Placement(likeliest, guessed = true)
+            mode == Unsure.SMART && confident -> Placement(likeliest, guessed = true)
+            else -> Placement(null, guessed = false, provisionalAccountId = likeliest)
+        }
     }
+
+    /** Paid this many times, always from one account: sure enough not to ask. */
+    const val CONFIDENT_VISITS = 3
 
     private fun normalise(value: String) = value.lowercase().replace(Regex("""\s+"""), " ").trim()
 
@@ -329,25 +370,30 @@ object NotificationSpend {
         seen: List<SeenSpendEntity>,
         bank: List<TransactionEntity>,
         zone: ZoneId = ZoneId.systemDefault(),
-        /** For a spend whose account was only guessed: the other accounts it may turn out to be on. */
+        /** The other accounts a spend may turn out to be on: those its app covers. */
         alternatives: (SeenSpendEntity) -> Set<String> = { emptySet() },
     ): Map<String, TransactionEntity> {
         val claimed = seen.mapNotNullTo(HashSet()) { it.matchedTransactionId }
         val result = linkedMapOf<String, TransactionEntity>()
-        seen.filter { it.matchedTransactionId == null && !it.dismissed && it.accountId != null }
+        seen.filter { it.matchedTransactionId == null && !it.dismissed && it.countedOn != null }
             .sortedBy { it.seenAt }
             .forEach { spend ->
                 val day = dateOf(spend.seenAt, zone)
+                // The bank's word wins: a payment guessed, waiting on an answer, or even answered
+                // wrongly goes to whichever account the bank reports it on - unless the card's own
+                // digits said where it was. The account it's counted on is looked at first, so two
+                // same-priced payments pair up right.
+                val elsewhere = if (spend.cardDigits != null && !spend.accountGuessed && spend.accountId != null) emptySet() else alternatives(spend)
                 val row = bank
                     .filter { tx ->
-                        (tx.accountId == spend.accountId || (spend.accountGuessed && tx.accountId in alternatives(spend))) &&
+                        (tx.accountId == spend.countedOn || tx.accountId in elsewhere) &&
                             tx.amountMinor == spend.amountMinor &&
                             tx.transactionId !in claimed && !tx.transactionId.startsWith(SEEN_PREFIX) &&
                             RecurringAnalyzer.parseBookingDate(tx.bookingDate)?.let {
                                 !it.isBefore(day.minusDays(1)) && !it.isAfter(day.plusDays(HANDOVER_DAYS))
                             } == true
                     }
-                    .minByOrNull { it.bookingDate }
+                    .minWithOrNull(compareBy({ it.accountId != spend.countedOn }, { it.bookingDate }))
                     ?: return@forEach
                 claimed += row.transactionId
                 result[spend.id] = row
@@ -355,18 +401,25 @@ object NotificationSpend {
         return result
     }
 
-    /** Seen spends still counted: known account, not yet reported by the bank, not dismissed. */
+    /**
+     * Seen spends still counted: not yet reported by the bank, not dismissed, and with an
+     * account - the one it's in, or while the user is asked, the likeliest.
+     */
     fun counted(seen: List<SeenSpendEntity>): List<SeenSpendEntity> =
-        seen.filter { it.accountId != null && it.matchedTransactionId == null && !it.dismissed }
+        seen.filter { it.countedOn != null && it.matchedTransactionId == null && !it.dismissed }
+
+    /** Waiting on the user to say which account. */
+    fun unanswered(seen: List<SeenSpendEntity>): List<SeenSpendEntity> =
+        seen.filter { it.accountId == null && it.matchedTransactionId == null && !it.dismissed }
 
     /** Counted for a week without the bank reporting them: worth asking about. */
     fun unconfirmed(seen: List<SeenSpendEntity>, now: Long): List<SeenSpendEntity> =
-        counted(seen).filter { !it.keptByUser && now - it.seenAt > REVIEW_AFTER_MS }
+        counted(seen).filter { it.accountId != null && !it.keptByUser && now - it.seenAt > REVIEW_AFTER_MS }
 
     /** A seen spend as the pending row the budget reads. */
     fun asTransaction(spend: SeenSpendEntity, sourceLabel: String, zone: ZoneId = ZoneId.systemDefault()) =
         TransactionEntity(
-            accountId = spend.accountId!!,
+            accountId = spend.countedOn!!,
             transactionId = SEEN_PREFIX + spend.id,
             bookingDate = dateOf(spend.seenAt, zone).toString(),
             valueDate = null,
@@ -389,3 +442,6 @@ object NotificationSpend {
     private const val HANDOVER_DAYS = 5L
     const val REVIEW_AFTER_MS = 7 * 24 * 60 * 60_000L
 }
+
+/** The account a seen spend is counted on: its own, or while it waits on an answer, the likeliest. */
+val SeenSpendEntity.countedOn: String? get() = accountId ?: provisionalAccountId

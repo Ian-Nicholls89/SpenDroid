@@ -82,6 +82,7 @@ class SecretsStore(private val context: Context) {
         val ACCOUNT_COLOURS = androidx.datastore.preferences.core.booleanPreferencesKey("account_colours")
         val SPEND_SOURCES = stringPreferencesKey("spend_sources")
         val SPEND_LEARNED = stringPreferencesKey("spend_learned")
+        val SPEND_PLACES = stringPreferencesKey("spend_places")
         val SPEND_READING_ON = androidx.datastore.preferences.core.booleanPreferencesKey("spend_reading_on")
     }
 
@@ -231,6 +232,7 @@ class SecretsStore(private val context: Context) {
                         .put("label", s.label)
                         .put("accounts", JSONArray(s.accountIds))
                         .put("default", s.defaultAccountId ?: JSONObject.NULL)
+                        .put("unsure", s.unsure.name)
                 },
             ).toString()
         }
@@ -247,7 +249,30 @@ class SecretsStore(private val context: Context) {
                 label = o.optString("label"),
                 accountIds = (0 until (accounts?.length() ?: 0)).map { accounts!!.getString(it) },
                 defaultAccountId = if (o.isNull("default")) null else o.optString("default"),
+                // Before 4.8 there was no choice: the starred account was the fallback, and it
+                // now becomes where a new shop is guessed to be.
+                unsure = com.spendroid.domain.NotificationSpend.Unsure.entries.firstOrNull { it.name == o.optString("unsure") }
+                    ?: com.spendroid.domain.NotificationSpend.Unsure.SMART,
             )
+        }
+    }
+
+    /**
+     * Where the user said a shop's payments go, by [com.spendroid.domain.NotificationSpend.placeKey]:
+     * "Always put Tesco here".
+     */
+    val spendPlaces: Flow<Map<String, String>> = context.dataStore.data
+        .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
+        .map { prefs ->
+            val o = prefs[Keys.SPEND_PLACES]?.let { runCatching { JSONObject(it) }.getOrNull() } ?: JSONObject()
+            o.keys().asSequence().associateWith { o.getString(it) }
+        }
+
+    suspend fun setSpendPlace(key: String, accountId: String?) {
+        context.dataStore.edit { prefs ->
+            val o = prefs[Keys.SPEND_PLACES]?.let { runCatching { JSONObject(it) }.getOrNull() } ?: JSONObject()
+            if (accountId == null) o.remove(key) else o.put(key, accountId)
+            prefs[Keys.SPEND_PLACES] = o.toString()
         }
     }
 

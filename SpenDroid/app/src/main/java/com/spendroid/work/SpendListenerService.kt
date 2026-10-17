@@ -41,6 +41,10 @@ class SpendListenerService : NotificationListenerService() {
             if (changed) {
                 refreshWidgets(applicationContext)
                 refreshCardWidgets(applicationContext)
+                // Counted, but the app didn't say which account: ask now, while it's fresh.
+                runCatching { repo.questionFor(source, sbn.postTime) }.getOrNull()?.let { (spend, accounts) ->
+                    SpendQuestions.ask(applicationContext, spend, accounts)
+                }
             }
         }
     }

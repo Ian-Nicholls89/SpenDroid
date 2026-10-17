@@ -13,6 +13,7 @@ import com.spendroid.data.db.SeenSpendEntity
 import com.spendroid.data.db.NotificationSampleEntity
 import com.spendroid.domain.DuplicateCheck
 import com.spendroid.domain.NotificationSpend
+import com.spendroid.domain.countedOn
 import com.spendroid.data.remote.AccountDetailsDto
 import com.spendroid.data.remote.AccountInfoDto
 import com.spendroid.data.remote.AccountInfoWrapperDto
@@ -185,6 +186,20 @@ class GoCardlessRepository private constructor(
      */
     private val notificationLock = kotlinx.coroutines.sync.Mutex()
 
+    /**
+     * A payment read from a notification that waits on the user to say which account, with the
+     * accounts it could be: for asking from a notification of SpenDroid's own.
+     */
+    suspend fun questionFor(source: String, postedAt: Long): Pair<SeenSpendEntity, List<AccountEntity>>? {
+        val spend = dao.seenSpends().firstOrNull { it.id == "$source|$postedAt" } ?: return null
+        if (spend.accountId != null || spend.dismissed || spend.matchedTransactionId != null) return null
+        val candidates = NotificationSpend.candidatesFor(source, spendSources.first(), dao.accounts()).orEmpty()
+        return if (candidates.size < 2) null else spend to candidates
+    }
+
+    /** Whether "always put this shop here" is set for [spend], and where. */
+    suspend fun placeOf(spend: SeenSpendEntity): String? = spendPlaces.first()[NotificationSpend.placeKey(spend.source, spend.merchant)]
+
     suspend fun onNotification(source: String, title: String?, text: String?, postedAt: Long): Boolean =
         notificationLock.withLock {
             val parsed = NotificationSpend.parse(source, title, text, spendLearned.first())
@@ -212,7 +227,10 @@ class GoCardlessRepository private constructor(
         val history = accounts.flatMap { dao.transactionsFor(it.id) }
         val rules = RecurringAnalyzer.analyze(history) + manualRules.first().mapNotNull { it.toRecurringRule() }
         if (NotificationSpend.alreadyAccountedFor(parsed, history, rules)) return NotificationSpend.Outcome.ACCOUNTED_FOR
-        val placement = NotificationSpend.placementFor(source, parsed, spendSources.first(), accounts, history)
+        // What the user said before counts as much as what the bank did: their answers teach.
+        val answered = dao.seenSpends().filter { it.accountId != null && !it.accountGuessed && !it.dismissed && it.matchedTransactionId == null }
+            .map { NotificationSpend.asTransaction(it, "") }
+        val placement = NotificationSpend.placementFor(source, parsed, spendSources.first(), accounts, history + answered, spendPlaces.first())
         val accountId = placement?.accountId
         dao.upsertSeenSpend(
             SeenSpendEntity(
@@ -220,11 +238,12 @@ class GoCardlessRepository private constructor(
                 source = source,
                 seenAt = postedAt,
                 amountMinor = -parsed.amountMinor,
-                currency = accounts.firstOrNull { it.id == accountId }?.currency ?: "GBP",
+                currency = accounts.firstOrNull { it.id == (accountId ?: placement?.provisionalAccountId) }?.currency ?: "GBP",
                 merchant = parsed.merchant,
                 cardDigits = parsed.cardDigits,
                 accountId = accountId,
                 accountGuessed = placement?.guessed == true,
+                provisionalAccountId = placement?.provisionalAccountId,
             ),
         )
         reconcileSeenSpends()
@@ -289,10 +308,16 @@ class GoCardlessRepository private constructor(
         }
     }
 
-    /** The user's answer to "which card?". Remembers the card's digits for next time. */
-    suspend fun assignSeenSpend(id: String, accountId: String) {
+    val spendPlaces: Flow<Map<String, String>> = secrets.spendPlaces
+
+    /**
+     * The user's answer to "which account?", or a change of mind about one already placed.
+     * Remembers the card's digits for next time, and with [always], the shop's account.
+     */
+    suspend fun assignSeenSpend(id: String, accountId: String, always: Boolean = false) {
         val spend = dao.seenSpends().firstOrNull { it.id == id } ?: return
-        dao.upsertSeenSpend(spend.copy(accountId = accountId))
+        dao.upsertSeenSpend(spend.copy(accountId = accountId, accountGuessed = false, provisionalAccountId = null))
+        if (always) secrets.setSpendPlace(NotificationSpend.placeKey(spend.source, spend.merchant), accountId)
         val digits = spend.cardDigits
         val account = dao.accounts().firstOrNull { it.id == accountId }
         if (digits != null && account != null && account.cardLastFour == null) {
@@ -942,7 +967,7 @@ class GoCardlessRepository private constructor(
         val known = dao.accounts().mapTo(HashSet()) { it.id }
         val seen = if (spendReadingOn.first()) {
             NotificationSpend.counted(dao.seenSpends())
-                .filter { it.accountId in known }
+                .filter { it.countedOn in known }
                 .map { NotificationSpend.asTransaction(it, labels[it.source] ?: "notification") }
         } else {
             emptyList()

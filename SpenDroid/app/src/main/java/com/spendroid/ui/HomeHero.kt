@@ -107,6 +107,8 @@ fun HomeScreen(
     onReload: () -> Unit = {},
     /** Which page the hero opens on; for screenshots. */
     initialPage: Int = 0,
+    /** Questions waiting on the user, pinned above everything else. */
+    prompts: @Composable () -> Unit = {},
 ) {
     val budget = state.budget
     val pages = remember(state.accounts, budget, state.transactions) {
@@ -148,6 +150,7 @@ fun HomeScreen(
                 state.bankHolidayToday?.let { BankHolidayBanner(it) }
                 budget?.unconvertedCurrencies?.takeIf { it.isNotEmpty() }?.let { ForeignCurrencyBanner(it) }
                 if (state.reauthNeeded.isNotEmpty()) ReauthBanner(state.reauthNeeded, onRelink)
+                prompts()
             }
 
             if (budget == null || pages.isEmpty()) {

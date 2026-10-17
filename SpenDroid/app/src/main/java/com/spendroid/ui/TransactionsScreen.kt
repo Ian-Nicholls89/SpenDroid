@@ -84,6 +84,7 @@ import com.spendroid.data.db.TransactionEntity
 import com.spendroid.domain.Category
 import com.spendroid.domain.CategoryEngine
 import com.spendroid.domain.RecurringAnalyzer
+import com.spendroid.domain.NotificationSpend
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -110,6 +111,7 @@ fun TransactionsScreen(
     onMarkCardPayment: (TransactionEntity, Boolean) -> Unit,
     onCategoryFilter: (Category?) -> Unit,
     onTreatAsBill: ((TransactionEntity, com.spendroid.domain.Cadence) -> Unit)? = null,
+    onAssignSeen: (String, String, Boolean) -> Unit = { _, _, _ -> },
     /** Only what is still pending: the Pending tab. */
     pendingOnly: Boolean = false,
 ) {
@@ -128,6 +130,7 @@ fun TransactionsScreen(
         CategoryEngine.suggest(tx, state.categoryRules, state.categoryHistory, cardPaymentKeys, cardAccountIds)
 
     val accountNames = remember(state.accounts) { state.accounts.associate { it.id to it.label } }
+    val seenById = remember(state.seenSpends) { state.seenSpends.associateBy { NotificationSpend.SEEN_PREFIX + it.id } }
     val vanishedKeys = remember(state.duplicateQuestions) {
         state.duplicateQuestions.mapTo(HashSet()) { "${it.vanished.accountId}|${it.vanished.transactionId}" }
     }
@@ -378,8 +381,15 @@ fun TransactionsScreen(
                                 TransactionRow(
                                     tx = tx,
                                     userRules = state.categoryRules,
-                                    // Redundant once the list is filtered to a single account.
-                                    accountName = if (state.accountFilter == null) {
+                                    // Redundant once the list is filtered to a single account - unless
+                                    // the account itself is only a guess, or still to be said.
+                                    accountName = seenById[tx.transactionId]?.let { spend ->
+                                        when {
+                                            spend.accountId == null -> "Which account?"
+                                            spend.accountGuessed -> "${accountNames[tx.accountId]} (guess)"
+                                            else -> null
+                                        }
+                                    } ?: if (state.accountFilter == null) {
                                         accountNames[tx.accountId]
                                     } else {
                                         null
@@ -491,9 +501,36 @@ fun TransactionsScreen(
             billGuess = remember(tx, state.transactions) { cadenceGuess(tx, state.transactions) },
             onTreatAsBill = onTreatAsBill?.let { treat -> { t: TransactionEntity, c: com.spendroid.domain.Cadence -> treat(t, c); selected = null } },
             accountLabel = accountNames[tx.accountId],
+            paidFrom = seenById[tx.transactionId]?.let { spend -> paidFrom(spend, state, onAssignSeen) { selected = null } },
             payeeCycle = remember(tx, state.transactions, state.budget) { payeeCycle(tx, state) },
         )
     }
+}
+
+/**
+ * The "Paid from" choice for a payment read from a notification: the accounts its app covers
+ * (or the Wallet cards), the one it's in, and how it got there.
+ */
+private fun paidFrom(
+    spend: com.spendroid.data.db.SeenSpendEntity,
+    state: RootUiState,
+    onAssign: (String, String, Boolean) -> Unit,
+    onDone: () -> Unit,
+): PaidFrom {
+    val choices = NotificationSpend.candidatesFor(spend.source, state.spendSources, state.accounts)?.takeIf { it.isNotEmpty() }
+        ?: state.accounts.filter { it.walletLinked }.ifEmpty { state.accounts }
+    return PaidFrom(
+        choices = choices,
+        currentId = spend.accountId,
+        how = when {
+            spend.accountId == null -> "waiting for you to say"
+            spend.accountGuessed -> "SpenDroid guessed this"
+            else -> null
+        },
+        always = state.spendPlaces[NotificationSpend.placeKey(spend.source, spend.merchant)] != null,
+        onChoose = { account, always -> onAssign(spend.id, account, always); onDone() },
+        allAccounts = state.accounts,
+    )
 }
 
 /**

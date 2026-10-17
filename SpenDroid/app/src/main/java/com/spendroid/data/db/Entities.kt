@@ -82,6 +82,11 @@ data class SeenSpendEntity(
     val categoryOverride: String? = null,
     /** The notification named no account, so [accountId] is the likeliest one, not a certainty. */
     val accountGuessed: Boolean = false,
+    /**
+     * While [accountId] waits on the user's answer, the likeliest account: the payment is counted
+     * there meanwhile, as the money has gone whichever account it came from.
+     */
+    val provisionalAccountId: String? = null,
 )
 
 /**

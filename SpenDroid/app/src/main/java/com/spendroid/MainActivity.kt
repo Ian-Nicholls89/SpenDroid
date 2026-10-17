@@ -419,6 +419,19 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                                             },
                                             onOpenForecast = { id -> forecastFor = id ?: "" },
                                             onReload = viewModel::reloadLocal,
+                                            prompts = {
+                                                // A missed "which account?" waits here too, not only in Spending.
+                                                com.spendroid.ui.SeenSpendPrompts(
+                                                    seen = state.seenSpends,
+                                                    accounts = state.accounts,
+                                                    onAssign = { id, account -> viewModel.assignSeenSpend(id, account, always = false) },
+                                                    onKeep = viewModel::keepSeenSpend,
+                                                    onDismiss = viewModel::dismissSeenSpend,
+                                                    sources = viewModel.spendSources.collectAsStateWithLifecycle().value,
+                                                    accountsOnly = true,
+                                                    modifier = Modifier,
+                                                )
+                                            },
                                         )
 
                                         AppScreen.Spending -> SpendingScreen(
@@ -437,6 +450,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                                             onCategoryFilter = viewModel::setCategoryFilter,
                                             onSetBudgetGoal = viewModel::setBudgetGoal,
                                             onTreatAsBill = viewModel::treatAsBill,
+                                            onAssignSeen = { id, account, always -> viewModel.assignSeenSpend(id, account, always) },
                                             tabIndex = spendingTab,
                                             onTabIndex = { spendingTab = it },
                                             prompts = {
@@ -450,9 +464,10 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                                                 com.spendroid.ui.SeenSpendPrompts(
                                                     seen = state.seenSpends,
                                                     accounts = state.accounts,
-                                                    onAssign = viewModel::assignSeenSpend,
+                                                    onAssign = { id, account -> viewModel.assignSeenSpend(id, account, always = false) },
                                                     onKeep = viewModel::keepSeenSpend,
                                                     onDismiss = viewModel::dismissSeenSpend,
+                                                    sources = viewModel.spendSources.collectAsStateWithLifecycle().value,
                                                 )
                                             },
                                         )

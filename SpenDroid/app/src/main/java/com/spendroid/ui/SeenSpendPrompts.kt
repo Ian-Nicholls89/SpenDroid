@@ -29,9 +29,10 @@ import java.time.format.DateTimeFormatter
 private val DAY = DateTimeFormatter.ofPattern("EEE d MMM")
 
 /**
- * The questions card alerts can raise, above the transaction list: which card a Wallet payment
- * was on when that cannot be told, and whether a payment the bank never reported really happened.
- * Nothing is counted for the first until answered; the second is counted until answered.
+ * The questions card alerts can raise, pinned above the transaction list and on Home: which
+ * account a payment came from when the notification didn't say, and whether a payment the bank
+ * never reported really happened. The first is counted on the likeliest account while it waits;
+ * the second is counted until answered. [accountsOnly] leaves out the second, for Home.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -41,24 +42,34 @@ internal fun SeenSpendPrompts(
     onAssign: (String, String) -> Unit,
     onKeep: (String) -> Unit,
     onDismiss: (String) -> Unit,
+    sources: List<NotificationSpend.Source> = emptyList(),
+    accountsOnly: Boolean = false,
+    modifier: Modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
 ) {
     val now = System.currentTimeMillis()
-    val unassigned = seen.filter { it.accountId == null && !it.dismissed && it.matchedTransactionId == null }
-    val unconfirmed = NotificationSpend.unconfirmed(seen, now)
+    val unassigned = NotificationSpend.unanswered(seen).sortedByDescending { it.seenAt }
+    val unconfirmed = if (accountsOnly) emptyList() else NotificationSpend.unconfirmed(seen, now)
     if (unassigned.isEmpty() && unconfirmed.isEmpty()) return
-    val wallet = accounts.filter { it.walletLinked }.ifEmpty { accounts }
 
-    Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
         unassigned.forEach { spend ->
-            QuestionCard("Which card?", Color(0xFF29B6F6)) {
+            // The accounts it could be: the ones its app covers, or the Wallet cards.
+            val choices = NotificationSpend.candidatesFor(spend.source, sources, accounts)?.takeIf { it.isNotEmpty() }
+                ?: accounts.filter { it.walletLinked }.ifEmpty { accounts }
+            QuestionCard("Which account?", Charcoal.Warn) {
                 Text(
                     "${formatMoney(-spend.amountMinor, spend.currency)} at ${spend.merchant} · ${NotificationSpend.dateOf(spend.seenAt).format(DAY)}",
                     style = MaterialTheme.typography.titleSmall,
                 )
-                Text("Seen in a notification; nothing is counted until you say.", style = MaterialTheme.typography.labelSmall, color = Charcoal.Muted)
+                Text(
+                    if (spend.provisionalAccountId != null) "Counted in your spending already. Just say which account it came from."
+                    else "Seen in a notification; nothing is counted until you say.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Charcoal.Muted,
+                )
                 Spacer(Modifier.height(10.dp))
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    wallet.forEach { account ->
+                    choices.forEach { account ->
                         ColourPill(account.label, colourOf(account, accounts), { onAssign(spend.id, account.id) })
                     }
                     ColourPill("Ignore", Charcoal.PanelHigh, { onDismiss(spend.id) }, Color(0xFFAAB0BB))

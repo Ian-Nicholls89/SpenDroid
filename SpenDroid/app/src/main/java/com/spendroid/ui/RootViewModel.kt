@@ -122,6 +122,10 @@ data class RootUiState(
     val syncFailures: Map<String, com.spendroid.data.SyncFailure> = emptyMap(),
     /** Card payments read from notifications, newest first. */
     val seenSpends: List<com.spendroid.data.db.SeenSpendEntity> = emptyList(),
+    /** The banking apps read, and the accounts each covers: what a payment's account can be. */
+    val spendSources: List<com.spendroid.domain.NotificationSpend.Source> = emptyList(),
+    /** "Always put this shop here", by [com.spendroid.domain.NotificationSpend.placeKey]. */
+    val spendPlaces: Map<String, String> = emptyMap(),
     /** Rows the bank has stopped listing, put to the user. */
     val duplicateQuestions: List<com.spendroid.domain.DuplicateCheck.Question> = emptyList(),
     /** The forecast to payday, any dip below zero ahead, and bills' price changes. */
@@ -491,11 +495,20 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch { repo.clearNotificationData() }
     }
 
-    fun assignSeenSpend(id: String, accountId: String) {
-        viewModelScope.launch { repo.assignSeenSpend(id, accountId) }
+    fun assignSeenSpend(id: String, accountId: String) = assignSeenSpend(id, accountId, always = false)
+
+    /** Which account a payment read from a notification came from; [always] for every one at that shop. */
+    fun assignSeenSpend(id: String, accountId: String, always: Boolean) {
+        com.spendroid.work.SpendQuestions.answered(getApplication(), id)
+        viewModelScope.launch { repo.assignSeenSpend(id, accountId, always) }
     }
 
+    /** Where "always put this shop here" sends payments, by [com.spendroid.domain.NotificationSpend.placeKey]. */
+    val spendPlaces = repo.spendPlaces
+        .stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.WhileSubscribed(5_000), emptyMap())
+
     fun dismissSeenSpend(id: String) {
+        com.spendroid.work.SpendQuestions.answered(getApplication(), id)
         viewModelScope.launch { repo.dismissSeenSpend(id) }
     }
 
@@ -933,6 +946,8 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
                 nextSyncAt = nextScheduledSync(),
                 syncFailures = repo.syncFailures.first(),
                 seenSpends = repo.seenSpends.first(),
+                spendSources = repo.spendSources.first(),
+                spendPlaces = repo.spendPlaces.first(),
                 duplicateQuestions = questions,
                 outlook = outlook,
                 heldDuplicateKeys = repo.heldDuplicateKeys(),

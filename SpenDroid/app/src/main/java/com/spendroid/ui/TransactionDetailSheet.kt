@@ -89,6 +89,8 @@ fun TransactionDetailSheet(
     onTreatAsBill: ((TransactionEntity, com.spendroid.domain.Cadence) -> Unit)? = null,
     accountLabel: String? = null,
     payeeCycle: PayeeCycle? = null,
+    /** For a payment read from a notification: which account it came from, changeable. */
+    paidFrom: PaidFrom? = null,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val current = CategoryEngine.classify(transaction, userRules, cardPaymentKeys, creditCardAccountIds)
@@ -171,6 +173,8 @@ fun TransactionDetailSheet(
                 if (transaction.isInternalTransfer) Chip("Transfer", Charcoal.PanelHigh, Color(0xFFCFD2D8))
                 payeeCycle?.takeIf { it.visits > 1 }?.let { Chip("${ordinalOf(it.visits)} this cycle", Charcoal.PanelHigh, Color(0xFFCFD2D8)) }
             }
+
+            paidFrom?.let { PaidFromPanel(it, transaction.payee.tidyPayee().ifBlank { "this shop" }) }
 
             // Whether a regular bill covers it, and where that is paid from - never left to guess.
             billNote?.let { note ->
@@ -478,4 +482,61 @@ private fun RenameDialog(bankName: String, current: String?, onDone: () -> Unit)
             }
         },
     )
+}
+
+/** Which account a payment read from a notification came from, and the accounts it could be. */
+data class PaidFrom(
+    val choices: List<com.spendroid.data.db.AccountEntity>,
+    /** Null while it waits for the user to say. */
+    val currentId: String?,
+    /** How it got there, when that's worth saying: a guess, or still to be said. */
+    val how: String?,
+    /** Whether every payment at this shop already goes to one account. */
+    val always: Boolean,
+    val onChoose: (accountId: String, always: Boolean) -> Unit,
+    /** Every account, so each keeps the colour it has everywhere else. */
+    val allAccounts: List<com.spendroid.data.db.AccountEntity> = choices,
+)
+
+/**
+ * "Paid from": the accounts as pills, the current one ticked. A guess, an answer from the
+ * notification, or one picked here before can all be changed - and with "Always", every payment
+ * at this shop goes there from now on.
+ */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+private fun PaidFromPanel(paidFrom: PaidFrom, shop: String) {
+    var always by rememberSaveable { mutableStateOf(paidFrom.always) }
+    Column(
+        Modifier.padding(start = 14.dp, end = 14.dp, bottom = 10.dp).fillMaxWidth()
+            .background(Charcoal.Panel, androidx.compose.foundation.shape.RoundedCornerShape(10.dp))
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+    ) {
+        Text(
+            "Paid from" + (paidFrom.how?.let { " · $it" } ?: ""),
+            style = MaterialTheme.typography.labelLarge,
+            color = if (paidFrom.how != null) Charcoal.Warn else Color(0xFFCFD2D8),
+        )
+        Spacer(Modifier.height(8.dp))
+        androidx.compose.foundation.layout.FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            paidFrom.choices.forEach { account ->
+                val on = account.id == paidFrom.currentId
+                ColourPill(
+                    (if (on) "✓ " else "") + account.label,
+                    if (on) colourOf(account, paidFrom.allAccounts) else Charcoal.PanelHigh,
+                    { paidFrom.onChoose(account.id, always) },
+                )
+            }
+        }
+        Row(
+            Modifier.padding(top = 6.dp).fillMaxWidth().clickable { always = !always },
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            androidx.compose.material3.Checkbox(checked = always, onCheckedChange = { always = it })
+            Text("Always put $shop in the account I pick", style = MaterialTheme.typography.bodySmall)
+        }
+    }
 }

@@ -59,6 +59,8 @@ fun SpendingScreen(
     /** Questions about payments read from notifications, shown above the list. */
     prompts: @Composable () -> Unit = {},
     onTreatAsBill: ((TransactionEntity, com.spendroid.domain.Cadence) -> Unit)? = null,
+    /** A payment read from a notification put in another account; true for every one at that shop. */
+    onAssignSeen: (String, String, Boolean) -> Unit = { _, _, _ -> },
     /** The tab on show, held by the caller so the side menu can open Insights. */
     tabIndex: Int? = null,
     onTabIndex: (Int) -> Unit = {},
@@ -99,6 +101,7 @@ fun SpendingScreen(
                 onMarkCardPayment = onMarkCardPayment,
                 onCategoryFilter = onCategoryFilter,
                 onTreatAsBill = onTreatAsBill,
+                onAssignSeen = onAssignSeen,
                 pendingOnly = tab.pending,
                 )
             }

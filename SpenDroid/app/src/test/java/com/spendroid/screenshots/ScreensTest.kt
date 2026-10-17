@@ -442,4 +442,74 @@ class ScreensTest {
         compose.waitForIdle()
         compose.onRoot().captureRoboImage("build/screenshots/contract-home.png")
     }
+
+    /** 4.8: "which account?" pinned on Home, and the choice in Card alerts. */
+    @Test
+    @Config(qualifiers = "w411dp-h1500dp-xxhdpi")
+    fun accountAttribution() {
+        val state = Sample.state()
+        val bank = "com.example.bank"
+        val sources = listOf(com.spendroid.domain.NotificationSpend.Source(bank, "Example Bank", listOf("acc-personal", "acc-joint"), "acc-personal"))
+        val waiting = com.spendroid.data.db.SeenSpendEntity(
+            id = "seen-2", source = bank, seenAt = System.currentTimeMillis(), amountMinor = -1_240, currency = "GBP",
+            merchant = "Co-op", provisionalAccountId = "acc-personal",
+        )
+        val step = androidx.compose.runtime.mutableIntStateOf(0)
+        compose.setContent {
+            if (step.intValue == 0) {
+                Frame(AppScreen.Home) {
+                    HomeScreen(
+                        state, onRefresh = {}, onRelink = {}, onSeeAllTransactions = {}, onSetBudgetGoal = { _, _ -> }, onLinkBank = {},
+                        prompts = {
+                            com.spendroid.ui.SeenSpendPrompts(
+                                listOf(waiting), state.accounts, { _, _ -> }, {}, {}, sources = sources, accountsOnly = true, modifier = Modifier,
+                            )
+                        },
+                    )
+                }
+            } else {
+                Frame(AppScreen.Settings) {
+                    androidx.compose.foundation.layout.Column(Modifier.padding(14.dp)) {
+                        com.spendroid.ui.CardAlertsSection(
+                            accounts = state.accounts, sources = sources, readingOn = true, samples = emptyList(),
+                            onSaveSources = {}, onReadingOn = {}, onUpdateAccount = {}, onClear = {},
+                        )
+                    }
+                }
+            }
+        }
+        compose.waitForIdle()
+        compose.onRoot().captureRoboImage("build/screenshots/which-account-home.png")
+        step.intValue = 1
+        compose.waitForIdle()
+        compose.onRoot().captureRoboImage("build/screenshots/card-alerts-unsure.png")
+    }
+
+    /** 4.8: "Paid from" on a payment read from a notification. */
+    @OptIn(com.github.takahirom.roborazzi.ExperimentalRoborazziApi::class)
+    @Test
+    @Config(qualifiers = "w411dp-h1100dp-xxhdpi")
+    fun paidFrom() {
+        val state = Sample.state()
+        val spend = com.spendroid.data.db.SeenSpendEntity(
+            id = "seen-2", source = "com.example.bank", seenAt = System.currentTimeMillis(), amountMinor = -1_240, currency = "GBP",
+            merchant = "Co-op", accountId = "acc-joint", accountGuessed = true,
+        )
+        compose.setContent {
+            BudgetTheme {
+                com.spendroid.ui.TransactionDetailSheet(
+                    transaction = com.spendroid.domain.NotificationSpend.asTransaction(spend, "Example Bank"),
+                    userRules = emptyList(), onDismiss = {}, onOverrideCategory = { _, _ -> },
+                    onAlwaysCategorise = { _, _ -> }, onMarkTransfer = { _, _ -> }, accountLabel = "Joint Account",
+                    paidFrom = com.spendroid.ui.PaidFrom(
+                        choices = state.accounts.filter { it.id == "acc-personal" || it.id == "acc-joint" },
+                        currentId = "acc-joint", how = "SpenDroid guessed this", always = false, onChoose = { _, _ -> },
+                        allAccounts = state.accounts,
+                    ),
+                )
+            }
+        }
+        compose.waitForIdle()
+        com.github.takahirom.roborazzi.captureScreenRoboImage("build/screenshots/paid-from.png")
+    }
 }
