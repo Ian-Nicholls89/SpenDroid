@@ -254,7 +254,8 @@ const SCREENS = {
   label: 'Which apps',
   notes: `<h2>Which apps, for which account</h2><p>SpenDroid looks for banking apps and Google Wallet on the phone and ticks them. Each is matched to accounts by the bank's name.</p>
    <p><b>Two accounts at one bank</b> (add a Barclays joint account to see it): many banking apps don't say which account paid. Where the notification shows the card's last four digits, that settles it, and SpenDroid learns the digits the first time you answer. Where it doesn't, you choose what happens:</p>
-   <p><b>Ask me</b>: SpenDroid posts its own notification with a button for each account. Until you answer it isn't counted anywhere, so it can't be wrong.<br><b>Guess</b>: it goes where that shop has usually been paid from, marked as a guess.<br><b>Always one account</b>: for someone who barely uses the other.</p>
+   <p><b>Guess, ask if unsure</b> (the default): a shop you've paid at least three times, always from the same account, goes straight there. A new shop, or one you pay from both, asks: SpenDroid posts its own notification with a button for each account.<br><b>Always ask</b>, <b>Always guess</b>, or <b>Always one account</b> for someone who barely uses the other.</p>
+   <p>Whichever you pick, any payment's account can be changed later in Spending.</p>
    ${tag('have', 'BUILT')} digits, guessing from history, "which card?". ${tag('new', 'NEW')} this choice, and the buttons on the notification.`,
   html: () => {
    const banks = [...new Set(S.accounts.map(a => a.bank))];
@@ -265,8 +266,8 @@ const SCREENS = {
    return `${bar()}${steps(4)}<h2 class="t">Read payments from</h2><div class="p">Found on this phone. Untick any you don't want.</div>
    ${list.map(([k, n, c, l, m, accts]) => `<div class="card"><div class="row" style="border:0;padding:0"><span class="tick ${S.apps[k] ? 'on' : ''}" onclick="S.apps.${k}=!S.apps.${k};render()">${S.apps[k] ? '✓' : ''}</span><span style="width:30px;height:30px;border-radius:8px;background:${c};display:flex;align-items:center;justify-content:center;font-weight:900;font-size:13px;flex:none">${l}</span><div>${n}<div class="x">${m}</div></div></div>
     ${accts.length > 1 && S.apps[k] ? `<div style="margin-top:12px;font-size:13px;color:#cfd2d8">${n}'s notifications don't always say which account. When they don't:</div>
-     <div class="chips" style="margin-top:8px">${[['ask', 'Ask me'], ['guess', 'Guess from past payments'], ...accts.map((a, ai) => ['a' + ai, 'Always ' + a.name.replace(' Account', '')])].map(([v, t]) => `<span class="c ${(S.shared[n] || 'ask') === v ? 'on' : ''}" onclick="S.shared['${n}']='${v}';render()">${t}</span>`).join('')}</div>
-     <div class="sub" style="margin-top:8px">${{ask: 'A tap on the notification puts it in the right account. Not counted until you answer.', guess: 'Put where that shop is usually paid from, marked as a guess you can change.'}[S.shared[n] || 'ask'] || 'You can still move any payment afterwards.'} Card digits, when shown, always win.</div>` : ''}</div>`).join('')}
+     <div class="chips" style="margin-top:8px">${[['smart', 'Guess, ask if unsure'], ['ask', 'Always ask'], ['guess', 'Always guess'], ...accts.map((a, ai) => ['a' + ai, 'Always ' + a.name.replace(' Account', '')])].map(([v, t]) => `<span class="c ${(S.shared[n] || 'smart') === v ? 'on' : ''}" onclick="S.shared['${n}']='${v}';render()">${t}</span>`).join('')}</div>
+     <div class="sub" style="margin-top:8px">${{smart: 'A shop you always pay from one account goes straight there. A new shop, or one paid from both, asks with a button for each account.', ask: 'Every payment asks, with a button for each account.', guess: 'Put where that shop is usually paid from, marked as a guess. A new shop goes to your main account.'}[S.shared[n] || 'smart'] || 'You can still move any payment afterwards.'} Card digits, when shown, always win.</div>` : ''}</div>`).join('')}
    <div class="big" onclick="go('remind')">Next</div>`;
   }
  },
@@ -292,16 +293,35 @@ const SCREENS = {
    <div class="card"><b>Add it to your watch face or home screen?</b><div class="sub" style="margin-top:4px">Left to spend at a glance. Set it up any time in Settings.</div></div>
    <div class="big" onclick="go('home')">See my budget</div>`
  },
+ spending: {
+  label: 'Spending',
+  notes: `<h2>8 · Spending</h2><p>Every payment shows the account it's in. Tap one to change it, whether it was guessed, answered from a notification, or chosen by hand: getting it wrong once is never stuck.</p>
+   <p><b>A missed question</b> isn't lost. It's pinned to the top of Spending and Home, highlighted, with a button for each account, until it's answered.</p>
+   <p>It's counted in left to spend straight away, as the money has gone either way; only its account waits. That differs from the app now, which waits for the answer before counting.</p>
+   <p>Rows from a statement can't be moved one by one: the bank says where they were. A whole import in the wrong account is moved with <b>Move</b> under Accounts, as now.</p>
+   <div style="display:flex;gap:8px;flex-wrap:wrap;margin:0 0 10px">${SIM('known', '▶ At a shop it knows')}${SIM('new', '▶ At a new shop')}</div>
+   ${tag('have', 'BUILT')} Spending, Move an import. ${tag('new', 'NEW')} the account on each row, changing it, the pinned questions.`,
+  html: () => `<div class="top"><div style="display:flex;flex-direction:column;gap:4px;width:20px">${'<i style="height:2px;background:#cfd2d8;display:block;border-radius:2px"></i>'.repeat(3)}</div><span class="word">SPENDING</span></div>
+   <div style="height:14px"></div>
+   ${pinnedHtml()}
+   <div class="card"><div class="sec">Seen since your statement</div>
+    ${spends().map((x, i) => x.acct == null ? '' : rowHtml(x, i)).join('')}
+    ${S.checked ? `<div class="row"><div>Not seen<div class="x">Balance check · today</div></div><span class="a">−£${S.gap || '18.60'}</span></div>` : ''}</div>
+   <div class="card"><div class="sec">From your statements</div>
+    ${[['Octopus Energy', 'Mon 12 Oct', 92.00, 0], ['Sainsbury\'s', 'Sun 11 Oct', 64.30, S.accounts.length > 2 ? 1 : 0], ['Netflix', 'Fri 9 Oct', 10.99, 0]].map(([n, w, a, ai]) => `<div class="row"><div>${n}<div class="x">Statement · ${w} · ${dot(ai)}</div></div><span class="a">−£${a.toFixed(2)}</span></div>`).join('')}</div>
+   <div class="navb"><div onclick="go('home')" style="cursor:pointer"><span class="ico"></span>Home</div><div><span class="pill">≡</span>Spending</div><div onclick="sheet('files',1)" style="cursor:pointer"><span class="ico"></span>Import</div><div><span class="ico"></span>Regular</div></div>`
+ },
  home: {
   label: 'Home',
   notes: `<h2>7 · Home, a few days later</h2><p>The same Home as now, with one addition: a line saying <b>how current</b> the figures are, as there's no live bank sync to rely on.</p>
    <p>When a balance check or statement is due, the line turns amber and offers it.</p>
    <p><b>Fixing an account:</b> tap any payment to move it, with "always put this shop here" so it isn't asked again. A guess is marked in amber. Tesco is one: guessed as Joint, really Everyday. Try <b>Check balance</b> before moving it: the check spots it.</p>
    <p>A later statement settles any guess too: the payment is matched to the statement's row, wherever the statement says it was.</p>
-   <div style="margin:4px 0 10px"><button onclick="simulate()" style="font:inherit;font-weight:700;font-size:13px;background:#1d3550;color:#7cc4ff;border:0;border-radius:10px;padding:8px 12px;cursor:pointer">▶ Simulate a Barclays payment</button></div>
+   <p><b>Try a Barclays payment</b> (with the Barclays joint account added):</p><div style="display:flex;gap:8px;flex-wrap:wrap;margin:0 0 10px">${SIM('known', '▶ At a shop it knows')}${SIM('new', '▶ At a new shop')}</div>
+   <p>A known shop goes straight to its usual account, marked as a guess. A new one asks. Close the question with ✕ to see where a missed one goes.</p>
    ${tag('have', 'BUILT')} Home, matching to statements. ${tag('new', 'NEW')} the "how current" line, moving a payment, the balance check.`,
   html: () => {
-   const left = (S.checked ? 486.22 - +(S.gap || 18.60) : 486.22) - spends().filter(x => x.extra && x.acct != null).reduce((t, x) => t + x.amt, 0);
+   const left = (S.checked ? 486.22 - +(S.gap || 18.60) : 486.22) - spends().filter(x => x.extra).reduce((t, x) => t + x.amt, 0);
    return `<div class="top"><div style="display:flex;flex-direction:column;gap:4px;width:20px">${'<i style="height:2px;background:#cfd2d8;display:block;border-radius:2px"></i>'.repeat(3)}</div><span class="word">OVERVIEW</span></div>
    <div style="height:14px"></div>
    ${S.checked ? `<div class="banner"><span style="color:#5fd38a;font-weight:900">✓</span><div>Balance checked today · £${S.gap || '18.60'} counted as spending</div></div>`
@@ -310,13 +330,14 @@ const SCREENS = {
     <div style="font-size:44px;font-weight:900;margin-top:4px">£${left.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}</div>
     <div class="sub">13 days to payday · about <b style="color:#fff">£${(left / 13).toFixed(0)}</b> a day</div>
     <div class="bar"><div class="f" style="width:${S.checked ? 41 : 43}%"></div><div class="pt" style="left:43%"></div></div></div>
+   ${pinnedHtml()}
    <div class="card"><div class="sec">Seen since your statement</div>
-    ${spends().map((x, i) => `<div class="row" style="cursor:pointer" onclick="sheet('move',${i})"><div>${x.n}<div class="x">${x.src} · ${x.when}${x.acct != null ? ` · <span class="sq" style="display:inline-block;width:9px;height:9px;vertical-align:0;background:${S.accounts[x.acct].colour}"></span> ${S.accounts[x.acct].name.replace(' Account', '')}` : ''}${x.guessed ? ' <span style="color:var(--amber);font-weight:900">· guess</span>' : ''}</div></div>${x.acct == null ? '<span class="c" style="margin-left:auto;padding:5px 10px;font-size:12px;background:#3a2f18;color:var(--amber)">Which account?</span>' : `<span class="a">−£${x.amt.toFixed(2)}</span>`}</div>`).join('')}
+    ${spends().map((x, i) => x.acct == null ? '' : rowHtml(x, i)).join('')}
     ${S.checked ? `<div class="row"><div>Not seen<div class="x">Balance check · today</div></div><span class="a">−£${S.gap || '18.60'}</span></div>` : ''}</div>
    <div class="card"><div class="sec">Coming up</div>
     <div class="row"><div>Vodafone<div class="x">Sun 18 Oct</div></div><span class="a">£24.00</span></div>
     <div class="row"><div>PureGym<div class="x">Thu 22 Oct</div></div><span class="a">£32.00</span></div></div>
-   <div class="navb"><div><span class="pill">⌂</span>Home</div><div><span class="ico"></span>Spending</div><div onclick="sheet('files',1)" style="cursor:pointer"><span class="ico"></span>Import</div><div><span class="ico"></span>Regular</div></div>`;
+   <div class="navb"><div><span class="pill">⌂</span>Home</div><div onclick="go('spending')" style="cursor:pointer"><span class="ico"></span>Spending</div><div onclick="sheet('files',1)" style="cursor:pointer"><span class="ico"></span>Import</div><div><span class="ico"></span>Regular</div></div>`;
   }
  },
 };
@@ -339,7 +360,7 @@ const SHEETS = {
  },
  addBill: () => `<h3>Add a bill</h3><label class="f">Who to</label><input class="in" value="Rent"><label class="f">Amount</label><input class="in" value="£850.00"><label class="f">Day of the month</label><input class="in" value="1"><div class="big" onclick="closeSheet()">Add</div>`,
  move: (i) => { const x = spends()[i]; return `<h3>${x.n} · £${x.amt.toFixed(2)}</h3><div class="sub">${x.src} · ${x.when}${x.guessed ? ' · put here as a guess' : ''}</div>
-  <label class="f">Paid from</label>
+  <label class="f">Paid from${x.guessed ? ' · SpenDroid guessed this' : x.answered ? ' · you chose this' : ''}</label>
   ${S.accounts.map((a, ai) => `<div class="row" style="cursor:pointer" onclick="moveTo(${i},${ai})"><span style="width:20px;height:20px;border-radius:50%;border:2px solid ${x.acct === ai ? 'var(--acc)' : '#5a5e68'};display:flex;align-items:center;justify-content:center;flex:none">${x.acct === ai ? '<i style="width:10px;height:10px;border-radius:50%;background:var(--acc);display:block"></i>' : ''}</span><span class="sq" style="background:${a.colour}"></span>${a.name}<span class="x" style="margin-left:auto">${a.bank}</span></div>`).join('')}
   <div class="row" style="border:0;margin-top:6px;cursor:pointer" onclick="S.always['${x.n}']=!S.always['${x.n}'];sheet('move',${i})"><span class="tick ${S.always[x.n] ? 'on' : ''}">${S.always[x.n] ? '✓' : ''}</span><div>Always put ${x.n} here<div class="x">Next time it won't ask or guess</div></div></div>
   <div class="big" onclick="closeSheet()">Done</div>`; },
@@ -403,22 +424,43 @@ function bankSays() { return S.typed != null ? S.typed : 1127.06 - spends().filt
 function misplaced() { return spends().find(x => x.guessed && x.acct !== 0 && Math.abs(expected() - bankSays() - 18.60 - x.amt) < 0.005); }
 function moveTo(i, ai) { const x = spends()[i]; x.acct = ai; x.guessed = false; closeSheet(); render(); }
 function checkBal() { const v = parseFloat(($('#bal') || {value: ''}).value.replace(/[£,]/g, '')); if (!isNaN(v)) S.typed = v; if (misplaced()) { sheet('balanceResult'); return; } S.checked = true; closeSheet(); render(); }
-function simulate() {
- if (stack[stack.length - 1] !== 'home') jump('home');
- const bank = S.accounts[0].bank, same = S.accounts.map((a, i) => [a, i]).filter(([a]) => a.bank === bank && a.type !== 'Credit card');
- const mode = S.shared[bank] || 'ask';
- const sp = {n: 'Co-op', src: bank + ' app', when: 'just now', amt: 12.40, acct: null, extra: true};
+function SIM(k, t) { return `<button onclick="simulate('${k}')" style="font:inherit;font-weight:700;font-size:13px;background:#1d3550;color:#7cc4ff;border:0;border-radius:10px;padding:8px 12px;cursor:pointer">${t}</button>`; }
+function dot(ai) { return `<span class="sq" style="display:inline-block;width:9px;height:9px;vertical-align:0;background:${S.accounts[ai].colour}"></span> ${S.accounts[ai].name.replace(' Account', '')}`; }
+function rowHtml(x, i) {
+ return `<div class="row" style="cursor:pointer" onclick="sheet('move',${i})"><div>${x.n}<div class="x">${x.src} · ${x.when} · ${dot(x.acct)}${x.guessed ? ' <span style="color:var(--amber);font-weight:900">· guess</span>' : ''}</div></div><span class="a">−£${x.amt.toFixed(2)}</span><span style="color:#5a5e68;font-size:16px">›</span></div>`;
+}
+function sameBank() { const bank = S.accounts[0].bank; return S.accounts.map((a, i) => [a, i]).filter(([a]) => a.bank === bank && a.type !== 'Credit card'); }
+function pinnedHtml() {
+ const open = spends().map((x, i) => [x, i]).filter(([x]) => x.acct == null);
+ if (!open.length) return '';
+ return `<div class="card" style="border:2px solid var(--amber);background:#2a2518"><div class="sec" style="color:var(--amber)">Which account? · ${open.length}</div>
+  <div class="sub" style="margin:4px 0 4px">Counted in your spending already. Just say which account it came from.</div>
+  ${open.map(([x, i]) => `<div style="padding:10px 0 4px;border-top:1px solid #3d3626;margin-top:8px"><div style="display:flex"><div><b style="font-size:15px">${x.n}</b><div class="x sub">${x.src} · ${x.when}</div></div><span style="margin-left:auto;font-weight:900">−£${x.amt.toFixed(2)}</span></div>
+   <div class="chips" style="margin-top:8px">${sameBank().map(([a, ai]) => `<span class="c" onclick="answer(${i},${ai})"><span class="sq" style="display:inline-block;width:9px;height:9px;background:${a.colour};margin-right:6px"></span>${a.name.replace(' Account', '')}</span>`).join('')}</div></div>`).join('')}</div>`;
+}
+function answer(i, ai) { const x = spends()[i]; x.acct = ai; x.guessed = false; x.answered = true; document.querySelectorAll('.hn').forEach(e => e.remove()); render(); toast(`${x.n} is in ${S.accounts[ai].name}. Tap it in Spending to change it.`); }
+function simulate(kind) {
+ const where = stack[stack.length - 1];
+ if (where !== 'home' && where !== 'spending') jump('home');
+ const bank = S.accounts[0].bank, same = sameBank();
+ const mode = S.shared[bank] || 'smart';
+ const known = kind === 'known';
+ const sp = known ? {n: 'Tesco Express', src: bank + ' app', when: 'just now', amt: 6.85, acct: null, extra: true}
+                  : {n: 'Co-op', src: bank + ' app', when: 'just now', amt: 12.40, acct: null, extra: true};
  document.querySelectorAll('.hn').forEach(e => e.remove());
- if (same.length < 2 || mode !== 'ask') {
-  sp.acct = same.length < 2 ? 0 : mode === 'guess' ? same[1][1] : same[+mode.slice(1)][1]; sp.guessed = same.length > 1 && mode === 'guess';
-  spends().unshift(sp); render(); toast(`£12.40 at Co-op · ${bank} app → ${S.accounts[sp.acct].name}${sp.guessed ? ' (a guess)' : ''}`); return;
+ const ask = same.length > 1 && (mode === 'ask' || (mode === 'smart' && !known));
+ if (!ask) {
+  sp.acct = same.length < 2 ? 0 : mode.startsWith('a') && mode !== 'ask' ? same[+mode.slice(1)][1] : same[0][1];
+  sp.guessed = same.length > 1 && !(mode.startsWith('a') && mode !== 'ask');
+  spends().unshift(sp); render();
+  toast(`£${sp.amt.toFixed(2)} at ${sp.n} → ${S.accounts[sp.acct].name}${sp.guessed ? (known ? ' (always paid from there)' : ' (a guess: new shop)') : ''}`); return;
  }
  spends().unshift(sp); render();
  const hn = document.createElement('div'); hn.className = 'hn';
  hn.style.cssText = 'position:absolute;left:10px;right:10px;top:36px;background:#2b2d33;border-radius:20px;padding:12px 14px;z-index:15;box-shadow:0 8px 24px rgba(0,0,0,.5);font-family:Roboto,Arial,sans-serif';
- hn.innerHTML = `<div style="font-size:11px;color:#aab;display:flex;gap:6px;align-items:center"><span style="width:14px;height:14px;border-radius:50%;background:#43b05c;display:inline-block"></span>SpenDroid · now<span style="margin-left:auto;cursor:pointer;font-size:14px" onclick="this.closest('.hn').remove()">✕</span></div>
-  <div style="font-size:14px;font-weight:700;margin-top:6px">£12.40 at Co-op · which account?</div><div style="font-size:13px;color:#c5c8cf">${bank} didn't say. Not counted until you choose.</div>
-  <div style="display:flex;gap:18px;margin-top:10px;font-size:13px;font-weight:700;color:#a8d5b4">${same.map(([a, i]) => `<span style="cursor:pointer" onclick="spends()[0].acct=${i};this.closest('.hn').remove();render()">${a.name.replace(' Account', '').toUpperCase()}</span>`).join('')}</div>`;
+ hn.innerHTML = `<div style="font-size:11px;color:#aab;display:flex;gap:6px;align-items:center"><span style="width:14px;height:14px;border-radius:50%;background:#43b05c;display:inline-block"></span>SpenDroid · now<span style="margin-left:auto;cursor:pointer;font-size:16px;padding:0 4px" onclick="this.closest('.hn').remove()">✕</span></div>
+  <div style="font-size:14px;font-weight:700;margin-top:6px">£${sp.amt.toFixed(2)} at ${sp.n} · which account?</div><div style="font-size:13px;color:#c5c8cf">${known ? 'You pay ' + sp.n + ' from both.' : 'A new shop, and ' + bank + " didn't say."}</div>
+  <div style="display:flex;gap:18px;margin-top:10px;font-size:13px;font-weight:700;color:#a8d5b4">${same.map(([a, i]) => `<span style="cursor:pointer" onclick="answer(0,${i})">${a.name.replace(' Account', '').toUpperCase()}</span>`).join('')}</div>`;
  $('.phone').appendChild(hn);
 }
 
