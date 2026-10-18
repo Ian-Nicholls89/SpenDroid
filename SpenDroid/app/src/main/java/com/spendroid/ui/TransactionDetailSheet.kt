@@ -412,7 +412,7 @@ private fun Detail(label: String, value: String) {
     }
 }
 
-private fun ordinalOf(n: Int): String {
+internal fun ordinalOf(n: Int): String {
     val suffix = when {
         n % 100 in 11..13 -> "th"
         n % 10 == 1 -> "st"

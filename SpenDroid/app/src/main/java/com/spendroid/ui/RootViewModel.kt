@@ -82,6 +82,8 @@ sealed interface UpdateCheckStatus {
 
 data class RootUiState(
     val hasCredentials: Boolean = false,
+    /** First-run setup finished, or skipped: the app opens with no bank link. */
+    val setupDone: Boolean = false,
     val linkingBank: String? = null,
     val error: String? = null,
     val syncing: Boolean = false,
@@ -195,13 +197,13 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
         // strings, which are non-null and would otherwise read as valid credentials.
         val hasCredentials = !repo.secretId.first().isNullOrBlank() &&
             !repo.secretKey.first().isNullOrBlank()
-        _state.update { it.copy(hasCredentials = hasCredentials) }
-        if (hasCredentials) {
-            loadInstitutions("")
-            // Merges any purchase counted more than once from notifications, straight away.
-            runCatching { repo.reconcileSeenSpends() }
-            loadLocal()
-        }
+        val setupDone = setupPrefs().getBoolean("done", false)
+        _state.update { it.copy(hasCredentials = hasCredentials, setupDone = setupDone) }
+        if (hasCredentials) loadInstitutions("")
+        // With or without a bank link: setup reads what's imported as it goes.
+        // Merges any purchase counted more than once from notifications, straight away.
+        runCatching { repo.reconcileSeenSpends() }
+        loadLocal()
     }
 
     fun saveSecret(id: String, key: String) {
@@ -509,6 +511,60 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
     val spendPlaces = repo.spendPlaces
         .stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.WhileSubscribed(5_000), emptyMap())
 
+    // --- First-run setup ---
+
+    private fun setupPrefs() = getApplication<Application>().getSharedPreferences("first_run", android.content.Context.MODE_PRIVATE)
+
+    /** Setup is finished: from now on the app opens on Home. */
+    fun finishSetup() {
+        setupPrefs().edit().putBoolean("done", true).apply()
+        _state.update { it.copy(setupDone = true) }
+        viewModelScope.launch { loadLocal() }
+    }
+
+    /**
+     * "Start from today": an account with its balance now, and the pay that sets the cycle -
+     * [lastPaid] the day it last came, so the next is worked out from it.
+     */
+    fun startFromToday(
+        name: String,
+        bank: String,
+        balanceMinor: Long,
+        payMinor: Long,
+        cadence: com.spendroid.domain.Cadence,
+        anchorDay: Int,
+        lastPaid: java.time.LocalDate,
+    ) {
+        viewModelScope.launch {
+            val account = repo.addManualAccount(name, bank, com.spendroid.data.db.AccountType.PERSONAL, balanceMinor)
+            linkBankApp(account, bank)
+            val id = "manual-${System.currentTimeMillis()}"
+            repo.addManualRule(
+                ManualRecurringRuleEntity(
+                    id = id, payee = "Pay", direction = "IN", amountMinor = payMinor, currency = "GBP",
+                    cadence = cadence.name, anchorDay = anchorDay, startDate = lastPaid.toString(), accountId = account.id,
+                ),
+            )
+            repo.savePrimaryIncomeKey(com.spendroid.domain.MANUAL_KEY_PREFIX + id)
+            loadLocal()
+        }
+    }
+
+    /** The pay that sets the cycle, when the statements didn't show it. */
+    fun addPay(payMinor: Long, cadence: com.spendroid.domain.Cadence, anchorDay: Int, lastPaid: java.time.LocalDate, accountId: String?) {
+        viewModelScope.launch {
+            val id = "manual-${System.currentTimeMillis()}"
+            repo.addManualRule(
+                ManualRecurringRuleEntity(
+                    id = id, payee = "Pay", direction = "IN", amountMinor = payMinor, currency = "GBP",
+                    cadence = cadence.name, anchorDay = anchorDay, startDate = lastPaid.toString(), accountId = accountId,
+                ),
+            )
+            repo.savePrimaryIncomeKey(com.spendroid.domain.MANUAL_KEY_PREFIX + id)
+            loadLocal()
+        }
+    }
+
     // --- Accounts with no bank link ---
 
     /**
@@ -518,21 +574,24 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
     fun addManualAccount(label: String, bank: String, type: com.spendroid.data.db.AccountType, balanceMinor: Long?) {
         viewModelScope.launch {
             val account = repo.addManualAccount(label, bank, type, balanceMinor)
-            val name = bank.trim().lowercase()
-            if (name.length >= 3) {
-                val app = withContext(Dispatchers.IO) { runCatching { launcherApps(getApplication()) }.getOrDefault(emptyList()) }
-                    .firstOrNull { val app = it.label.lowercase(); app.contains(name) || (app.length >= 5 && name.contains(app)) }
-                if (app != null) {
-                    val sources = repo.spendSources.first()
-                    val existing = sources.firstOrNull { it.packageName == app.packageName }
-                    repo.saveSpendSources(
-                        if (existing != null) sources.map { if (it == existing) it.copy(accountIds = it.accountIds + account.id) else it }
-                        else sources + com.spendroid.domain.NotificationSpend.Source(app.packageName, app.label, listOf(account.id), account.id),
-                    )
-                }
-            }
+            linkBankApp(account, bank)
             loadLocal()
         }
+    }
+
+    /** If [bank]'s app is on the phone, its notifications are read for [account]. */
+    private suspend fun linkBankApp(account: AccountEntity, bank: String) {
+        val name = bank.trim().lowercase()
+        if (name.length < 3) return
+        val app = withContext(Dispatchers.IO) { runCatching { launcherApps(getApplication()) }.getOrDefault(emptyList()) }
+            .firstOrNull { val app = it.label.lowercase(); app.contains(name) || (app.length >= 5 && name.contains(app)) }
+            ?: return
+        val sources = repo.spendSources.first()
+        val existing = sources.firstOrNull { it.packageName == app.packageName }
+        repo.saveSpendSources(
+            if (existing != null) sources.map { if (it == existing) it.copy(accountIds = it.accountIds + account.id) else it }
+            else sources + com.spendroid.domain.NotificationSpend.Source(app.packageName, app.label, listOf(account.id), account.id),
+        )
     }
 
     fun removeManualAccount(accountId: String) {

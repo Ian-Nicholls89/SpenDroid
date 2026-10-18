@@ -245,20 +245,22 @@ internal fun ManualFreshness(state: RootUiState, onCheck: (String) -> Unit, onIm
 /** How often to be reminded: a new statement, and a balance check. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-internal fun ManualRemindersPanel() {
+internal fun ManualRemindersPanel(heading: Boolean = true) {
     val context = LocalContext.current
     val settings = remember { ManualReminders(context) }
     var every by remember { mutableStateOf(settings.statementEveryDays) }
     var whenTo by remember { mutableStateOf(settings.balanceWhen) }
     Panel {
-        SectionHeading("Accounts without a bank link")
-        Text(
-            "Notifications catch card spending. A statement now and then fills in direct debits and transfers, and a balance check catches anything else.",
-            style = MaterialTheme.typography.bodySmall,
-            color = Charcoal.Muted,
-            modifier = Modifier.padding(top = 4.dp),
-        )
-        Text("Remind me to import a statement", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 10.dp))
+        if (heading) {
+            SectionHeading("Accounts without a bank link")
+            Text(
+                "Notifications catch card spending. A statement now and then fills in direct debits and transfers, and a balance check catches anything else.",
+                style = MaterialTheme.typography.bodySmall,
+                color = Charcoal.Muted,
+                modifier = Modifier.padding(top = 4.dp, bottom = 10.dp),
+            )
+        }
+        Text("Remind me to import a statement", style = MaterialTheme.typography.titleSmall)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             listOf(7 to "Every week", 14 to "Every fortnight", 30 to "Every month", 0 to "Never").forEach { (days, label) ->
                 FilterChip(selected = every == days, onClick = { every = days; settings.statementEveryDays = days }, label = { Text(label) })

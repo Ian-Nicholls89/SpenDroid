@@ -546,4 +546,56 @@ class ScreensTest {
         compose.waitForIdle()
         compose.onRoot().captureRoboImage("build/screenshots/manual-home.png")
     }
+
+    /** 5.0: every step of first-run setup, from made-up accounts. */
+    @Test
+    @Config(qualifiers = "w411dp-h1100dp-xxhdpi")
+    fun setupSteps() {
+        val base = Sample.state()
+        val manual = base.accounts.filter { it.id == "acc-personal" || it.id == "acc-joint" }
+            .map { it.copy(manual = true, institutionName = "Example Bank", anchorMinor = it.balanceMinor, anchorDate = java.time.LocalDate.now().minusDays(3).toString()) }
+        val state = base.copy(
+            accounts = manual + base.accounts.filter { it.id != "acc-personal" && it.id != "acc-joint" },
+            manualCoverage = mapOf("acc-personal" to java.time.LocalDate.now().minusDays(3)),
+            spendSources = listOf(com.spendroid.domain.NotificationSpend.Source("com.example.bank", "Example Bank", listOf("acc-personal", "acc-joint"), "acc-personal")),
+        )
+        val step = androidx.compose.runtime.mutableStateOf(com.spendroid.ui.SetupStep.WELCOME)
+        compose.setContent {
+            BudgetTheme {
+                androidx.compose.runtime.key(step.value) {
+                    com.spendroid.ui.SetupFlow(
+                        state = if (step.value == com.spendroid.ui.SetupStep.ACCOUNTS || step.value == com.spendroid.ui.SetupStep.WELCOME) state else state,
+                        onAddAccount = { _, _, _, _ -> }, onRemoveAccount = {}, onStartFromToday = { _, _, _, _ -> }, onAddPay = { _, _ -> },
+                        onSetBalance = { _, _ -> }, onIgnoreRule = { _, _ -> }, onSaveSources = {}, onUpdateAccount = {},
+                        onReload = {}, onFinish = {}, gocardless = {}, importScreen = { _, _ -> },
+                        initialStep = step.value, accessGranted = false,
+                    )
+                }
+            }
+        }
+        listOf(
+            com.spendroid.ui.SetupStep.WELCOME, com.spendroid.ui.SetupStep.ACCOUNTS, com.spendroid.ui.SetupStep.HISTORY,
+            com.spendroid.ui.SetupStep.FOUND, com.spendroid.ui.SetupStep.FRESH, com.spendroid.ui.SetupStep.NOTIFY,
+            com.spendroid.ui.SetupStep.APPS, com.spendroid.ui.SetupStep.REMINDERS, com.spendroid.ui.SetupStep.DONE,
+        ).forEach { s ->
+            step.value = s
+            compose.waitForIdle()
+            compose.onRoot().captureRoboImage("build/screenshots/setup-${s.name.lowercase()}.png")
+        }
+    }
+
+    @Test
+    fun payAnswers() {
+        val today = java.time.LocalDate.of(2026, 10, 18) // a Sunday
+        val c = com.spendroid.domain.Cadence.MONTHLY
+        // A set date still to come this month: last month's.
+        org.junit.Assert.assertEquals(java.time.LocalDate.of(2026, 9, 25), com.spendroid.ui.payAnswer(c, 25, null, 2_340_00, today)!!.lastPaid)
+        org.junit.Assert.assertEquals(java.time.LocalDate.of(2026, 10, 15), com.spendroid.ui.payAnswer(c, 15, null, 2_340_00, today)!!.lastPaid)
+        // Last working day: September's was Wednesday the 30th.
+        val lwd = com.spendroid.ui.payAnswer(com.spendroid.domain.Cadence.MONTHLY_LAST_BUSINESS_DAY, null, null, 2_340_00, today)!!
+        org.junit.Assert.assertEquals(java.time.LocalDate.of(2026, 9, 30), lwd.lastPaid)
+        // Weekly needs the day; nothing without pay.
+        org.junit.Assert.assertNull(com.spendroid.ui.payAnswer(com.spendroid.domain.Cadence.WEEKLY, null, null, 50_000, today))
+        org.junit.Assert.assertNull(com.spendroid.ui.payAnswer(c, 25, null, null, today))
+    }
 }

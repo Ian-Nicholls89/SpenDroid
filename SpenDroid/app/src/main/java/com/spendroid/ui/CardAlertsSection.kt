@@ -282,7 +282,7 @@ internal fun CardAlertsSection(
     }
 }
 
-private fun hasAccess(context: Context): Boolean =
+internal fun hasAccess(context: Context): Boolean =
     context.packageName in NotificationManagerCompat.getEnabledListenerPackages(context)
 
 @Composable
@@ -411,7 +411,7 @@ private fun SamplesDialog(
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun UnsureChoice(
+internal fun UnsureChoice(
     source: NotificationSpend.Source,
     accounts: List<AccountEntity>,
     onChange: (NotificationSpend.Source) -> Unit,

@@ -316,7 +316,8 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                     widgetCategory.value = null
                 }
 
-                if (state.hasCredentials) {
+                // With a bank link, or once setup without one is finished, the app itself.
+                if (state.hasCredentials || state.setupDone) {
                     val drawer = rememberDrawerState(DrawerValue.Closed)
                     val scope = rememberCoroutineScope()
                     var spendingTab by rememberSaveable { mutableIntStateOf(0) }
@@ -569,15 +570,42 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                     }
                     }
                 } else {
-                    OnboardingScreen(
+                    com.spendroid.ui.SetupFlow(
                         state = state,
-                        onSaveSecret = viewModel::saveSecret,
-                        onSearch = viewModel::loadInstitutions,
-                        onLink = viewModel::link,
+                        onAddAccount = viewModel::addManualAccount,
+                        onRemoveAccount = viewModel::removeManualAccount,
+                        onStartFromToday = { name, bank, balance, pay ->
+                            viewModel.startFromToday(name, bank, balance, pay.payMinor, pay.cadence, pay.anchorDay, pay.lastPaid)
+                        },
+                        onAddPay = { pay, accountId ->
+                            viewModel.addPay(pay.payMinor, pay.cadence, pay.anchorDay, pay.lastPaid, accountId)
+                        },
+                        onSetBalance = viewModel::setManualBalance,
+                        onIgnoreRule = viewModel::setRuleIgnored,
+                        onSaveSources = viewModel::saveSpendSources,
+                        onUpdateAccount = viewModel::updateAccount,
+                        onReload = viewModel::reloadLocal,
+                        onFinish = viewModel::finishSetup,
+                        gocardless = {
+                            OnboardingScreen(
+                                state = state,
+                                onSaveSecret = viewModel::saveSecret,
+                                onSearch = viewModel::loadInstitutions,
+                                onLink = viewModel::link,
+                            )
+                        },
+                        importScreen = { accountId, done ->
+                            com.spendroid.ui.ImportScreen(
+                                request = com.spendroid.ui.ImportRequest(accountId = accountId),
+                                accounts = state.accounts,
+                                onClose = done,
+                                onAdded = viewModel::reloadLocal,
+                            )
+                        },
                     )
                 }
 
-                if (showRoundup.value && state.hasCredentials) {
+                if (showRoundup.value && (state.hasCredentials || state.setupDone)) {
                     com.spendroid.ui.RoundupScreen(
                         state = state,
                         onBack = { showRoundup.value = false },
@@ -588,11 +616,11 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                     )
                 }
 
-                forecastFor?.takeIf { state.hasCredentials }?.let { id ->
+                forecastFor?.takeIf { state.hasCredentials || state.setupDone }?.let { id ->
                     com.spendroid.ui.ForecastScreen(state, id.ifEmpty { null }, onBack = { forecastFor = null })
                 }
 
-                importRequest.value?.takeIf { state.hasCredentials }?.let { request ->
+                importRequest.value?.takeIf { state.hasCredentials || state.setupDone }?.let { request ->
                     // Keyed on the request, so a second file shared while one is open starts afresh.
                     androidx.compose.runtime.key(request) {
                         com.spendroid.ui.ImportScreen(
