@@ -289,9 +289,34 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
             if (locked.value) com.spendroid.ui.LockScreen(onUnlock = ::unlock)
             else CompositionLocalProvider(LocalAccountColours provides look.accountColours, LocalGlow provides glow) {
                 val state by viewModel.state.collectAsStateWithLifecycle()
+                // Every header's droid wears the budget's face.
+                val face = com.spendroid.ui.droidFaceOf(state.budget, state.syncing)
+                androidx.compose.runtime.SideEffect { com.spendroid.ui.DroidNow.face = face }
                 var screenRoute by rememberSaveable { mutableStateOf(AppScreen.Home.route) }
                 val screen = AppScreen.from(screenRoute)
                 var showLinkDialog by remember { mutableStateOf(false) }
+                // Today's allowance, the payday moment and the last cycle's review: shown over the app.
+                var showToday by rememberSaveable { mutableStateOf(false) }
+                var showReview by rememberSaveable { mutableStateOf(false) }
+                var showPayday by remember { mutableStateOf(false) }
+                var review by remember { mutableStateOf<com.spendroid.domain.CycleReview?>(null) }
+                var reviewLoading by remember { mutableStateOf(false) }
+                val moments = remember { getSharedPreferences("moments", MODE_PRIVATE) }
+                // Payday, once a cycle: on the day pay came, or the day after if the app wasn't opened.
+                LaunchedEffect(state.budget?.cycleStart, state.budget?.asOf) {
+                    val b = state.budget ?: return@LaunchedEffect
+                    val fresh = !b.asOf.isBefore(b.cycleStart) && !b.asOf.isAfter(b.cycleStart.plusDays(1))
+                    if (fresh && moments.getString("payday_seen", null) != b.cycleStart.toString() && (state.hasCredentials || state.setupDone)) {
+                        showPayday = true
+                    }
+                }
+                LaunchedEffect(showPayday, showReview) {
+                    if ((showPayday || showReview) && review == null && !reviewLoading) {
+                        reviewLoading = true
+                        review = viewModel.lastCycleReview()
+                        reviewLoading = false
+                    }
+                }
                 var showManualDialog by remember { mutableStateOf(false) }
                 // The forecast screen, for this account; "" for the budget's own.
                 var forecastFor by rememberSaveable { mutableStateOf<String?>(null) }
@@ -342,6 +367,8 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                                             navigate(AppScreen.Spending)
                                         }
                                         DrawerTarget.SETTINGS -> navigate(AppScreen.Settings)
+                                        DrawerTarget.TODAY -> showToday = true
+                                        DrawerTarget.REVIEW -> showReview = true
                                     }
                                     scope.launch { drawer.close() }
                                 },
@@ -424,6 +451,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                                             },
                                             onOpenForecast = { id -> forecastFor = id ?: "" },
                                             onReload = viewModel::reloadLocal,
+                                            onOpenToday = { showToday = true },
                                             prompts = {
                                                 // Accounts with no bank link: how current the figures are.
                                                 com.spendroid.ui.ManualFreshness(
@@ -543,6 +571,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                                             look = look,
                                             onSetAccent = viewModel::setAccent,
                                             onSetAccountColours = viewModel::setAccountColours,
+                                            onSetIconFollows = viewModel::setIconFollows,
                                             onConfirmLock = { done -> authenticate("Confirm it's you") { ok -> done(ok); if (ok) com.spendroid.data.Privacy.unlocked = true } },
                                             onHideInRecents = ::applyHideInRecents,
                                             onReload = viewModel::reloadLocal,
@@ -603,6 +632,18 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                             )
                         },
                     )
+                }
+
+                if (state.hasCredentials || state.setupDone) {
+                    fun seenPayday() {
+                        state.budget?.let { moments.edit().putString("payday_seen", it.cycleStart.toString()).apply() }
+                        showPayday = false
+                    }
+                    when {
+                        showReview -> com.spendroid.ui.ReviewScreen(review, reviewLoading, onBack = { showReview = false })
+                        showPayday -> com.spendroid.ui.PaydayScreen(state, review, onReview = { seenPayday(); showReview = true }, onDone = { seenPayday() })
+                        showToday -> com.spendroid.ui.TodayScreen(state, onBack = { showToday = false })
+                    }
                 }
 
                 if (showRoundup.value && (state.hasCredentials || state.setupDone)) {

@@ -18,6 +18,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Dashboard
+import androidx.compose.material.icons.filled.Today
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Insights
 import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material.icons.filled.Settings
@@ -45,7 +47,7 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
 /** Where the side menu can take you. */
-enum class DrawerTarget { OVERVIEW, REGULAR, INSIGHTS, SETTINGS }
+enum class DrawerTarget { OVERVIEW, TODAY, REVIEW, REGULAR, INSIGHTS, SETTINGS }
 
 /**
  * The side menu, as nzb360 lists its services: a diagonal banner in the accent with a badge for
@@ -105,6 +107,8 @@ fun AppDrawer(
             )
         }
         DrawerItem("Overview", Icons.Filled.Dashboard, current == DrawerTarget.OVERVIEW) { onTarget(DrawerTarget.OVERVIEW) }
+        DrawerItem("Today", Icons.Filled.Today, current == DrawerTarget.TODAY) { onTarget(DrawerTarget.TODAY) }
+        DrawerItem("Last cycle", Icons.Filled.History, current == DrawerTarget.REVIEW) { onTarget(DrawerTarget.REVIEW) }
         SectionHeading("Accounts", Modifier.padding(start = 22.dp, top = 14.dp, bottom = 4.dp), colour = Charcoal.Muted)
         state.accounts.forEach { account ->
             val c = colourOf(account, state.accounts)

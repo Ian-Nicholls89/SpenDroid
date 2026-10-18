@@ -889,6 +889,42 @@ class GoCardlessRepository private constructor(
         )
     }
 
+    /**
+     * The last pay cycle, looked back on. Each day's figures are the budget as it stood at that
+     * day's end - the engine run once a day of the cycle - so they agree with what Home said.
+     * Kept until the cycle changes, as it takes a moment to work out.
+     */
+    suspend fun lastCycleReview(): com.spendroid.domain.CycleReview? {
+        val all = transactions()
+        if (all.isEmpty()) return null
+        val now = budgetSnapshotOf(all, budgetTime())
+        reviewCache?.takeIf { it.first == now.cycleStart }?.let { return it.second }
+        val end = now.cycleStart.minusDays(1)
+        val last = budgetSnapshotOf(all, end.atTime(23, 59))
+        if (!last.cycleStart.isBefore(now.cycleStart)) return null
+        val days = generateSequence(last.cycleStart) { it.plusDays(1) }.takeWhile { !it.isAfter(end) }.toList()
+        if (days.isEmpty() || days.size > 62) return null
+        val each = days.map { day -> day to budgetSnapshotOf(all, day.atTime(23, 59)) }
+        val daily = each.map { (day, snap) -> day to snap.spentToday }
+        val share = last.spendableThisCycle.takeIf { it > 0L }?.let { it / days.size } ?: 0L
+        val review = com.spendroid.domain.CycleReview(
+            start = last.cycleStart,
+            end = end,
+            currency = last.baseCurrency,
+            leftOverMinor = last.availableToSpend,
+            spentMinor = last.spentThisCycle,
+            daily = daily,
+            dailyShareMinor = share,
+            daysAhead = each.count { (_, snap) -> com.spendroid.domain.BudgetPace.of(snap) == com.spendroid.domain.BudgetPace.Pace.ON_TRACK },
+            biggestDay = daily.maxByOrNull { it.second }?.takeIf { it.second > 0L },
+            mostVisited = com.spendroid.domain.CycleReview.mostVisited(all, last.cycleStart, end),
+        )
+        reviewCache = now.cycleStart to review
+        return review
+    }
+
+    @Volatile private var reviewCache: Pair<LocalDate, com.spendroid.domain.CycleReview>? = null
+
     suspend fun budgetSnapshotOf(all: List<TransactionEntity>, referenceTime: java.time.LocalDateTime): BudgetSnapshot {
         // A possible re-issue of a row already counted waits for the user before it counts.
         val held = DuplicateCheck.heldKeys(dao.duplicateChecks())

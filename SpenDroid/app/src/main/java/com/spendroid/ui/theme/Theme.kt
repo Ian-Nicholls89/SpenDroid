@@ -18,18 +18,25 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 /**
- * The app's accent: buttons, the selected tab, the glow behind the header, headings in a
- * list. The user picks it; orange is nzb360's own and the default.
+ * The app's colour: buttons, the selected tab, the glow behind the header, the droid's visor
+ * and the coloured half of the wordmark - and, if the user wants, the launcher icon, which has
+ * a version in each ([alias], a launcher entry in the manifest).
  */
-enum class Accent(val label: String, val colour: Color) {
-    ORANGE("Orange", Color(0xFFF5A623)),
-    BLUE("Blue", Color(0xFF29B6F6)),
-    GREEN("Green", Color(0xFF43B05C)),
-    PINK("Pink", Color(0xFFE04A7A)),
+enum class Accent(val label: String, val colour: Color, val alias: String) {
+    GREEN("Green", Color(0xFF3DDC84), "LauncherGreen"),
+    MINT("Mint", Color(0xFF5EEAD4), "LauncherMint"),
+    LIME("Lime", Color(0xFFC6FF3D), "LauncherLime"),
+    ORANGE("Orange", Color(0xFFFF8A3D), "LauncherOrange"),
+    VIOLET("Violet", Color(0xFFA78BFA), "LauncherViolet"),
     ;
 
     companion object {
-        fun from(name: String?): Accent = entries.firstOrNull { it.name == name } ?: ORANGE
+        /** Before 5.1 the colours were orange, blue, green and pink: each keeps its nearest. */
+        fun from(name: String?): Accent = when (name) {
+            "BLUE" -> MINT
+            "PINK" -> VIOLET
+            else -> entries.firstOrNull { it.name == name } ?: GREEN
+        }
     }
 }
 
@@ -93,7 +100,7 @@ val HeroGradientEnd: Color
 
 @Composable
 fun BudgetTheme(
-    accent: Accent = Accent.ORANGE,
+    accent: Accent = Accent.GREEN,
     content: @Composable () -> Unit
 ) {
     MaterialTheme(
@@ -110,6 +117,15 @@ private val BudgetShapes = Shapes(
     medium = RoundedCornerShape(14.dp),
     large = RoundedCornerShape(18.dp),
     extraLarge = RoundedCornerShape(28.dp),
+)
+
+/** Space Grotesk: every figure - money, days, dates as headings - and the wordmark. */
+val Grotesk = FontFamily(
+    Font(R.font.space_grotesk_medium, FontWeight.Normal),
+    Font(R.font.space_grotesk_medium, FontWeight.Medium),
+    Font(R.font.space_grotesk_semibold, FontWeight.SemiBold),
+    Font(R.font.space_grotesk_bold, FontWeight.Bold),
+    Font(R.font.space_grotesk_bold, FontWeight.Black),
 )
 
 val Lato = FontFamily(

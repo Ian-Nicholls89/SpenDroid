@@ -106,7 +106,7 @@ object SubscriptionAlerts {
             },
         )
         val builder = NotificationCompat.Builder(context, CHANNEL)
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setSmallIcon(com.spendroid.R.drawable.ic_stat_droid)
             .setContentTitle(title)
             .setContentText(body)
             .setStyle(NotificationCompat.BigTextStyle().bigText(body))

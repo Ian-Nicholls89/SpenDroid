@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The droid, mint: the app icon's foreground. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group android:pivotX="54" android:pivotY="45" android:scaleX="0.74" android:scaleY="0.74" android:translateY="9">
+        <path android:pathData="M62,25 L67,15" android:strokeColor="#FFFFFF" android:strokeWidth="4" android:strokeLineCap="round" />
+        <path android:pathData="M63.5,13 a4.5,4.5 0 1,0 9.0,0 a4.5,4.5 0 1,0 -9.0,0 Z" android:fillColor="#5EEAD4" />
+        <path android:pathData="M42,27 L66,27 A16,16 0 0 1 82,43 L82,63 A16,16 0 0 1 66,79 L42,79 A16,16 0 0 1 26,63 L26,43 A16,16 0 0 1 42,27 Z" android:strokeColor="#FFFFFF" android:strokeWidth="5" />
+        <path android:pathData="M37.2,40 L70.8,40 A4.2,4.2 0 0 1 75,44.2 L75,49.8 A4.2,4.2 0 0 1 70.8,54 L37.2,54 A4.2,4.2 0 0 1 33,49.8 L33,44.2 A4.2,4.2 0 0 1 37.2,40 Z" android:fillColor="#3A3D45" />
+        <path android:pathData="M37.2,40 L40.599999999999994,40 A4.2,4.2 0 0 1 44.8,44.2 L44.8,49.8 A4.2,4.2 0 0 1 40.599999999999994,54 L37.2,54 A4.2,4.2 0 0 1 33,49.8 L33,44.2 A4.2,4.2 0 0 1 37.2,40 Z" android:fillColor="#5EEAD4" />
+        <path android:pathData="M54,36 L54,36 A2,2 0 0 1 56,38 L56,56 A2,2 0 0 1 54,58 L54,58 A2,2 0 0 1 52,56 L52,38 A2,2 0 0 1 54,36 Z" android:fillColor="#FFFFFF" />
+        <path android:pathData="M45,66 Q54,72 63,66" android:strokeColor="#FFFFFF" android:strokeWidth="4.5" android:strokeLineCap="round" />
+    </group>
+</vector>

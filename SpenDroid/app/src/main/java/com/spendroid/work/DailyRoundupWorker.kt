@@ -54,7 +54,7 @@ class DailyRoundupWorker(
         // Locked, with figures hidden: that the roundup is ready, not what it says.
         val shown = if (com.spendroid.data.Privacy(applicationContext).notificationFigures) body else "Your roundup is ready - open SpenDroid to see it."
         val notification = NotificationCompat.Builder(applicationContext, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setSmallIcon(com.spendroid.R.drawable.ic_stat_droid)
             .setContentTitle("SpenDroid roundup")
             .setContentText(shown)
             .setStyle(NotificationCompat.BigTextStyle().bigText(shown))

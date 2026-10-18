@@ -312,3 +312,37 @@ internal suspend fun androidx.glance.appwidget.GlanceAppWidget.refreshEach(conte
         }
     }
 }
+
+/**
+ * The droid for a widget, as a bitmap: widgets can't draw Compose, so this is the same drawing
+ * as the app's (see ui/Droid.kt) on an Android canvas. [used] and [elapsed] are the visor's fill
+ * and tick; the mood comes from [pace], and its colour is [accent] unless it's a warning.
+ */
+fun droidBitmap(pace: com.spendroid.domain.BudgetPace.Pace, used: Float?, elapsed: Float?, accent: Int, sizePx: Int = 96): Bitmap {
+    val bitmap = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
+    val c = android.graphics.Canvas(bitmap)
+    c.scale(sizePx / 108f, sizePx / 108f)
+    val white = android.graphics.Color.WHITE
+    val colour = when (pace) {
+        com.spendroid.domain.BudgetPace.Pace.TIGHT -> 0xFFF5A623.toInt()
+        com.spendroid.domain.BudgetPace.Pace.OVER -> 0xFFE5534B.toInt()
+        else -> accent
+    }
+    val line = paint(white, 4f)
+    c.drawLine(62f, 25f, 67f, 15f, line)
+    c.drawCircle(68f, 13f, 4.5f, paint(colour))
+    c.drawRoundRect(android.graphics.RectF(26f, 27f, 82f, 79f), 16f, 16f, paint(white, 5f))
+    c.drawRoundRect(android.graphics.RectF(33f, 40f, 75f, 54f), 4.2f, 4.2f, paint(0xFF3A3D45.toInt()))
+    val fill = (used ?: 0f).coerceIn(0f, 1f)
+    if (fill > 0f) c.drawRoundRect(android.graphics.RectF(33f, 40f, 33f + 42f * fill, 54f), 4.2f, 4.2f, paint(colour))
+    val x = (33f + 42f * (elapsed ?: 0.5f).coerceIn(0f, 1f) - 2f).coerceIn(33f, 73f)
+    c.drawRoundRect(android.graphics.RectF(x, 36f, x + 4f, 58f), 2f, 2f, paint(white))
+    val mouth = android.graphics.Path()
+    when (pace) {
+        com.spendroid.domain.BudgetPace.Pace.ON_TRACK -> { mouth.moveTo(45f, 66f); mouth.quadTo(54f, 72f, 63f, 66f) }
+        com.spendroid.domain.BudgetPace.Pace.TIGHT -> { mouth.moveTo(46f, 68f); mouth.lineTo(62f, 68f) }
+        com.spendroid.domain.BudgetPace.Pace.OVER -> { mouth.moveTo(45f, 70f); mouth.quadTo(54f, 64f, 63f, 70f) }
+    }
+    c.drawPath(mouth, paint(white, 4.5f))
+    return bitmap
+}

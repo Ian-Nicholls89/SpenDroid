@@ -104,6 +104,7 @@ fun SettingsScreen(
     look: Look = Look(),
     onSetAccent: (com.spendroid.ui.theme.Accent) -> Unit = {},
     onSetAccountColours: (Boolean) -> Unit = {},
+    onSetIconFollows: (Boolean) -> Unit = {},
     /** Proves the user can unlock before the app lock is turned on. */
     onConfirmLock: ((Boolean) -> Unit) -> Unit = { it(true) },
     onHideInRecents: (Boolean) -> Unit = {},
@@ -138,7 +139,7 @@ fun SettingsScreen(
         ) {
             when (SettingsTab.entries[selectedTab]) {
                 SettingsTab.PREFERENCES -> {
-                    LookSection(look, onSetAccent, onSetAccountColours)
+                    LookSection(look, onSetAccent, onSetAccountColours, onSetIconFollows)
                     Panel {
                         BudgetSection(
                             current = state.budgetModel,
@@ -250,11 +251,17 @@ fun SettingsScreen(
 }
 
 /**
- * The Look card: the app's accent, from four, and whether each account wears its own colour.
- * Applied at once, so the choice can be judged on the screen it was made on.
+ * The Look card: the app's colour, from five, whether the launcher icon follows it, and whether
+ * each account wears its own colour. Applied at once, so the choice can be judged on the screen
+ * it was made on.
  */
 @Composable
-private fun LookSection(look: Look, onSetAccent: (com.spendroid.ui.theme.Accent) -> Unit, onSetAccountColours: (Boolean) -> Unit) {
+private fun LookSection(
+    look: Look,
+    onSetAccent: (com.spendroid.ui.theme.Accent) -> Unit,
+    onSetAccountColours: (Boolean) -> Unit,
+    onSetIconFollows: (Boolean) -> Unit = {},
+) {
     Panel {
         SectionHeading("Look", trailing = "colours")
         Spacer(Modifier.height(10.dp))
@@ -273,6 +280,16 @@ private fun LookSection(look: Look, onSetAccent: (com.spendroid.ui.theme.Accent)
                         .semantics { contentDescription = accent.label + if (chosen) ", chosen" else "" },
                 )
             }
+        }
+        Spacer(Modifier.height(12.dp))
+        val context = androidx.compose.ui.platform.LocalContext.current
+        var follows by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(LauncherIcon.follows(context)) }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("App icon in this colour", style = MaterialTheme.typography.bodyLarge)
+                Text("Some launchers redraw the home-screen icon when it changes", style = MaterialTheme.typography.labelSmall, color = Charcoal.Muted)
+            }
+            Switch(checked = follows, onCheckedChange = { follows = it; onSetIconFollows(it) })
         }
         Spacer(Modifier.height(12.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {

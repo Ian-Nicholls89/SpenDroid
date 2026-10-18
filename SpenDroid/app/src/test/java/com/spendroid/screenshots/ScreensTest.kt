@@ -598,4 +598,34 @@ class ScreensTest {
         org.junit.Assert.assertNull(com.spendroid.ui.payAnswer(com.spendroid.domain.Cadence.WEEKLY, null, null, 50_000, today))
         org.junit.Assert.assertNull(com.spendroid.ui.payAnswer(c, 25, null, null, today))
     }
+
+    /** 5.1: the droid's screens - Today, Payday, the cycle review - and the colour choice. */
+    @Test
+    @Config(qualifiers = "w411dp-h1100dp-xxhdpi")
+    fun identityScreens() {
+        val state = Sample.state()
+        val review = com.spendroid.domain.CycleReview(
+            java.time.LocalDate.of(2026, 9, 2), java.time.LocalDate.of(2026, 9, 29), "GBP", 11_200, 160_000,
+            daily = List(28) { java.time.LocalDate.of(2026, 9, 2).plusDays(it.toLong()) to listOf(4_000L, 6_600L, 3_000L, 9_500L, 5_200L, 11_000L, 2_000L)[it % 7] },
+            dailyShareMinor = 6_000, daysAhead = 22, biggestDay = java.time.LocalDate.of(2026, 9, 12) to 11_200L, mostVisited = "PRET A MANGER" to 11,
+        )
+        val step = androidx.compose.runtime.mutableIntStateOf(0)
+        compose.setContent {
+            BudgetTheme(accent = if (step.intValue == 3) com.spendroid.ui.theme.Accent.MINT else com.spendroid.ui.theme.Accent.GREEN) {
+                when (step.intValue) {
+                    0 -> com.spendroid.ui.TodayScreen(state, onBack = {})
+                    1 -> com.spendroid.ui.PaydayScreen(state, review, onReview = {}, onDone = {})
+                    2 -> com.spendroid.ui.ReviewScreen(review, loading = false, onBack = {})
+                    else -> Frame(AppScreen.Home) {
+                        HomeScreen(state, onRefresh = {}, onRelink = {}, onSeeAllTransactions = {}, onSetBudgetGoal = { _, _ -> }, onLinkBank = {})
+                    }
+                }
+            }
+        }
+        listOf("today", "payday", "review", "home-mint").forEachIndexed { i, name ->
+            step.intValue = i
+            compose.waitForIdle()
+            compose.onRoot().captureRoboImage("build/screenshots/identity-$name.png")
+        }
+    }
 }

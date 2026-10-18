@@ -420,7 +420,13 @@ class AvailableToSpendWidget : GlanceAppWidget() {
                 Spacer(GlanceModifier.width(12.dp))
                 Column(modifier = GlanceModifier.defaultWeight()) {
                     Row(modifier = GlanceModifier.fillMaxWidth()) {
-                        Text("SPENDROID", style = wordmark(summary.accent), modifier = GlanceModifier.defaultWeight())
+                        Image(
+                            provider = ImageProvider(droidBitmap(summary.pace, summary.used, summary.elapsed, summary.accent)),
+                            contentDescription = null,
+                            modifier = GlanceModifier.width(20.dp).height(20.dp),
+                        )
+                        Spacer(GlanceModifier.width(6.dp))
+                        Text("spendroid", style = wordmark(summary.accent), modifier = GlanceModifier.defaultWeight())
                         PaceChip(summary.pace)
                     }
                     Text(summary.available, style = figure(26.sp))
@@ -498,7 +504,13 @@ class AvailableToSpendWidget : GlanceAppWidget() {
     private fun HeadRow(summary: Summary) {
         Column(modifier = GlanceModifier.fillMaxWidth()) {
             Row(modifier = GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.Vertical.CenterVertically) {
-                Text("SPENDROID", style = wordmark(summary.accent), modifier = GlanceModifier.defaultWeight())
+                Image(
+                            provider = ImageProvider(droidBitmap(summary.pace, summary.used, summary.elapsed, summary.accent)),
+                            contentDescription = null,
+                            modifier = GlanceModifier.width(20.dp).height(20.dp),
+                        )
+                        Spacer(GlanceModifier.width(6.dp))
+                        Text("spendroid", style = wordmark(summary.accent), modifier = GlanceModifier.defaultWeight())
                 PaceChip(summary.pace)
             }
             Row(modifier = GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.Vertical.CenterVertically) {

@@ -80,7 +80,7 @@ object ContractAlerts {
             ?.apply { putExtra(EXTRA_OPEN_CONTRACT, contractKey) }
             ?.let { PendingIntent.getActivity(context, id, it, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT) }
         val n = NotificationCompat.Builder(context, CHANNEL)
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setSmallIcon(com.spendroid.R.drawable.ic_stat_droid)
             .setContentTitle(title)
             .setContentText(body)
             .setStyle(NotificationCompat.BigTextStyle().bigText(body))

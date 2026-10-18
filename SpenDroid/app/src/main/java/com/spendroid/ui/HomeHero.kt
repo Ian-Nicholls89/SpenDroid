@@ -3,6 +3,7 @@ package com.spendroid.ui
 import com.spendroid.domain.toRecurringRule
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -109,6 +110,8 @@ fun HomeScreen(
     initialPage: Int = 0,
     /** Questions waiting on the user, pinned above everything else. */
     prompts: @Composable () -> Unit = {},
+    /** Today's allowance, from the hero's "a day". */
+    onOpenToday: () -> Unit = {},
 ) {
     val budget = state.budget
     val pages = remember(state.accounts, budget, state.transactions) {
@@ -160,7 +163,7 @@ fun HomeScreen(
 
             HorizontalPager(state = pager, modifier = Modifier.fillMaxWidth()) { index ->
                 when (val p = pages[index]) {
-                    HeroPage.Budget -> BudgetHero(budget, state.syncing)
+                    HeroPage.Budget -> BudgetHero(budget, state.syncing, onOpenToday)
                     is HeroPage.Account -> AccountHero(p, colourOf(p.account, state.accounts))
                 }
             }
@@ -215,17 +218,30 @@ private fun untilLine(budget: BudgetSnapshot): String {
 }
 
 @Composable
-private fun BudgetHero(budget: BudgetSnapshot, syncing: Boolean) {
+private fun BudgetHero(budget: BudgetSnapshot, syncing: Boolean, onOpenToday: () -> Unit = {}) {
     val pace = BudgetPace.of(budget)
     Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 6.dp)) {
+        // The droid's read on the day, in a word bubble: the same pace as the bar, said plainly.
+        Row(verticalAlignment = Alignment.Top, modifier = Modifier.padding(bottom = 12.dp)) {
+            Droid(droidFaceOf(budget, syncing), 34.dp)
+            Spacer(Modifier.width(10.dp))
+            Text(
+                com.spendroid.domain.TodaysRead.of(budget) { formatMoney(it, budget.baseCurrency) },
+                style = MaterialTheme.typography.bodyMedium,
+                color = Color(0xFFE7E9EE),
+                modifier = Modifier
+                    .background(Color(0xFF1F2127), RoundedCornerShape(topStart = 4.dp, topEnd = 14.dp, bottomEnd = 14.dp, bottomStart = 14.dp))
+                    .padding(horizontal = 12.dp, vertical = 9.dp),
+            )
+        }
         Text(untilLine(budget), style = MaterialTheme.typography.labelLarge, color = Color.White.copy(alpha = 0.78f))
         Row(verticalAlignment = Alignment.CenterVertically) {
             RollingAmount(
                 modifier = Modifier.shimmer(syncing),
                 minor = budget.availableToSpend,
                 currency = budget.baseCurrency,
-                style = MaterialTheme.typography.displaySmall.copy(fontSize = 46.sp),
-                fontWeight = FontWeight.Black,
+                style = MaterialTheme.typography.displaySmall.copy(fontSize = 48.sp, fontFamily = com.spendroid.ui.theme.Grotesk, letterSpacing = (-1.5).sp),
+                fontWeight = FontWeight.Bold,
                 color = Color.White,
             )
             Spacer(Modifier.width(10.dp))
@@ -242,7 +258,13 @@ private fun BudgetHero(budget: BudgetSnapshot, syncing: Boolean) {
             val days = budget.daysUntilNextIncome
             if (days != null && days > 0) {
                 Dot()
-                Text("${formatMoney(budget.availableToSpend / days, budget.baseCurrency)} a day", style = MaterialTheme.typography.labelLarge, color = Color(0xFFCFD2D8))
+                // Today's allowance, a tap away.
+                Text(
+                    "${formatMoney(budget.availableToSpend / days, budget.baseCurrency)} a day ›",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = Color(0xFFCFD2D8),
+                    modifier = Modifier.clickable(onClick = onOpenToday),
+                )
             }
             dayOfCycle(budget)?.let {
                 Dot()

@@ -59,7 +59,7 @@ class UpdateCheckerWorker(
         )
 
         val notification = NotificationCompat.Builder(applicationContext, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setSmallIcon(com.spendroid.R.drawable.ic_stat_droid)
             .setContentTitle("SpenDroid update available")
             .setContentText("Version ${release.versionName} (${release.versionCode}) is ready. Tap to view releases.")
             .setStyle(

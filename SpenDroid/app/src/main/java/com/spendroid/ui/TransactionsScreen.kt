@@ -594,7 +594,7 @@ private fun DayHeader(date: String, rows: List<TransactionEntity>, today: java.t
     val spent = rows.filter { it.amountMinor < 0 }.sumOf { -it.amountMinor }
     Row(Modifier.fillMaxWidth().padding(end = 18.dp, top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
         DayHeading(label, Modifier.weight(1f))
-        if (spent > 0L) Text(formatMoney(spent, rows.first().currency), style = MaterialTheme.typography.labelMedium, color = Charcoal.Muted)
+        if (spent > 0L) Text(formatMoney(spent, rows.first().currency), fontFamily = com.spendroid.ui.theme.Grotesk, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelLarge, color = Charcoal.Muted)
     }
 }
 
@@ -756,7 +756,7 @@ private fun TransactionRow(
                 amount,
                 // Colour marks the exception, not the rule: an ordinary debit is the most common
                 // thing on this screen and does not need the loudest colour on the palette.
-                style = MaterialTheme.typography.titleSmall.copy(fontFeatureSettings = "tnum"),
+                style = MaterialTheme.typography.titleSmall.copy(fontFamily = com.spendroid.ui.theme.Grotesk, fontFeatureSettings = "tnum"),
                 fontWeight = FontWeight.Black,
                 color = if (tx.amountMinor >= 0) InColor else MaterialTheme.colorScheme.onSurface,
                 textAlign = TextAlign.End,

@@ -152,7 +152,7 @@ data class RootUiState(
 
 /** The app's colours: its accent, and whether each account has its own. */
 data class Look(
-    val accent: com.spendroid.ui.theme.Accent = com.spendroid.ui.theme.Accent.ORANGE,
+    val accent: com.spendroid.ui.theme.Accent = com.spendroid.ui.theme.Accent.GREEN,
     val accountColours: Boolean = true,
 )
 
@@ -373,6 +373,12 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setAccent(accent: com.spendroid.ui.theme.Accent) {
         viewModelScope.launch { repo.saveAccent(accent.name) }
+        // The launcher icon too, if the user asked it to follow.
+        if (LauncherIcon.follows(getApplication())) runCatching { LauncherIcon.apply(getApplication(), accent) }
+    }
+
+    fun setIconFollows(follows: Boolean) {
+        runCatching { LauncherIcon.setFollows(getApplication(), follows, look.value.accent) }
     }
 
     fun setAccountColours(on: Boolean) {
@@ -510,6 +516,10 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
     /** Where "always put this shop here" sends payments, by [com.spendroid.domain.NotificationSpend.placeKey]. */
     val spendPlaces = repo.spendPlaces
         .stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.WhileSubscribed(5_000), emptyMap())
+
+    /** The last pay cycle looked back on: worked out off the main thread, as it takes a moment. */
+    suspend fun lastCycleReview(): com.spendroid.domain.CycleReview? =
+        withContext(Dispatchers.Default) { runCatching { repo.lastCycleReview() }.getOrNull() }
 
     // --- First-run setup ---
 

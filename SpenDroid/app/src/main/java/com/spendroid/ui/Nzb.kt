@@ -111,7 +111,8 @@ fun LabelledBar(
         modifier
             .fillMaxWidth()
             .height(height)
-            .clip(RoundedCornerShape(height / 2))
+            // The signature bar is the droid's visor: squarer than a capsule.
+            .clip(RoundedCornerShape(height * 0.3f))
             .background(Color(0xFF33363E))
             .semantics { contentDescription = label },
     ) {
@@ -120,7 +121,7 @@ fun LabelledBar(
                 Modifier
                     .fillMaxHeight()
                     .width(maxWidth * (shown + coming))
-                    .clip(RoundedCornerShape(height / 2))
+                    .clip(RoundedCornerShape(height * 0.3f))
                     .background(colour.copy(alpha = 0.35f)),
             )
         }
@@ -128,22 +129,22 @@ fun LabelledBar(
             Modifier
                 .fillMaxHeight()
                 .width(maxWidth * shown)
-                .clip(RoundedCornerShape(height / 2))
+                .clip(RoundedCornerShape(height * 0.3f))
                 .background(colour),
         )
         tick?.let { t ->
             Box(
                 Modifier
-                    .offset(x = maxWidth * t.coerceIn(0f, 1f) - 1.5.dp)
-                    .width(3.dp)
+                    .offset(x = maxWidth * t.coerceIn(0f, 1f) - 2.dp)
+                    .width(4.dp)
                     .fillMaxHeight()
                     .background(Color.White, RoundedCornerShape(2.dp)),
             )
         }
         Text(
             label,
-            fontFamily = Lato,
-            fontWeight = FontWeight.Black,
+            fontFamily = com.spendroid.ui.theme.Grotesk,
+            fontWeight = FontWeight.Bold,
             fontSize = if (height < 20.dp) 11.sp else 12.sp,
             color = Color.White,
             textAlign = TextAlign.Center,
@@ -289,7 +290,7 @@ fun DotTabs(tabs: List<String>, selected: Int, onSelect: (Int) -> Unit, modifier
 fun DayHeading(text: String, modifier: Modifier = Modifier) {
     Text(
         text,
-        fontFamily = Lato,
+        fontFamily = com.spendroid.ui.theme.Grotesk,
         fontWeight = FontWeight.Bold,
         fontSize = 16.sp,
         color = MaterialTheme.colorScheme.primary,
@@ -320,20 +321,6 @@ fun AccentTitle(title: String, note: String? = null, colour: Color = MaterialThe
     }
 }
 
-/** A screen's name in spaced capitals, in [colour]: the "UNRAID" of nzb360. */
-@Composable
-fun Wordmark(text: String, colour: Color, modifier: Modifier = Modifier) {
-    Text(
-        text.uppercase(),
-        fontFamily = Lato,
-        fontWeight = FontWeight.Black,
-        fontSize = 21.sp,
-        letterSpacing = 4.sp,
-        color = colour,
-        maxLines = 1,
-        modifier = modifier,
-    )
-}
 
 /** The glow behind a screen's header, in [colour], fading into the charcoal. */
 @Composable

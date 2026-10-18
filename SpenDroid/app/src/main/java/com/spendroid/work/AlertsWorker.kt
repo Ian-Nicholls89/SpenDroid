@@ -239,7 +239,7 @@ class AlertsWorker(
         val figures = com.spendroid.data.Privacy(applicationContext).notificationFigures
         val body = if (figures) alerts.joinToString("\n\n") else "Open SpenDroid to see ${if (alerts.size == 1) "it" else "them"}."
         val notification = NotificationCompat.Builder(applicationContext, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setSmallIcon(com.spendroid.R.drawable.ic_stat_droid)
             .setContentTitle(if (alerts.size == 1) "SpenDroid" else "SpenDroid · ${alerts.size} things")
             .setContentText(if (figures) alerts.first() else body)
             .setStyle(NotificationCompat.BigTextStyle().bigText(body))

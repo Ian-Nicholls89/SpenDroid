@@ -806,8 +806,8 @@ internal fun HeroStat(label: String, minor: Long, currency: String) {
         RollingAmount(
             minor = minor,
             currency = currency,
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold,
+            style = MaterialTheme.typography.titleMedium.copy(fontFamily = com.spendroid.ui.theme.Grotesk),
+            fontWeight = FontWeight.Bold,
             color = Color.White,
         )
     }

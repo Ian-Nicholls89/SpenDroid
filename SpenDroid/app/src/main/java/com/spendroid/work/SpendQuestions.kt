@@ -56,7 +56,7 @@ object SpendQuestions {
             PendingIntent.getActivity(context, id, it, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         }
         val builder = NotificationCompat.Builder(context, CHANNEL)
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setSmallIcon(com.spendroid.R.drawable.ic_stat_droid)
             .setContentTitle("$what · which account?")
             .setContentText("It's counted already. Tap the account it came from.")
             .setContentIntent(open)
