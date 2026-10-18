@@ -200,6 +200,16 @@ class GoCardlessRepository private constructor(
     /** Whether "always put this shop here" is set for [spend], and where. */
     suspend fun placeOf(spend: SeenSpendEntity): String? = spendPlaces.first()[NotificationSpend.placeKey(spend.source, spend.merchant)]
 
+    /** Set when a Wallet announcement settled which account an earlier bank alert was on. */
+    @Volatile private var settledByPartner = false
+
+    /**
+     * Payments seen in the last day that no longer wait on an answer - so a "which account?"
+     * still showing for one can go.
+     */
+    suspend fun settledSince(since: Long): List<String> =
+        dao.seenSpends().filter { it.seenAt >= since && (it.accountId != null || it.dismissed || it.matchedTransactionId != null) }.map { it.id }
+
     suspend fun onNotification(source: String, title: String?, text: String?, postedAt: Long): Boolean =
         notificationLock.withLock {
             val parsed = NotificationSpend.parse(source, title, text, spendLearned.first())
@@ -210,7 +220,8 @@ class GoCardlessRepository private constructor(
             dao.deleteSeenSpendsBefore(postedAt - SEEN_SPEND_DAYS_MS)
             val outcome = parsed?.let { countSeen(source, it, postedAt) } ?: NotificationSpend.Outcome.NOT_A_PAYMENT
             dao.setNotificationOutcome(sampleId, outcome.name)
-            outcome == NotificationSpend.Outcome.COUNTED
+            val settled = settledByPartner.also { settledByPartner = false }
+            outcome == NotificationSpend.Outcome.COUNTED || settled
         }
 
     /**
@@ -220,10 +231,30 @@ class GoCardlessRepository private constructor(
     private suspend fun countSeen(source: String, parsed: NotificationSpend.Parsed, postedAt: Long): NotificationSpend.Outcome {
         if (!spendReadingOn.first()) return NotificationSpend.Outcome.PAUSED
         val recent = dao.seenSpends()
-        if (NotificationSpend.duplicateOf(source, parsed.amountMinor, parsed.cardDigits, postedAt, recent) != null) {
+        val accounts = dao.accounts()
+        val setup = NotificationSpend.Setup(spendSources.first(), accounts)
+        NotificationSpend.duplicateOf(source, parsed.amountMinor, parsed.cardDigits, postedAt, recent, setup)?.let { first ->
+            // The banking app's alert came first and couldn't say which account - first direct
+            // never does - but Wallet's shows the card: that settles it.
+            if (first.accountId == null || first.accountGuessed) {
+                NotificationSpend.placementFor(source, parsed, setup.sources, accounts, emptyList())
+                    ?.takeIf { it.accountId != null && !it.guessed }
+                    ?.takeIf { placed -> NotificationSpend.candidatesFor(first.source, setup.sources, accounts).orEmpty().any { it.id == placed.accountId } }
+                    ?.let { placed ->
+                        dao.upsertSeenSpend(first.copy(accountId = placed.accountId, accountGuessed = false, provisionalAccountId = null))
+                        settledByPartner = true
+                    }
+            }
+            // Kept on record, not counted: it marks the first as having its partner.
+            dao.upsertSeenSpend(
+                SeenSpendEntity(
+                    id = "$source|$postedAt", source = source, seenAt = postedAt, amountMinor = -parsed.amountMinor,
+                    currency = first.currency, merchant = parsed.merchant, cardDigits = parsed.cardDigits,
+                    dismissed = true, pairedWithId = first.id,
+                ),
+            )
             return NotificationSpend.Outcome.DUPLICATE
         }
-        val accounts = dao.accounts()
         val history = accounts.flatMap { dao.transactionsFor(it.id) }
         val rules = RecurringAnalyzer.analyze(history) + manualRules.first().mapNotNull { it.toRecurringRule() }
         if (NotificationSpend.alreadyAccountedFor(parsed, history, rules)) return NotificationSpend.Outcome.ACCOUNTED_FOR
@@ -290,8 +321,8 @@ class GoCardlessRepository private constructor(
         // announcing it long after Wallet - is one again. Ones the bank already reported are
         // looked at too, so the twin of a purchase the bank took over goes as well; only
         // ones not yet reported are ever dropped.
-        NotificationSpend.toDrop(dao.seenSpends())
-            .forEach { dao.upsertSeenSpend(it.copy(dismissed = true)) }
+        NotificationSpend.toDrop(dao.seenSpends(), NotificationSpend.Setup(spendSources.first(), dao.accounts()))
+            .forEach { (spend, partner) -> dao.upsertSeenSpend(spend.copy(dismissed = true, pairedWithId = partner)) }
         val seen = dao.seenSpends()
         if (seen.isEmpty()) return
         val bank = dao.accounts().flatMap { dao.transactionsFor(it.id) }

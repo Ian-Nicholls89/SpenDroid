@@ -33,32 +33,48 @@ object NotificationSpend {
      * Seen spends that repeat an earlier one, by the same rule as [duplicateOf] - for tidying up
      * after the fact. Oldest first, so the first announcement is the one kept.
      */
-    fun repeats(seen: List<SeenSpendEntity>): List<SeenSpendEntity> = repeatPairs(seen).map { it.second }
+    fun repeats(seen: List<SeenSpendEntity>, setup: Setup = Setup.NONE): List<SeenSpendEntity> =
+        repeatPairs(seen, setup).map { it.second }
 
     /** Each repeat with the earlier announcement it repeats. */
-    fun repeatPairs(seen: List<SeenSpendEntity>): List<Pair<SeenSpendEntity, SeenSpendEntity>> {
+    fun repeatPairs(seen: List<SeenSpendEntity>, setup: Setup = Setup.NONE): List<Pair<SeenSpendEntity, SeenSpendEntity>> {
+        // Pairings already made - a repeat stored as such - still hold: a Wallet payment with its
+        // bank alert has its partner, and can't take another.
+        val pairings = seen.filter { it.pairedWithId != null }.toMutableList()
         val kept = mutableListOf<SeenSpendEntity>()
         val repeats = mutableListOf<Pair<SeenSpendEntity, SeenSpendEntity>>()
         seen.filter { !it.dismissed }.sortedBy { it.seenAt }.forEach { spend ->
-            val first = duplicateOf(spend.source, -spend.amountMinor, spend.cardDigits, spend.seenAt, kept)
-            if (first != null) repeats += first to spend else kept += spend
+            val first = duplicateOf(spend.source, -spend.amountMinor, spend.cardDigits, spend.seenAt, kept + pairings, setup)
+            if (first != null) {
+                repeats += first to spend
+                pairings += spend.copy(dismissed = true, pairedWithId = first.id)
+            } else {
+                kept += spend
+            }
         }
         return repeats
     }
 
     /**
-     * The announcements to drop as repeats of one purchase: the later one - unless the bank has
-     * already taken that one over, and then the earlier, still counted on its own. One the bank
-     * reported is never dropped.
+     * The announcements to drop as repeats of one purchase, each with the one it repeats: the
+     * later one - unless the bank has already taken that one over, and then the earlier, still
+     * counted on its own. One the bank reported is never dropped.
      */
-    fun toDrop(seen: List<SeenSpendEntity>): List<SeenSpendEntity> =
-        repeatPairs(seen).mapNotNull { (first, repeat) ->
+    fun toDrop(seen: List<SeenSpendEntity>, setup: Setup = Setup.NONE): List<Pair<SeenSpendEntity, String>> =
+        repeatPairs(seen, setup).mapNotNull { (first, repeat) ->
             when {
-                repeat.matchedTransactionId == null -> repeat
-                first.matchedTransactionId == null -> first
+                repeat.matchedTransactionId == null -> repeat to first.id
+                first.matchedTransactionId == null -> first to repeat.id
                 else -> null
             }
-        }.distinctBy { it.id }
+        }.distinctBy { it.first.id }
+
+    /** What [duplicateOf] needs to know which accounts an announcement could be on. */
+    data class Setup(val sources: List<Source>, val accounts: List<AccountEntity>) {
+        companion object {
+            val NONE = Setup(emptyList(), emptyList())
+        }
+    }
 
     /** One bank app the user picked, and the accounts it speaks for. */
     data class Source(
@@ -354,13 +370,22 @@ object NotificationSpend {
     /**
      * The spend this notification repeats, if any.
      *
-     * Two apps announcing one purchase - Wallet at the till, the bank a little later - are one
-     * spend: the same amount within half an hour, and the same card when both show one. When both
-     * show the same card's digits, within three hours: NatWest's app once told of a lunch 53
-     * minutes after Wallet, and it was counted twice. One app
-     * announcing the same amount twice is two purchases, unless it is the same notification
-     * posted again within a minute; ten minutes either way both double-counted a slow bank and
-     * merged two coffees.
+     * Google Wallet and a banking app announcing one purchase are one spend. Wallet tells of
+     * every payment it makes, and the card's banking app - if it's one read - tells of it too,
+     * in either order: Wallet straight away, or once the phone has signal again; the bank when
+     * it approves the payment, which once was 53 minutes after Wallet. So each Wallet
+     * announcement takes one partner from a banking app, and each banking-app one a partner from
+     * Wallet: the same amount, within a day, on an account both could be - and not a card whose
+     * digits say otherwise. One already partnered takes no other, so a second round paid with the
+     * plastic card is a second spend.
+     *
+     * Two banking apps announcing the same amount are one spend within half an hour, with the
+     * same card when both show one. One app announcing the same amount twice is two purchases,
+     * unless it is the same notification posted again within a minute; ten minutes either way
+     * both double-counted a slow bank and merged two coffees.
+     *
+     * [recent] may hold repeats stored as such ([SeenSpendEntity.pairedWithId]): they are never
+     * the answer, but they say who already has a partner.
      */
     fun duplicateOf(
         source: String,
@@ -368,20 +393,49 @@ object NotificationSpend {
         cardDigits: String?,
         seenAt: Long,
         recent: List<SeenSpendEntity>,
-    ): SeenSpendEntity? =
-        recent.firstOrNull {
-            if (it.dismissed || it.amountMinor != -amountMinor) return@firstOrNull false
-            val apart = abs(it.seenAt - seenAt)
-            if (it.source == source) {
-                apart <= REPOST_WINDOW_MS
-            } else {
-                if (cardDigits != null && it.cardDigits != null) {
-                    cardDigits == it.cardDigits && apart <= SAME_CARD_WINDOW_MS
-                } else {
-                    apart <= CROSS_APP_WINDOW_MS
-                }
+        setup: Setup = Setup.NONE,
+    ): SeenSpendEntity? {
+        // Only a Wallet-and-banking-app pairing uses up a partner; a repost of the same
+        // notification doesn't.
+        val byId = recent.associateBy { it.id }
+        val partnered = HashSet<String>()
+        recent.forEach { r ->
+            val p = r.pairedWithId?.let(byId::get) ?: return@forEach
+            if ((r.source == GOOGLE_WALLET) != (p.source == GOOGLE_WALLET)) {
+                partnered += r.id
+                partnered += p.id
             }
         }
+        val mine = couldBe(source, cardDigits, null, setup)
+        val wallet = source == GOOGLE_WALLET
+        return recent.firstOrNull {
+            if (it.dismissed || it.amountMinor != -amountMinor) return@firstOrNull false
+            val apart = abs(it.seenAt - seenAt)
+            val sameCard = cardDigits == null || it.cardDigits == null || cardDigits == it.cardDigits
+            when {
+                it.source == source -> apart <= REPOST_WINDOW_MS
+                wallet != (it.source == GOOGLE_WALLET) ->
+                    it.id !in partnered && apart <= PARTNER_WINDOW_MS && sameCard &&
+                        overlap(mine, couldBe(it.source, it.cardDigits, it, setup))
+                else -> apart <= CROSS_APP_WINDOW_MS && sameCard
+            }
+        }
+    }
+
+    /**
+     * The accounts an announcement could be on: the one it was put on for certain, else those
+     * its app covers - narrowed by the card's digits where they pick one out. Empty when the
+     * set-up isn't known, which rules nothing out.
+     */
+    private fun couldBe(source: String, digits: String?, stored: SeenSpendEntity?, setup: Setup): Set<String> {
+        if (stored?.accountId != null && !stored.accountGuessed) return setOf(stored.accountId)
+        if (setup.accounts.isEmpty()) return emptySet()
+        val candidates = candidatesFor(source, setup.sources, setup.accounts).orEmpty()
+        val byDigits = digits?.let { d -> candidates.filter { it.cardLastFour == d || it.identity?.endsWith(d) == true } }.orEmpty()
+        return byDigits.ifEmpty { candidates }.mapTo(HashSet()) { it.id }
+    }
+
+    private fun overlap(a: Set<String>, b: Set<String>) = a.isEmpty() || b.isEmpty() || a.any { it in b }
 
     /**
      * Pairs seen spends with the bank's rows that report them: same account, same amount, the
@@ -460,7 +514,7 @@ object NotificationSpend {
 
     const val SEEN_PREFIX = "seen:"
     private const val CROSS_APP_WINDOW_MS = 30 * 60_000L
-    private const val SAME_CARD_WINDOW_MS = 3 * 60 * 60_000L
+    private const val PARTNER_WINDOW_MS = 24 * 60 * 60_000L
     private const val REPOST_WINDOW_MS = 60_000L
     private const val HANDOVER_DAYS = 5L
     const val REVIEW_AFTER_MS = 7 * 24 * 60 * 60_000L

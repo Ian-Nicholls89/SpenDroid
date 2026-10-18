@@ -87,6 +87,11 @@ data class SeenSpendEntity(
      * there meanwhile, as the money has gone whichever account it came from.
      */
     val provisionalAccountId: String? = null,
+    /**
+     * A repeat kept on record: the announcement of the same purchase this one repeats. Stored
+     * dismissed, so it's never counted, but it marks the other as having its partner.
+     */
+    val pairedWithId: String? = null,
 )
 
 /**

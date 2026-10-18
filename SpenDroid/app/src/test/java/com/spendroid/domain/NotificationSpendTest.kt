@@ -106,12 +106,10 @@ class NotificationSpendTest {
         assertEquals(wallet, NotificationSpend.duplicateOf(natwest, 425, "4168", at(26, 12, 20), listOf(wallet)))
         // No digits on one side is still the same purchase.
         assertEquals(wallet, NotificationSpend.duplicateOf(natwest, 425, null, at(26, 12, 20), listOf(wallet)))
-        // Another card is another purchase; so is the same card over three hours later (4.8.1:
-        // NatWest has been 53 minutes behind Wallet). Without digits on both, half an hour.
+        // Another card is another purchase. The bank may be hours behind Wallet - up to a day.
         assertNull(NotificationSpend.duplicateOf(natwest, 425, "9999", at(26, 12, 20), listOf(wallet)))
-        assertEquals(wallet, NotificationSpend.duplicateOf(natwest, 425, "4168", at(26, 12, 55), listOf(wallet)))
-        assertNull(NotificationSpend.duplicateOf(natwest, 425, "4168", at(26, 15, 5), listOf(wallet)))
-        assertNull(NotificationSpend.duplicateOf(natwest, 425, null, at(26, 12, 45), listOf(wallet)))
+        assertEquals(wallet, NotificationSpend.duplicateOf(natwest, 425, null, at(26, 15, 5), listOf(wallet)))
+        assertNull(NotificationSpend.duplicateOf(natwest, 425, "4168", at(27, 12, 5), listOf(wallet)))
     }
 
     @Test
@@ -209,7 +207,9 @@ class NotificationSpendTest {
             seen("n1", 3565, t + 900).copy(source = natwest, cardDigits = "4168"),
         )
         assertEquals(listOf("w2", "n1"), NotificationSpend.repeats(three).map { it.id })
-        // Two lunches four hours apart on the same card stay two.
-        assertEquals(emptyList<String>(), NotificationSpend.repeats(listOf(three[0], three[2].copy(seenAt = t + 4 * 3_600_000))).map { it.id })
+        // A second lunch later, paid with the plastic card - NatWest tells of it, Wallet doesn't:
+        // the first lunch's Wallet announcement already has its partner, so it stays two.
+        val second = three[2].copy(id = "n2", seenAt = t + 4 * 3_600_000)
+        assertEquals(listOf("w2", "n1"), NotificationSpend.repeats(three + second).map { it.id })
     }
 }

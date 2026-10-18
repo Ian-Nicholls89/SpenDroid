@@ -24,7 +24,7 @@ import kotlinx.coroutines.flow.Flow
         NotificationSampleEntity::class,
         DuplicateCheckEntity::class,
     ],
-    version = 20,
+    version = 21,
     exportSchema = false,
 )
 abstract class BudgetDb : RoomDatabase() {
@@ -58,6 +58,11 @@ abstract class BudgetDb : RoomDatabase() {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE accounts ADD COLUMN accountType TEXT NOT NULL DEFAULT 'PERSONAL'")
                 db.execSQL("ALTER TABLE accounts ADD COLUMN linkedCreditCardAccountId TEXT")
+            }
+        }
+        val MIGRATION_20_21 = object : Migration(20, 21) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE seen_spends ADD COLUMN pairedWithId TEXT")
             }
         }
         val MIGRATION_19_20 = object : Migration(19, 20) {

@@ -41,6 +41,9 @@ class SpendListenerService : NotificationListenerService() {
             if (changed) {
                 refreshWidgets(applicationContext)
                 refreshCardWidgets(applicationContext)
+                // Wallet may have just said which account an earlier alert was on.
+                runCatching { repo.settledSince(sbn.postTime - 24 * 60 * 60_000L) }.getOrDefault(emptyList())
+                    .forEach { SpendQuestions.answered(applicationContext, it) }
                 // Counted, but the app didn't say which account: ask now, while it's fresh.
                 runCatching { repo.questionFor(source, sbn.postTime) }.getOrNull()?.let { (spend, accounts) ->
                     SpendQuestions.ask(applicationContext, spend, accounts)
