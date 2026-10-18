@@ -122,22 +122,25 @@ fun weekBitmap(values: List<Long>): Bitmap {
  * dot on each day a bill leaves. Card bills are blue, since their amount is still moving.
  */
 fun timelineBitmap(today: Float, bills: List<Pair<Float, Boolean>>, aspect: Float = 10f): Bitmap {
+    // A visor from the start of the cycle to payday: the days gone pale, the tick at today, and
+    // each bill a small square standing on the bar - purple for a card, teal for the rest.
     val h = 60
     val w = (h * aspect.coerceIn(2f, 30f)).toInt()
     val bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
     val canvas = Canvas(bitmap)
-    val inset = 14f
-    val y = h / 2f
-    val span = w - inset * 2
-    canvas.drawLine(inset, y, w - inset, y, paint(0x4DFFFFFF, 5f))
-    canvas.drawLine(inset, y, inset + span * today, y, paint(0xFFFFFFFF.toInt(), 5f))
+    val barTop = h * 0.42f
+    val barH = h * 0.42f
+    val r = barH * 0.3f
+    canvas.drawRoundRect(RectF(0f, barTop, w.toFloat(), barTop + barH), r, r, paint(0xFF2A2C33.toInt()))
+    val t = today.coerceIn(0f, 1f)
+    if (t > 0f) canvas.drawRoundRect(RectF(0f, barTop, (w * t).coerceAtLeast(r * 2), barTop + barH), r, r, paint(0x59FFFFFF))
+    val mark = h * 0.22f
     bills.forEach { (at, isCard) ->
-        val x = inset + span * at
-        canvas.drawCircle(x, y, 13f, paint(0x40000000))
-        canvas.drawCircle(x, y, 10f, paint(if (isCard) 0xFF9EC5F4.toInt() else 0xFFFFFFFF.toInt()))
+        val x = (w * at.coerceIn(0f, 1f)).coerceIn(mark, w - mark)
+        canvas.drawRoundRect(RectF(x - mark / 2, barTop - mark - 2f, x + mark / 2, barTop - 2f), 3f, 3f, paint(if (isCard) 0xFF8E5CF6.toInt() else 0xFF2BB5A0.toInt()))
     }
-    val tx = inset + span * today
-    canvas.drawLine(tx, y - 20f, tx, y + 20f, paint(0xFFFFFFFF.toInt(), 4f))
+    val tx = (w * t).coerceIn(4f, w - 4f)
+    canvas.drawRoundRect(RectF(tx - 4f, barTop - 6f, tx + 4f, (barTop + barH + 6f).coerceAtMost(h.toFloat())), 4f, 4f, paint(0xFFFFFFFF.toInt()))
     return bitmap
 }
 
@@ -150,9 +153,9 @@ fun cardRailBitmap(rail: WidgetGeometry.CardRail, fill: Int, track: Int, tick: I
     val h = 36
     val bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
     val canvas = Canvas(bitmap)
-    val barTop = 11f
-    val barBottom = 25f
-    val r = 7f
+    val barTop = 6f
+    val barBottom = 30f
+    val r = 24f * 0.3f
     canvas.drawRoundRect(RectF(0f, barTop, w.toFloat(), barBottom), r, r, paint(track))
 
     val projectedEnd = w * rail.projected.coerceIn(0f, 1f)
@@ -173,11 +176,11 @@ fun cardRailBitmap(rail: WidgetGeometry.CardRail, fill: Int, track: Int, tick: I
     }
     rail.limit?.let { at ->
         val x = w * at
-        canvas.drawLine(x, barTop - 5f, x, barBottom + 5f, paint(0xFFEF5350.toInt(), 4f))
+        canvas.drawLine(x, barTop - 5f, x, barBottom + 5f, paint(0xFFE5534B.toInt(), 4f))
     }
     rail.evenPace?.let { at ->
         val x = (w * at).coerceIn(2f, w - 2f)
-        canvas.drawLine(x, 2f, x, h - 2f, paint(tick, 4f))
+        canvas.drawRoundRect(RectF(x - 3f, 0f, x + 3f, h.toFloat()), 3f, 3f, paint(tick))
     }
     return bitmap
 }
@@ -192,9 +195,9 @@ fun periodBarBitmap(share: Float?, tick: Float?, fill: Int, track: Int, tickColo
     val h = 36
     val bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
     val canvas = Canvas(bitmap)
-    val top = 11f
-    val bottom = 25f
-    val r = 7f
+    val top = 6f
+    val bottom = 30f
+    val r = 24f * 0.3f
     canvas.drawRoundRect(RectF(0f, top, w.toFloat(), bottom), r, r, paint(track))
     // What is known to be coming, paler, after what has gone.
     if (extra > 0f) {
@@ -207,7 +210,7 @@ fun periodBarBitmap(share: Float?, tick: Float?, fill: Int, track: Int, tickColo
     }
     tick?.let {
         val x = (w * it).coerceIn(3f, w - 3f)
-        canvas.drawLine(x, 2f, x, h - 2f, paint(tickColour, 6f))
+        canvas.drawRoundRect(RectF(x - 3f, 0f, x + 3f, h.toFloat()), 3f, 3f, paint(tickColour))
     }
     return bitmap
 }
@@ -382,3 +385,86 @@ internal fun DroidTitle(title: String, style: androidx.glance.text.TextStyle, mo
         androidx.glance.text.Text(title, style = style)
     }
 }
+
+/** Space Grotesk for widget figures. Widgets can't use a font resource in text, so figures are drawn. */
+@Volatile private var groteskTypeface: android.graphics.Typeface? = null
+
+fun grotesk(context: Context): android.graphics.Typeface =
+    groteskTypeface ?: (runCatching { androidx.core.content.res.ResourcesCompat.getFont(context, com.spendroid.R.font.space_grotesk_bold) }.getOrNull()
+        ?: android.graphics.Typeface.DEFAULT_BOLD).also { groteskTypeface = it }
+
+/** The visor's colour: the app's own while on pace; amber when tight, red when over. */
+fun visorColour(pace: BudgetPace.Pace, accent: Int): Int = when (pace) {
+    BudgetPace.Pace.ON_TRACK -> accent
+    BudgetPace.Pace.TIGHT -> 0xFFF5A623.toInt()
+    BudgetPace.Pace.OVER -> 0xFFE5534B.toInt()
+}
+
+/** How far the tick stands proud of the visor, above and below, in dp. */
+const val VISOR_TICK_OVER = 3f
+
+/**
+ * The visor: the app's signature bar, as a widget draws it. [used] the share of the budget gone
+ * as the fill, a white tick at [tick] - the share of the cycle gone - standing a little proud of
+ * the bar, squarer ends than a capsule, and [label], when given, at the bar's end in Space
+ * Grotesk, clear of the tick. The image is [heightDp] plus the tick's overhang, top and bottom.
+ */
+fun visorBitmap(
+    widthDp: Float,
+    heightDp: Float,
+    used: Float,
+    tick: Float?,
+    fill: Int,
+    label: String? = null,
+    typeface: android.graphics.Typeface? = null,
+    track: Int = 0xFF2A2C33.toInt(),
+): Bitmap {
+    val scale = 3f
+    val over = VISOR_TICK_OVER * scale
+    val w = (widthDp * scale).toInt().coerceAtLeast(30)
+    val barH = (heightDp * scale).coerceAtLeast(9f)
+    val h = (barH + over * 2).toInt()
+    val bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(bitmap)
+    val r = barH * 0.3f
+    val bar = RectF(0f, over, w.toFloat(), over + barH)
+    canvas.drawRoundRect(bar, r, r, paint(track))
+    val f = used.coerceIn(0f, 1f)
+    if (f > 0f) canvas.drawRoundRect(RectF(0f, over, (w * f).coerceAtLeast(r * 2), over + barH), r, r, paint(fill))
+    tick?.let { t ->
+        val x = (w * t.coerceIn(0f, 1f)).coerceIn(scale * 2, w - scale * 2)
+        canvas.drawRoundRect(RectF(x - scale * 2, 0f, x + scale * 2, h.toFloat()), scale * 2, scale * 2, paint(0xFFFFFFFF.toInt()))
+    }
+    if (!label.isNullOrEmpty()) {
+        val text = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = 0xFFFFFFFF.toInt()
+            textSize = (barH * 0.5f).coerceAtMost(34f * scale)
+            this.typeface = typeface ?: android.graphics.Typeface.DEFAULT_BOLD
+            textAlign = Paint.Align.RIGHT
+            setShadowLayer(scale * 1.5f, 0f, 0f, 0x99000000.toInt())
+        }
+        val pad = maxOf(8f * scale, barH * 0.25f)
+        canvas.drawText(label, w - pad, over + barH / 2f - (text.descent() + text.ascent()) / 2f, text)
+    }
+    return bitmap
+}
+
+/** A figure in Space Grotesk, drawn: [heightDp] the type's size. Sized to the text. */
+fun figureBitmap(text: String, heightDp: Float, colour: Int, typeface: android.graphics.Typeface?): Bitmap {
+    val scale = 3f
+    val p = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = colour
+        textSize = heightDp * scale
+        this.typeface = typeface ?: android.graphics.Typeface.DEFAULT_BOLD
+        letterSpacing = -0.03f
+    }
+    val width = p.measureText(text).toInt().coerceAtLeast(1) + 2
+    val metrics = p.fontMetrics
+    val height = (metrics.descent - metrics.ascent).toInt().coerceAtLeast(1)
+    val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+    Canvas(bitmap).drawText(text, 1f, -metrics.ascent, p)
+    return bitmap
+}
+
+/** The size [figureBitmap] draws at, in dp, for laying it out: (width, height). */
+fun figureSizeDp(bitmap: Bitmap): Pair<Float, Float> = bitmap.width / 3f to bitmap.height / 3f

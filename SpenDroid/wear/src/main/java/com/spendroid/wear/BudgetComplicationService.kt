@@ -6,6 +6,8 @@ import androidx.wear.watchface.complications.data.ColorRamp
 import androidx.wear.watchface.complications.data.ComplicationData
 import androidx.wear.watchface.complications.data.ComplicationText
 import androidx.wear.watchface.complications.data.ComplicationType
+import androidx.wear.watchface.complications.data.LongTextComplicationData
+import androidx.wear.watchface.complications.data.MonochromaticImage
 import androidx.wear.watchface.complications.data.PlainComplicationText
 import androidx.wear.watchface.complications.data.RangedValueComplicationData
 import androidx.wear.watchface.complications.data.ShortTextComplicationData
@@ -89,6 +91,18 @@ open class BudgetComplicationService : SuspendingComplicationDataSourceService()
             ComplicationType.SHORT_TEXT ->
                 ShortTextComplicationData.Builder(text, description)
                     .setTitle(PlainComplicationText.Builder("left").build())
+                    .setTapAction(openApp())
+                    .build()
+
+            // The long one, the only one with room: the droid as its icon, then the figure and days.
+            ComplicationType.LONG_TEXT ->
+                LongTextComplicationData.Builder(
+                    PlainComplicationText.Builder(listOf(reading.available, reading.text("daysLine")).filter { it.isNotEmpty() }.joinToString(" · ")).build(),
+                    description,
+                )
+                    .setMonochromaticImage(
+                        MonochromaticImage.Builder(android.graphics.drawable.Icon.createWithResource(this, R.drawable.ic_complication)).build(),
+                    )
                     .setTapAction(openApp())
                     .build()
 

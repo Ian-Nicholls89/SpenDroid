@@ -41,14 +41,14 @@ import com.spendroid.ui.tidyPayee
 import java.time.format.DateTimeFormatter
 
 /**
- * The bills still to go out before payday, the next four as posters - nzb360's upcoming films,
- * here the gym, the energy, the card. Each tile's chip says when.
+ * The bills still to go out before payday, the next few as bars: each one's share of all that's
+ * still to come, so the big one - usually the card - stands out. Cards in purple.
  */
 class ComingUpWidget : GlanceAppWidget() {
 
     override val sizeMode = SizeMode.Exact
 
-    private data class Tile(val name: String, val amount: String, val date: String, val colour: Int, val card: Boolean)
+    private data class Tile(val name: String, val amount: String, val date: String, val colour: Int, val card: Boolean, val share: Float = 0f)
 
     private data class Content(val tiles: List<Tile>, val total: String?, val accent: Int)
 
@@ -68,6 +68,7 @@ class ComingUpWidget : GlanceAppWidget() {
         val accent = widgetAccent(context)
         val snapshot = runCatching { SharedSnapshot.get(context) }.getOrNull() ?: return Content(emptyList(), null, accent)
         val today = snapshot.asOf
+        val all = snapshot.upcomingFixed.sumOf { it.amountMinor }.coerceAtLeast(1L).toFloat()
         val tiles = snapshot.upcomingFixed.take(4).map { p ->
             val card = p.rule.key.startsWith(CARD_BILL_KEY_PREFIX)
             val c = payeeColour(p.rule.payee)
@@ -79,8 +80,9 @@ class ComingUpWidget : GlanceAppWidget() {
                     today.plusDays(1) -> "Tmrw"
                     else -> p.dueDate.format(DAY)
                 },
-                colour = android.graphics.Color.argb(255, (c.red * 255).toInt(), (c.green * 255).toInt(), (c.blue * 255).toInt()),
+                colour = if (card) 0xFF8E5CF6.toInt() else android.graphics.Color.argb(255, (c.red * 255).toInt(), (c.green * 255).toInt(), (c.blue * 255).toInt()),
                 card = card,
+                share = (p.amountMinor / all).coerceIn(0.03f, 1f),
             )
         }
         val total = snapshot.upcomingFixed.takeIf { it.isNotEmpty() }?.let { formatMoney(it.sumOf { p -> p.amountMinor }, snapshot.baseCurrency) }
@@ -111,41 +113,28 @@ class ComingUpWidget : GlanceAppWidget() {
                 if (content.tiles.isEmpty()) {
                     Text("Nothing more before payday", style = TextStyle(color = ColorProvider(Color(0xFF9AA0AA)), fontSize = 12.sp))
                 } else {
-                    Row(modifier = GlanceModifier.fillMaxWidth().defaultWeight()) {
-                        content.tiles.forEachIndexed { i, t ->
-                            if (i > 0) Spacer(GlanceModifier.width(8.dp))
-                            Poster(t, GlanceModifier.defaultWeight())
-                        }
-                    }
+                    val size = androidx.glance.LocalSize.current
+                    val room = ((size.height.value - 40f) / 30f).toInt().coerceIn(1, 4)
+                    content.tiles.take(room).forEach { t -> BillRow(t, size.width.value - 24f) }
                 }
             }
         }
     }
 
+    /** A bill: its name and when, its amount, and a bar of its share of all that's to come. */
     @Composable
-    private fun Poster(t: Tile, modifier: GlanceModifier) {
-        Column(modifier = modifier.fillMaxSize()) {
-            Box(
-                modifier = GlanceModifier.fillMaxWidth().defaultWeight().cornerRadius(10.dp).background(ColorProvider(Color(t.colour))).padding(6.dp),
-            ) {
-                Row(modifier = GlanceModifier.fillMaxWidth()) {
-                    Spacer(GlanceModifier.defaultWeight())
-                    Text(
-                        t.date,
-                        style = TextStyle(color = ColorProvider(Color.White), fontSize = 9.sp, fontWeight = FontWeight.Bold),
-                        modifier = GlanceModifier.background(ColorProvider(Color(0x73000000))).cornerRadius(5.dp).padding(horizontal = 4.dp, vertical = 1.dp),
-                    )
-                }
-                Column(modifier = GlanceModifier.fillMaxSize(), verticalAlignment = Alignment.Vertical.Bottom) {
-                    Text(
-                        if (t.card) "▭" else (t.name.firstOrNull { it.isLetterOrDigit() }?.uppercase() ?: "£"),
-                        style = TextStyle(color = ColorProvider(Color.White), fontSize = 20.sp, fontWeight = FontWeight.Bold),
-                    )
-                }
+    private fun BillRow(t: Tile, widthDp: Float) {
+        Column(modifier = GlanceModifier.fillMaxWidth().padding(bottom = 4.dp)) {
+            Row(modifier = GlanceModifier.fillMaxWidth()) {
+                Text("${t.name} · ${t.date}", maxLines = 1, style = TextStyle(color = ColorProvider(Color(0xFFDFE3EA)), fontSize = 11.sp), modifier = GlanceModifier.defaultWeight())
+                Text(t.amount, maxLines = 1, style = TextStyle(color = ColorProvider(Color.White), fontSize = 11.sp, fontWeight = FontWeight.Bold))
             }
-            Spacer(GlanceModifier.height(3.dp))
-            Text(t.name, maxLines = 1, style = TextStyle(color = ColorProvider(Color.White), fontSize = 10.sp, fontWeight = FontWeight.Bold))
-            Text(t.amount, maxLines = 1, style = TextStyle(color = ColorProvider(Color(0xFF9AA0AA)), fontSize = 9.sp))
+            Image(
+                provider = ImageProvider(visorBitmap(widthDp.coerceAtLeast(40f), 9f, t.share, null, t.colour)),
+                contentDescription = null,
+                contentScale = ContentScale.FillBounds,
+                modifier = GlanceModifier.fillMaxWidth().height((9f + VISOR_TICK_OVER * 2).dp),
+            )
         }
     }
 

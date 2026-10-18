@@ -1,5 +1,6 @@
 package com.spendroid.wear
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -19,6 +20,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -31,6 +38,7 @@ import androidx.wear.compose.foundation.curvedRow
 import androidx.wear.compose.foundation.basicCurvedText
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.Text
+import androidx.wear.compose.material3.Typography
 
 /*
  * The phone's nzb360 look, on a round screen: a glow at the top in the accent or the account's
@@ -83,29 +91,83 @@ internal fun CurvedTitle(text: String, colour: Color) {
     }
 }
 
-/** A thick bar with its figure inside and a white tick where an even pace would be. */
+/** Space Grotesk, the phone's figures' face. */
+internal val Grotesk = FontFamily(
+    Font(R.font.space_grotesk_medium, FontWeight.Medium),
+    Font(R.font.space_grotesk_semibold, FontWeight.SemiBold),
+    Font(R.font.space_grotesk_bold, FontWeight.Bold),
+    Font(R.font.space_grotesk_bold, FontWeight.Black),
+)
+
+/** The watch's type: the figures and titles in Grotesk, the rest as the system's. */
+internal fun groteskTypography(): Typography = Typography().let { t ->
+    t.copy(
+        numeralExtraLarge = t.numeralExtraLarge.copy(fontFamily = Grotesk, fontWeight = FontWeight.Bold),
+        numeralLarge = t.numeralLarge.copy(fontFamily = Grotesk, fontWeight = FontWeight.Bold),
+        numeralMedium = t.numeralMedium.copy(fontFamily = Grotesk, fontWeight = FontWeight.Bold),
+        numeralSmall = t.numeralSmall.copy(fontFamily = Grotesk, fontWeight = FontWeight.Bold),
+        titleLarge = t.titleLarge.copy(fontFamily = Grotesk),
+        titleMedium = t.titleMedium.copy(fontFamily = Grotesk),
+        titleSmall = t.titleSmall.copy(fontFamily = Grotesk),
+    )
+}
+
+/**
+ * A visor: the droid's bar, as on the phone - softly squared, its figure on the right, and a
+ * white tick standing proud of it where an even pace would be.
+ */
 @Composable
 internal fun WatchBar(fraction: Float, label: String, colour: Color, modifier: Modifier = Modifier, tick: Float? = null, height: Dp = 18.dp, extra: Float = 0f) {
-    BoxWithConstraints(
-        modifier.fillMaxWidth().height(height).clip(RoundedCornerShape(height / 2)).background(Track2),
-    ) {
-        if (extra > 0f) {
-            Box(Modifier.fillMaxHeight().width(maxWidth * (fraction + extra).coerceIn(0f, 1f)).clip(RoundedCornerShape(height / 2)).background(colour.copy(alpha = 0.35f)))
+    val shape = RoundedCornerShape(height * 0.3f)
+    val over = if (height >= 12.dp) 3.dp else 2.dp
+    BoxWithConstraints(modifier.fillMaxWidth().height(height + over * 2)) {
+        val full = maxWidth
+        Box(Modifier.align(Alignment.Center).fillMaxWidth().height(height).clip(shape).background(Track2)) {
+            if (extra > 0f) {
+                Box(Modifier.fillMaxHeight().width(full * (fraction + extra).coerceIn(0f, 1f)).clip(shape).background(colour.copy(alpha = 0.35f)))
+            }
+            Box(Modifier.fillMaxHeight().width(full * fraction.coerceIn(0f, 1f)).clip(shape).background(colour))
+            if (label.isNotEmpty()) {
+                Text(
+                    label,
+                    fontFamily = Grotesk,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = (height.value * 0.5f).sp,
+                    color = Color.White,
+                    maxLines = 1,
+                    modifier = Modifier.align(Alignment.CenterEnd).padding(end = maxOf(6.dp, height * 0.25f)),
+                )
+            }
         }
-        Box(Modifier.fillMaxHeight().width(maxWidth * fraction.coerceIn(0f, 1f)).clip(RoundedCornerShape(height / 2)).background(colour))
         tick?.let { t ->
-            Box(Modifier.offset(x = maxWidth * t.coerceIn(0f, 1f) - 1.5.dp).width(3.dp).fillMaxHeight().background(Color.White))
+            Box(Modifier.offset(x = (maxWidth * t.coerceIn(0f, 1f) - 1.5.dp).coerceIn(0.dp, maxWidth - 3.dp)).width(3.dp).fillMaxHeight().clip(RoundedCornerShape(1.5.dp)).background(Color.White))
         }
-        if (label.isNotEmpty()) {
-            Text(
-                label,
-                style = MaterialTheme.typography.labelSmall,
-                fontWeight = FontWeight.Black,
-                color = Color.White,
-                maxLines = 1,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.align(Alignment.Center),
-            )
+    }
+}
+
+/**
+ * The visor bent round the edge of the screen: the budget used in [colour] from the lower left,
+ * over the top, and a white tick where the days have reached.
+ */
+@Composable
+internal fun VisorArc(used: Float?, elapsed: Float?, colour: Color, modifier: Modifier = Modifier, width: Dp = 14.dp) {
+    Canvas(modifier.fillMaxSize()) {
+        val w = width.toPx()
+        val inset = w / 2 + 3.dp.toPx()
+        val topLeft = Offset(inset, inset)
+        val box = Size(size.width - 2 * inset, size.height - 2 * inset)
+        // Compose measures from three o'clock; twelve is 270, and the visor runs 130 either side.
+        val start = 140f
+        val sweep = 260f
+        drawArc(Track2, start, sweep, false, topLeft, box, style = Stroke(w, cap = StrokeCap.Butt))
+        used?.let { drawArc(colour, start, sweep * it.coerceIn(0f, 1f), false, topLeft, box, style = Stroke(w, cap = StrokeCap.Butt)) }
+        elapsed?.let {
+            val a = Math.toRadians((start + sweep * it.coerceIn(0f, 1f)).toDouble())
+            val r = box.width / 2
+            val c = Offset(size.width / 2, size.height / 2)
+            val over = 3.dp.toPx()
+            fun at(d: Float) = Offset(c.x + (d * kotlin.math.cos(a)).toFloat(), c.y + (d * kotlin.math.sin(a)).toFloat())
+            drawLine(Color.White, at(r - w / 2 - over), at(r + w / 2 + over), strokeWidth = 3.dp.toPx(), cap = StrokeCap.Round)
         }
     }
 }

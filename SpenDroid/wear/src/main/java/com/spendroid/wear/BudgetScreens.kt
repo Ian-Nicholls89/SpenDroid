@@ -112,7 +112,7 @@ fun BudgetScreens(
     /** Which page the pager opens on; for screenshots. */
     initialPage: Int = 0,
 ) {
-    MaterialTheme {
+    MaterialTheme(typography = groteskTypography()) {
         AppScaffold {
             if (reading == null || reading.map.getString("availableFull") == null) {
                 ScreenScaffold {
@@ -264,23 +264,20 @@ private fun DrawScope.arc(from: Float, sweep: Float, color: Color, width: Float)
     )
 }
 
-/** 1 · The figure, as the phone's Home: the pace chip, the daily allowance, and the cycle as a bar. */
+/** 1 · The figure: the visor round the edge, the droid, what's left, and the days. */
 @Composable
 private fun Hero(r: BudgetReading) {
     val accent = Color(r.accent)
-    NzbScreen("SpenDroid", accent) {
+    val fill = when (r.pace) { "OVER" -> Bad; "TIGHT" -> Warn; else -> accent }
+    Box(Modifier.fillMaxSize().background(Color.Black)) {
+        VisorArc(r.used ?: (1f - r.budgetLeft), r.elapsed, fill)
         Centre {
-            Spacer(Modifier.height(10.dp))
             // The droid wears the budget's face, as on the phone.
             WatchDroid(moodOf(r), r.used, r.elapsed, r.accent, 34.dp)
             Text(r.text("availableFull"), style = MaterialTheme.typography.numeralMedium, maxLines = 1)
-            WatchChip(paceWord(r.pace), pace(r.pace))
-            Spacer(Modifier.height(6.dp))
-            r.used?.let { used ->
-                WatchBar(used, r.text("barLabel"), pace(r.pace), Modifier.padding(horizontal = 6.dp), tick = r.elapsed)
-            }
-            Spacer(Modifier.height(4.dp))
             Text(r.text("daysLine"), style = MaterialTheme.typography.labelSmall, color = Soft, maxLines = 1)
+            Spacer(Modifier.height(4.dp))
+            Text(paceWord(r.pace).lowercase(), style = MaterialTheme.typography.labelMedium, fontFamily = Grotesk, fontWeight = FontWeight.Bold, color = fill, maxLines = 1)
         }
     }
 }
@@ -331,44 +328,39 @@ private fun SplitLine(label: String, value: String, share: Float, colour: Color)
     }
 }
 
-/** 6 · Most spent: the leading category's tile, and the top four beside it in the accent. */
+/** 6 · Most spent: the top four, each a visor against its limit, or against the largest. */
 @Composable
 private fun Categories(r: BudgetReading) {
     val leader = r.categories.firstOrNull()
     NzbScreen("Most spent", Color(leader?.colour ?: r.accent), glow = 0.4f) {
         Centre {
-            Spacer(Modifier.height(8.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                leader?.let { WatchTile(initial(it.label), Color(it.colour), size = 40.dp) }
-                Spacer(Modifier.width(8.dp))
-                Column(Modifier.weight(1f)) {
-                    r.categories.take(4).forEachIndexed { i, c ->
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                "${i + 1} ${c.label}",
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = if (i == 0) FontWeight.Bold else null,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.weight(1f),
-                            )
-                            Text(
-                                c.spent.replace(Regex("[.,]\\d\\d$"), ""),
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.Black,
-                                color = if (c.over) Bad else Color(r.accent),
-                            )
-                        }
-                    }
+            Spacer(Modifier.height(24.dp))
+            val rows = r.categories.take(4)
+            val biggest = rows.maxOfOrNull { it.minor }?.coerceAtLeast(1L) ?: 1L
+            rows.forEach { c ->
+                Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(c.label, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                    Text(
+                        c.spent.replace(Regex("[.,]\\d\\d$"), ""),
+                        style = MaterialTheme.typography.labelSmall,
+                        fontFamily = Grotesk,
+                        fontWeight = FontWeight.Bold,
+                        color = if (c.over) Bad else Color.White,
+                    )
                 }
+                WatchBar(
+                    (c.share ?: (c.minor.toFloat() / biggest)).coerceIn(0.03f, 1f),
+                    "",
+                    if (c.over) Bad else Color(c.colour),
+                    Modifier.padding(horizontal = 4.dp),
+                    height = 8.dp,
+                )
+                Spacer(Modifier.height(1.dp))
             }
-            Spacer(Modifier.height(4.dp))
-            Text("this cycle", style = MaterialTheme.typography.labelSmall, color = Soft)
         }
     }
 }
 
-/** 5 · Recent: the latest two as the phone's cards, under a day heading, and the way into the rest. */
 @Composable
 private fun RecentSummary(r: BudgetReading, onSeeAll: () -> Unit) {
     NzbScreen("Recent", Color(r.accent), glow = 0.25f) {
@@ -534,20 +526,22 @@ private fun Week(r: BudgetReading) {
 @Composable
 private fun CardScreen(c: BudgetReading.Card) {
     val colour = Color(c.colour)
-    NzbScreen(c.text("name"), colour, glow = 0.55f) {
+    NzbScreen(c.text("name"), colour, glow = 0.3f) {
+        // The card's visor round the edge: its statement against the usual bill.
+        c.capShare?.let { VisorArc(it, c.statementGone, if (c.over) Bad else colour) }
         Centre {
             Spacer(Modifier.height(16.dp))
             Text(c.text("since"), style = MaterialTheme.typography.numeralSmall, maxLines = 1)
             if (c.capShare != null) WatchChip(if (c.over) "OVER USUAL" else "BELOW USUAL", if (c.over) Bad else Good)
             Spacer(Modifier.height(6.dp))
-            c.capShare?.let { share ->
-                WatchBar(
-                    share,
-                    "${c.text("since").replace(Regex("[.,]\\d\\d$"), "")} / ${c.text("capShort")}",
-                    colour,
-                    Modifier.padding(horizontal = 6.dp),
-                    tick = c.statementGone,
-                    extra = c.toComeShare,
+            c.capShare?.let {
+                // The arc round the edge is its bar; this is its reading.
+                Text(
+                    "${c.text("since").replace(Regex("[.,]\\d\\d$"), "")} of ${c.text("capShort")} usual",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontFamily = Grotesk,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
                 )
                 Spacer(Modifier.height(4.dp))
             }
@@ -625,11 +619,17 @@ private fun RoundupScreen(r: Roundup, reading: BudgetReading?) {
     ScreenScaffold(scrollState = list) { padding ->
         Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to accent.copy(alpha = 0.5f), 0.45f to Color.Transparent)))
         ScalingLazyColumn(state = list, contentPadding = padding, modifier = Modifier.fillMaxSize()) {
-            item { ListHeader { Text("ROUNDUP", color = accent, fontWeight = FontWeight.Black) } }
+            item { ListHeader { Text("roundup", color = accent, fontFamily = Grotesk, fontWeight = FontWeight.Bold) } }
+            reading?.let { b ->
+                item { Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { WatchDroid(moodOf(b), b.used, b.elapsed, b.accent, 30.dp) } }
+            }
             item {
                 Text(r.headline, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black, textAlign = TextAlign.Center, maxLines = 1, modifier = Modifier.fillMaxWidth())
             }
             item { Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { WatchChip(paceWord(r.pace), pace(r.pace)) } }
+            reading?.used?.let { used ->
+                item { WatchBar(used, reading.text("barLabel"), when (r.pace) { "OVER" -> Bad; "TIGHT" -> Warn; else -> accent }, Modifier.padding(horizontal = 18.dp), tick = reading.elapsed, height = 14.dp) }
+            }
             reading?.week?.takeIf { it.isNotEmpty() }?.let { values ->
                 item {
                     val max = (values.maxOrNull() ?: 1L).coerceAtLeast(1L)

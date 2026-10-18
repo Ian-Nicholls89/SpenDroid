@@ -127,14 +127,14 @@ fun budgetTileLayout(context: Context, device: DeviceParameters, reading: Budget
             titleSlot = { droidTitle("spendroid", reading) },
             mainSlot = {
                 if (reading == null) return@primaryLayout noFigures()
-                val colour = paceArgb(reading.pace)
-                fun arc(length: Float, c: Int) = LayoutElementBuilders.Arc.Builder()
-                    .setAnchorAngle(degrees(ARC_START))
+                val colour = when (reading.pace) { "OVER" -> RED; "TIGHT" -> AMBER; else -> accent }
+                fun arc(length: Float, c: Int, from: Float = ARC_START, thickness: Float = 14f) = LayoutElementBuilders.Arc.Builder()
+                    .setAnchorAngle(degrees(from))
                     .setAnchorType(LayoutElementBuilders.ARC_ANCHOR_START)
                     .addContent(
                         LayoutElementBuilders.ArcLine.Builder()
                             .setLength(degrees(length.coerceAtLeast(1f)))
-                            .setThickness(dp(10f))
+                            .setThickness(dp(thickness))
                             .setColor(argb(c))
                             .build(),
                     )
@@ -143,7 +143,9 @@ fun budgetTileLayout(context: Context, device: DeviceParameters, reading: Budget
                     .setWidth(expand())
                     .setHeight(expand())
                     .addContent(arc(ARC_SWEEP, TRACK))
-                    .addContent(arc(ARC_SWEEP * reading.budgetLeft.coerceIn(0f, 1f), colour))
+                    // The visor round the edge: the budget used, and a white tick where the days are.
+                    .addContent(arc(ARC_SWEEP * (reading.used ?: (1f - reading.budgetLeft)).coerceIn(0f, 1f), colour))
+                    .apply { reading.elapsed?.let { addContent(arc(1.5f, WHITE, ARC_START + ARC_SWEEP * it.coerceIn(0f, 1f) - 0.75f, 20f)) } }
                     .addContent(
                         column(
                             text(reading.available.layoutString, typography = Typography.NUMERAL_MEDIUM),
@@ -209,12 +211,12 @@ fun categoriesTileLayout(context: Context, device: DeviceParameters, reading: Bu
                                 LayoutElementBuilders.Row.Builder()
                                     .setWidth(expand())
                                     .addContent(
-                                        LayoutElementBuilders.Spacer.Builder().setWidth(weight(share)).setHeight(dp(4f))
-                                            .setModifiers(background(if (c.over) RED else c.colour, 2f)).build(),
+                                        LayoutElementBuilders.Spacer.Builder().setWidth(weight(share)).setHeight(dp(8f))
+                                            .setModifiers(background(if (c.over) RED else c.colour, 2.4f)).build(),
                                     )
                                     .addContent(
-                                        LayoutElementBuilders.Spacer.Builder().setWidth(weight(1f - share + 0.0001f)).setHeight(dp(4f))
-                                            .setModifiers(background(TRACK, 2f)).build(),
+                                        LayoutElementBuilders.Spacer.Builder().setWidth(weight(1f - share + 0.0001f)).setHeight(dp(8f))
+                                            .setModifiers(background(TRACK, 2.4f)).build(),
                                     )
                                     .build(),
                             )
@@ -227,8 +229,8 @@ fun categoriesTileLayout(context: Context, device: DeviceParameters, reading: Bu
     }
 
 /** Tiles measure angles from twelve o'clock, clockwise: the arc starts at the lower left. */
-private const val ARC_START = 218f
-private const val ARC_SWEEP = 284f
+private const val ARC_START = 230f
+private const val ARC_SWEEP = 260f
 private const val GAP = 3f
 
 abstract class SpenDroidTileService : TileService() {

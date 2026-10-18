@@ -43,7 +43,7 @@
             </intent-filter>
             <meta-data
                 android:name="android.support.wearable.complications.SUPPORTED_TYPES"
-                android:value="WEIGHTED_ELEMENTS,RANGED_VALUE,SHORT_TEXT" />
+                android:value="WEIGHTED_ELEMENTS,RANGED_VALUE,SHORT_TEXT,LONG_TEXT" />
             <!-- Redrawn when the phone sends new figures, not on a timer. -->
             <meta-data
                 android:name="android.support.wearable.complications.UPDATE_PERIOD_SECONDS"
@@ -62,7 +62,7 @@
             </intent-filter>
             <meta-data
                 android:name="android.support.wearable.complications.SUPPORTED_TYPES"
-                android:value="RANGED_VALUE,SHORT_TEXT" />
+                android:value="RANGED_VALUE,SHORT_TEXT,LONG_TEXT" />
             <meta-data
                 android:name="android.support.wearable.complications.UPDATE_PERIOD_SECONDS"
                 android:value="0" />

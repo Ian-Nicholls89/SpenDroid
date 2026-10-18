@@ -211,7 +211,7 @@ class ThisPeriodWidget : GlanceAppWidget() {
         Image(
             provider = ImageProvider(periodBarBitmap(share, tick, fill = barColour, track = TRACK, tickColour = TICK, extra = toComeShare(row, drain))),
             contentDescription = spoken(row),
-            modifier = GlanceModifier.fillMaxWidth().height(9.dp),
+            modifier = GlanceModifier.fillMaxWidth().height(12.dp),
             contentScale = ContentScale.FillBounds,
         )
         if (full) {
@@ -268,7 +268,7 @@ class ThisPeriodWidget : GlanceAppWidget() {
             Image(
                 provider = ImageProvider(periodBarBitmap(share, tick, fill = barColour, track = TRACK, tickColour = TICK)),
                 contentDescription = spoken(row),
-                modifier = GlanceModifier.width(56.dp).height(7.dp),
+                modifier = GlanceModifier.width(56.dp).height(10.dp),
                 contentScale = ContentScale.FillBounds,
             )
             Spacer(GlanceModifier.width(7.dp))

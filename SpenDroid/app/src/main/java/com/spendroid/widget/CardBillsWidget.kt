@@ -279,7 +279,7 @@ class CardBillsWidget : GlanceAppWidget() {
                         cardRailBitmap(rail, fill = RailFill, track = RailTrack, tick = RailTick, over = card.pace?.over == true),
                     ),
                     contentDescription = card.detail,
-                    modifier = GlanceModifier.fillMaxWidth().height(9.dp),
+                    modifier = GlanceModifier.fillMaxWidth().height(14.dp),
                     // The full width of the row, as the numbers beside it assume.
                     contentScale = ContentScale.FillBounds,
                 )
