@@ -51,6 +51,8 @@ class AlertsWorker(
             SubscriptionAlerts.check(applicationContext, outlook, transactions, repo.ignoredRules.first())
             ContractAlerts.check(applicationContext, outlook)
         }
+        // Accounts with no bank link: a new statement, a balance check.
+        runCatching { ManualAlerts.check(applicationContext, repo.accounts(), repo.manualCoverage(), snapshot.cycleStart) }
 
         val goals = goalWarnings(repo, snapshot, transactions)
 

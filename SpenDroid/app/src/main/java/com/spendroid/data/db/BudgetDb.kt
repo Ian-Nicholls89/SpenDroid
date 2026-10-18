@@ -24,7 +24,7 @@ import kotlinx.coroutines.flow.Flow
         NotificationSampleEntity::class,
         DuplicateCheckEntity::class,
     ],
-    version = 21,
+    version = 22,
     exportSchema = false,
 )
 abstract class BudgetDb : RoomDatabase() {
@@ -58,6 +58,14 @@ abstract class BudgetDb : RoomDatabase() {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE accounts ADD COLUMN accountType TEXT NOT NULL DEFAULT 'PERSONAL'")
                 db.execSQL("ALTER TABLE accounts ADD COLUMN linkedCreditCardAccountId TEXT")
+            }
+        }
+        val MIGRATION_21_22 = object : Migration(21, 22) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE accounts ADD COLUMN manual INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE accounts ADD COLUMN anchorMinor INTEGER")
+                db.execSQL("ALTER TABLE accounts ADD COLUMN anchorDate TEXT")
+                db.execSQL("ALTER TABLE accounts ADD COLUMN checkedAt INTEGER")
             }
         }
         val MIGRATION_20_21 = object : Migration(20, 21) {
@@ -287,6 +295,9 @@ interface BudgetDao {
 
     @Query("DELETE FROM seen_spends WHERE seenAt < :before")
     suspend fun deleteSeenSpendsBefore(before: Long)
+
+    @Query("DELETE FROM seen_spends WHERE id IN (:ids)")
+    suspend fun deleteSeenSpends(ids: List<String>)
 
     @Query("DELETE FROM seen_spends")
     suspend fun deleteAllSeenSpends()

@@ -27,6 +27,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountBalance
 import androidx.compose.material.icons.filled.CreditCard
 import androidx.compose.material.icons.filled.FileUpload
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.Savings
@@ -86,7 +87,13 @@ fun AccountManagementScreen(
     onUndoImport: (com.spendroid.web.WebImport.Batch) -> Unit = {},
     onMoveImport: (com.spendroid.web.WebImport.Batch, String, Boolean, (com.spendroid.web.WebImport.Check) -> Unit) -> Unit = { _, _, _, _ -> },
     onImport: (String?) -> Unit = {},
+    /** Accounts with no bank link: added by hand, checked against the bank, removed. */
+    onAddManual: (String, String, AccountType, Long?) -> Unit = { _, _, _, _ -> },
+    onRemoveManual: (AccountEntity) -> Unit = {},
+    onCheckBalance: (AccountEntity) -> Unit = {},
 ) {
+    var addingManual by remember { mutableStateOf(false) }
+    var removing by remember { mutableStateOf<AccountEntity?>(null) }
     var moving by remember { mutableStateOf<com.spendroid.web.WebImport.Batch?>(null) }
     var moved by remember { mutableStateOf<String?>(null) }
     var showLinkDialog by remember { mutableStateOf(false) }
@@ -126,7 +133,11 @@ fun AccountManagementScreen(
                 owedOnCard = state.budget?.cardBills?.firstOrNull { it.cardAccountId == account.id }?.outstandingMinor,
                 colour = colourOf(account, state.accounts),
                 bill = state.budget?.cardBills?.firstOrNull { it.cardAccountId == account.id },
+                manualStatus = if (account.manual) manualStatus(account, state.manualCoverage[account.id]) else null,
             )
+        }
+        if (state.accounts.any { it.manual }) {
+            item { ManualRemindersPanel() }
         }
         // History added from a bank's own file, each import undoable on its own; and a new one.
         if (state.accounts.isNotEmpty()) {
@@ -163,6 +174,14 @@ fun AccountManagementScreen(
         item {
             Spacer(Modifier.height(4.dp))
             BigButton("Add another bank", Icons.Filled.AccountBalance, { showLinkDialog = true }, Modifier.fillMaxWidth(), colour = MaterialTheme.colorScheme.primary, textColour = Color(0xFF111111))
+            Spacer(Modifier.height(10.dp))
+            BigButton("Add an account by hand", Icons.Filled.Edit, { addingManual = true }, Modifier.fillMaxWidth())
+            Text(
+                "No bank link needed: kept up to date from statements, notifications and balance checks.",
+                style = MaterialTheme.typography.labelSmall,
+                color = Charcoal.Muted,
+                modifier = Modifier.padding(top = 6.dp),
+            )
             Spacer(Modifier.height(24.dp))
         }
     }
@@ -214,6 +233,31 @@ fun AccountManagementScreen(
                 onUpdateAccount(it)
                 editing = null
             },
+            onCheckBalance = if (account.manual && account.accountType != AccountType.CREDIT_CARD) {
+                { editing = null; onCheckBalance(account) }
+            } else {
+                null
+            },
+            onRemove = if (account.manual) {
+                { editing = null; removing = account }
+            } else {
+                null
+            },
+        )
+    }
+    if (addingManual) {
+        ManualAccountDialog(
+            onAdd = { name, bank, type, balance -> addingManual = false; onAddManual(name, bank, type, balance) },
+            onDismiss = { addingManual = false },
+        )
+    }
+    removing?.let { account ->
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { removing = null },
+            title = { Text("Remove ${account.label}?") },
+            text = { Text("Its transactions, imports and balance go too. This can't be undone.") },
+            confirmButton = { TextButton(onClick = { removing = null; onRemoveManual(account) }) { Text("Remove", color = Charcoal.Bad) } },
+            dismissButton = { TextButton(onClick = { removing = null }) { Text("Keep it") } },
         )
     }
 
@@ -299,6 +343,8 @@ private fun AccountWalletCard(
     owedOnCard: Long? = null,
     colour: Color = Color.Gray,
     bill: CreditCardEngine.CardBill? = null,
+    /** For an account with no bank link, where its figures come from, in place of "synced". */
+    manualStatus: String? = null,
 ) {
     val daysLeft = connection?.daysUntilExpiry()
     val isCard = account.accountType == AccountType.CREDIT_CARD
@@ -355,8 +401,11 @@ private fun AccountWalletCard(
         }
         Row {
             Text(
-                if (isCard) "owed · synced ${syncedAt(account.lastSynced)}"
-                else "synced ${syncedAt(account.lastSynced)}",
+                when {
+                    manualStatus != null -> (if (isCard) "owed · " else "") + manualStatus
+                    isCard -> "owed · synced ${syncedAt(account.lastSynced)}"
+                    else -> "synced ${syncedAt(account.lastSynced)}"
+                },
                 style = MaterialTheme.typography.labelSmall,
                 color = Color.White.copy(alpha = 0.75f),
                 modifier = Modifier.weight(1f),
@@ -392,8 +441,11 @@ private fun AccountWalletCard(
                 )
             }
         }
-        Spacer(Modifier.height(8.dp))
-        AllowanceRow(allowance, now)
+        // A manual account never syncs, so there's no bank allowance to show.
+        if (manualStatus == null) {
+            Spacer(Modifier.height(8.dp))
+            AllowanceRow(allowance, now)
+        }
         if (connection != null && daysLeft != null && daysLeft <= 14) {
             Spacer(Modifier.height(8.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -426,6 +478,8 @@ private fun AccountDetailSheet(
     onDismiss: () -> Unit,
     onSave: (AccountEntity) -> Unit,
     onImport: () -> Unit = {},
+    onCheckBalance: (() -> Unit)? = null,
+    onRemove: (() -> Unit)? = null,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var label by remember(account.id) { mutableStateOf(account.label) }
@@ -457,7 +511,13 @@ private fun AccountDetailSheet(
                 Text("See this account's transactions")
             }
             TextButton(onClick = onImport, contentPadding = PaddingValues(0.dp)) {
-                Text("Import older history from a file")
+                Text(if (account.manual) "Import a statement" else "Import older history from a file")
+            }
+            onCheckBalance?.let { check ->
+                TextButton(onClick = check, contentPadding = PaddingValues(0.dp)) { Text("Check its balance against your bank's") }
+            }
+            onRemove?.let { remove ->
+                TextButton(onClick = remove, contentPadding = PaddingValues(0.dp)) { Text("Remove this account", color = Charcoal.Bad) }
             }
             Spacer(Modifier.height(6.dp))
 

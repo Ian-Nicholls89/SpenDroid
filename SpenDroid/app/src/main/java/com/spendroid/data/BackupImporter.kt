@@ -77,6 +77,12 @@ object BackupImporter {
                 },
                 statementDayOfMonth = o.nullableInt("statementDayOfMonth"),
                 paymentDayOfMonth = o.nullableInt("paymentDayOfMonth"),
+                walletLinked = o.optBoolean("walletLinked", false),
+                cardLastFour = o.nullableString("cardLastFour"),
+                manual = o.optBoolean("manual", false),
+                anchorMinor = if (o.has("anchorMinor") && !o.isNull("anchorMinor")) o.getLong("anchorMinor") else null,
+                anchorDate = o.nullableString("anchorDate"),
+                checkedAt = if (o.has("checkedAt") && !o.isNull("checkedAt")) o.getLong("checkedAt") else null,
             )
         }
 

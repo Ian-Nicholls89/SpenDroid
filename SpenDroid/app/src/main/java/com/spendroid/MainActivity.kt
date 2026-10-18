@@ -205,11 +205,15 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
     /** From a notification: a bill's sheet to open on Regular, or an account's forecast. */
     private val openRule = mutableStateOf<String?>(null)
     private val openForecast = mutableStateOf<String?>(null)
+    /** A manual account whose balance check is open. */
+    private val checkBalance = mutableStateOf<String?>(null)
 
     private fun takeOpeners(intent: Intent?) {
         intent?.getStringExtra(com.spendroid.work.MoneyWatchAlerts.EXTRA_OPEN_RULE)?.let { openRule.value = it }
         intent?.getStringExtra(com.spendroid.work.MoneyWatchAlerts.EXTRA_OPEN_FORECAST)?.let { openForecast.value = it }
         intent?.getStringExtra(com.spendroid.work.ContractAlerts.EXTRA_OPEN_CONTRACT)?.let { openRule.value = it }
+        intent?.getStringExtra(com.spendroid.work.ManualAlerts.EXTRA_OPEN_BALANCE_CHECK)?.let { checkBalance.value = it }
+        intent?.getStringExtra(com.spendroid.work.ManualAlerts.EXTRA_OPEN_IMPORT)?.let { importRequest.value = com.spendroid.ui.ImportRequest(accountId = it) }
     }
 
     /** Locked behind Android's own fingerprint, face or PIN prompt until unlocked. */
@@ -420,6 +424,12 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                                             onOpenForecast = { id -> forecastFor = id ?: "" },
                                             onReload = viewModel::reloadLocal,
                                             prompts = {
+                                                // Accounts with no bank link: how current the figures are.
+                                                com.spendroid.ui.ManualFreshness(
+                                                    state,
+                                                    onCheck = { checkBalance.value = it },
+                                                    onImport = { importRequest.value = com.spendroid.ui.ImportRequest(accountId = it) },
+                                                )
                                                 // A missed "which account?" waits here too, not only in Spending.
                                                 com.spendroid.ui.SeenSpendPrompts(
                                                     seen = state.seenSpends,
@@ -468,6 +478,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                                                     onKeep = viewModel::keepSeenSpend,
                                                     onDismiss = viewModel::dismissSeenSpend,
                                                     sources = viewModel.spendSources.collectAsStateWithLifecycle().value,
+                                                    coverage = state.manualCoverage,
                                                 )
                                             },
                                         )
@@ -485,6 +496,9 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                                             onUndoImport = viewModel::undoImport,
                                             onMoveImport = viewModel::moveImport,
                                             onImport = { accountId -> importRequest.value = com.spendroid.ui.ImportRequest(accountId = accountId) },
+                                            onAddManual = viewModel::addManualAccount,
+                                            onRemoveManual = { viewModel.removeManualAccount(it.id) },
+                                            onCheckBalance = { checkBalance.value = it.id },
                                         )
 
                                         AppScreen.Rules -> RecurringRulesScreen(
@@ -588,6 +602,20 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                             onAdded = viewModel::reloadLocal,
                         )
                     }
+                }
+
+                // A manual account's balance check, from Home, Accounts or a reminder.
+                checkBalance.value?.let { id -> state.accounts.firstOrNull { it.id == id } }?.let { account ->
+                    com.spendroid.ui.BalanceCheckSheet(
+                        account = account,
+                        accounts = state.accounts,
+                        onPreview = { typed -> viewModel.previewBalanceCheck(account.id, typed) },
+                        onApply = { typed, move ->
+                            viewModel.applyBalanceCheck(account.id, typed, move)
+                            checkBalance.value = null
+                        },
+                        onDismiss = { checkBalance.value = null },
+                    )
                 }
 
                 state.justLinked?.let { linkedName ->

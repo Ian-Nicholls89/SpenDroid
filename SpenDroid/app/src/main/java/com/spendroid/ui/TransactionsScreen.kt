@@ -131,6 +131,7 @@ fun TransactionsScreen(
 
     val accountNames = remember(state.accounts) { state.accounts.associate { it.id to it.label } }
     val seenById = remember(state.seenSpends) { state.seenSpends.associateBy { NotificationSpend.SEEN_PREFIX + it.id } }
+    val manualIds = remember(state.accounts) { state.accounts.filter { it.manual }.map { it.id }.toSet() }
     val vanishedKeys = remember(state.duplicateQuestions) {
         state.duplicateQuestions.mapTo(HashSet()) { "${it.vanished.accountId}|${it.vanished.transactionId}" }
     }
@@ -399,6 +400,8 @@ fun TransactionsScreen(
                                         state.budget?.creditCardAccountIds.orEmpty(),
                                     onClick = { selected = tx },
                                     isNew = rowKey in state.newTransactionKeys,
+                                    // On an account with no bank link it waits for a statement, not the bank.
+                                    waitingForStatement = tx.transactionId in seenById && manualIds.contains(tx.accountId),
                                     held = rowKey in state.heldDuplicateKeys,
                                     note = when (rowKey) {
                                         in state.heldDuplicateKeys -> "Possible duplicate"
@@ -501,6 +504,7 @@ fun TransactionsScreen(
             billGuess = remember(tx, state.transactions) { cadenceGuess(tx, state.transactions) },
             onTreatAsBill = onTreatAsBill?.let { treat -> { t: TransactionEntity, c: com.spendroid.domain.Cadence -> treat(t, c); selected = null } },
             accountLabel = accountNames[tx.accountId],
+            waitingForStatement = tx.transactionId in seenById && manualIds.contains(tx.accountId),
             paidFrom = seenById[tx.transactionId]?.let { spend -> paidFrom(spend, state, onAssignSeen) { selected = null } },
             payeeCycle = remember(tx, state.transactions, state.budget) { payeeCycle(tx, state) },
         )
@@ -685,6 +689,8 @@ private fun TransactionRow(
     note: String? = null,
     /** Held out of the budget until then, and greyed to say so. */
     held: Boolean = false,
+    /** Read from a notification on an account with no bank link: "Seen", until a statement lists it. */
+    waitingForStatement: Boolean = false,
 ) {
     val category = CategoryEngine.classify(tx, userRules, cardPaymentKeys, creditCardAccountIds)
     // A row the latest sync brought glows briefly, then settles like the rest.
@@ -759,6 +765,7 @@ private fun TransactionRow(
             val status = when {
                 held -> "Check" to Charcoal.Warn
                 note != null -> "Not listed" to Charcoal.Warn
+                waitingForStatement -> "Seen" to Color(0xFF29B6F6)
                 pendingNote != null -> "Pending" to Color(0xFF29B6F6)
                 tx.isInternalTransfer -> "Transfer" to Charcoal.Muted
                 tx.isRecurring -> "Regular" to Charcoal.Muted

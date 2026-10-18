@@ -14,6 +14,7 @@ import com.spendroid.data.db.NotificationSampleEntity
 import com.spendroid.domain.DuplicateCheck
 import com.spendroid.domain.NotificationSpend
 import com.spendroid.domain.countedOn
+import com.spendroid.domain.ManualAccounts
 import com.spendroid.data.remote.AccountDetailsDto
 import com.spendroid.data.remote.AccountInfoDto
 import com.spendroid.data.remote.AccountInfoWrapperDto
@@ -217,7 +218,9 @@ class GoCardlessRepository private constructor(
                 NotificationSampleEntity(source = source, postedAt = postedAt, title = title, text = text, parsed = parsed != null),
             )
             dao.deleteNotificationSamplesBefore(postedAt - SAMPLE_DAYS_MS)
-            dao.deleteSeenSpendsBefore(postedAt - SEEN_SPEND_DAYS_MS)
+            // A manual account's payments wait for the statement that lists them, however long.
+            NotificationSpend.forgettable(dao.seenSpends(), postedAt - SEEN_SPEND_DAYS_MS, manualCoverage())
+                .takeIf { it.isNotEmpty() }?.let { old -> dao.deleteSeenSpends(old.map { it.id }) }
             val outcome = parsed?.let { countSeen(source, it, postedAt) } ?: NotificationSpend.Outcome.NOT_A_PAYMENT
             dao.setNotificationOutcome(sampleId, outcome.name)
             val settled = settledByPartner.also { settledByPartner = false }
@@ -486,9 +489,24 @@ class GoCardlessRepository private constructor(
     /** Every stored row for one account, imported ones included. */
     suspend fun storedTransactions(accountId: String): List<TransactionEntity> = dao.transactionsFor(accountId)
 
-    suspend fun addImported(rows: List<TransactionEntity>) {
+    /**
+     * Adds imported rows. For a manual account, [closing] - the statement's closing balance and
+     * its day - becomes the balance known for certain, balance-check entries the statement now
+     * explains go, and payments seen in notifications are paired with the statement's rows.
+     */
+    suspend fun addImported(rows: List<TransactionEntity>, closing: Pair<LocalDate, Long>? = null) {
         dao.upsertTransactions(rows)
+        rows.groupBy { it.accountId }.forEach { (accountId, imported) ->
+            val account = dao.accounts().firstOrNull { it.id == accountId && it.manual } ?: return@forEach
+            val days = imported.mapNotNull { RecurringAnalyzer.parseBookingDate(it.bookingDate) }
+            if (days.isNotEmpty()) {
+                ManualAccounts.explained(dao.transactionsFor(accountId), days.min(), days.max())
+                    .forEach { dao.deleteTransaction(accountId, it.transactionId) }
+            }
+            closing?.let { (day, minor) -> ManualAccounts.anchorFrom(account, day, minor)?.let { dao.updateAccount(it) } }
+        }
         reanalyze()
+        reconcileSeenSpends()
     }
 
     suspend fun undoImport(accountId: String, batchId: String) {
@@ -820,7 +838,9 @@ class GoCardlessRepository private constructor(
      * land - have synced today; the end of yesterday until then. See [BudgetDay].
      */
     suspend fun budgetTime(now: java.time.LocalDateTime = java.time.LocalDateTime.now()): java.time.LocalDateTime {
-        val all = accounts()
+        // Manual accounts never sync: with only those, the budget is as of now.
+        val all = accounts().filter { !it.manual }
+        if (all.isEmpty()) return now
         val current = all.filter { it.accountType == AccountType.PERSONAL }.ifEmpty { all }
         val lastSync = current.minOfOrNull { it.lastSynced }
             ?.takeIf { it > 0L }
@@ -898,6 +918,100 @@ class GoCardlessRepository private constructor(
      */
     suspend fun reanalyze() = analyzeTransactions()
 
+    // --- Accounts with no bank link ---
+
+    /** Works each manual account's balance out again from its anchor and transactions. */
+    private suspend fun refreshManualBalances() {
+        dao.accounts().filter { it.manual }.forEach { account ->
+            val balance = ManualAccounts.balance(account, dao.transactionsFor(account.id))
+            if (balance != account.balanceMinor) dao.updateAccount(account.copy(balanceMinor = balance))
+        }
+    }
+
+    /** An account added by hand: no bank link, kept up to date from statements and notifications. */
+    suspend fun addManualAccount(label: String, bank: String, type: AccountType, balanceMinor: Long?): AccountEntity {
+        val account = AccountEntity(
+            id = "manual:" + java.util.UUID.randomUUID().toString().take(12),
+            institutionName = bank.ifBlank { "My bank" },
+            label = label.ifBlank { "My account" },
+            currency = "GBP",
+            balanceMinor = balanceMinor,
+            lastSynced = 0L,
+            accountType = type,
+            manual = true,
+            anchorMinor = balanceMinor,
+            anchorDate = balanceMinor?.let { LocalDate.now().toString() },
+        )
+        dao.upsertAccount(account)
+        watched = null
+        return account
+    }
+
+    /** Removes a manual account and everything stored for it. Bank-linked accounts can't be removed here. */
+    suspend fun deleteManualAccount(accountId: String) {
+        val account = dao.accounts().firstOrNull { it.id == accountId } ?: return
+        if (!account.manual) return
+        dao.deleteTransactions(accountId)
+        dao.deleteAccount(accountId)
+        // Banking apps stop speaking for it; payments counted on it go with it.
+        secrets.saveSpendSources(spendSources.first().map { s ->
+            s.copy(accountIds = s.accountIds - accountId, defaultAccountId = s.defaultAccountId?.takeIf { it != accountId })
+        })
+        dao.seenSpends().filter { it.countedOn == accountId }.forEach { dao.upsertSeenSpend(it.copy(dismissed = true)) }
+        watched = null
+        reanalyze()
+    }
+
+    /** Sets a manual account's balance as of today, as the user typed it. */
+    suspend fun setManualBalance(accountId: String, balanceMinor: Long) {
+        val account = dao.accounts().firstOrNull { it.id == accountId && it.manual } ?: return
+        dao.updateAccount(account.copy(anchorMinor = balanceMinor, anchorDate = LocalDate.now().toString()))
+        refreshManualBalances()
+    }
+
+    /** For each manual account, the last day an imported statement covers. */
+    suspend fun manualCoverage(): Map<String, LocalDate?> {
+        val manual = dao.accounts().filter { it.manual }
+        return ManualAccounts.coverage(manual, manual.flatMap { dao.transactionsFor(it.id) })
+    }
+
+    /**
+     * Checks a manual account's balance against what the user's banking app shows - nothing is
+     * saved until [applyBalanceCheck].
+     */
+    suspend fun previewBalanceCheck(accountId: String, typedMinor: Long): ManualAccounts.Check? {
+        val account = dao.accounts().firstOrNull { it.id == accountId && it.manual } ?: return null
+        val seen = dao.seenSpends()
+        val sources = spendSources.first()
+        val walletAccounts = dao.accounts().filter { it.walletLinked }.map { it.id }.toSet()
+        // Payments only guessed onto another account - or still waiting to be told - that this
+        // one's banking app, or Wallet, could have paid.
+        val elsewhere = NotificationSpend.counted(seen).filter { spend ->
+            (spend.accountGuessed || spend.accountId == null) && spend.countedOn != accountId &&
+                if (spend.source == NotificationSpend.GOOGLE_WALLET) accountId in walletAccounts
+                else sources.firstOrNull { it.packageName == spend.source }?.accountIds?.contains(accountId) == true
+        }
+        return ManualAccounts.check(account, typedMinor, dao.transactionsFor(accountId), seen, elsewhere)
+    }
+
+    /**
+     * Records a balance check: [moveSpendId], when the user agreed a payment guessed onto another
+     * account was really this one's, moves it first; then the balance is set to what the bank
+     * showed, and any gap still unexplained is counted as spending.
+     */
+    suspend fun applyBalanceCheck(accountId: String, typedMinor: Long, moveSpendId: String? = null): ManualAccounts.Check? {
+        moveSpendId?.let { assignSeenSpend(it, accountId) }
+        val check = previewBalanceCheck(accountId, typedMinor) ?: return null
+        val account = dao.accounts().first { it.id == accountId }
+        val (anchored, entry) = ManualAccounts.afterCheck(
+            account, check, dao.seenSpends(), LocalDate.now(), java.util.UUID.randomUUID().toString().take(8),
+        )
+        dao.updateAccount(anchored)
+        entry?.let { dao.upsertTransactions(listOf(it)) }
+        reanalyze()
+        return check
+    }
+
     private suspend fun analyzeTransactions() {
         val allAccounts = dao.accounts()
         val allTx = allAccounts.flatMap { dao.transactionsFor(it.id) }
@@ -943,6 +1057,8 @@ class GoCardlessRepository private constructor(
                 }
             }
         }
+        // A manual account's balance follows its transactions: an import, an undo, a move.
+        refreshManualBalances()
     }
 
     suspend fun accounts(): List<AccountEntity> = dao.accounts()

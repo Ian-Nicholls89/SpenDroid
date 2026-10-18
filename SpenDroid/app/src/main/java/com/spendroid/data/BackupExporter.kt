@@ -70,7 +70,13 @@ object BackupExporter {
                             .put(
                                 "paymentDayOfMonth",
                                 account.paymentDayOfMonth ?: JSONObject.NULL,
-                            ),
+                            )
+                            .put("walletLinked", account.walletLinked)
+                            .put("cardLastFour", account.cardLastFour ?: JSONObject.NULL)
+                            .put("manual", account.manual)
+                            .put("anchorMinor", account.anchorMinor ?: JSONObject.NULL)
+                            .put("anchorDate", account.anchorDate ?: JSONObject.NULL)
+                            .put("checkedAt", account.checkedAt ?: JSONObject.NULL),
                     )
                 }
             },

@@ -44,11 +44,13 @@ internal fun SeenSpendPrompts(
     onDismiss: (String) -> Unit,
     sources: List<NotificationSpend.Source> = emptyList(),
     accountsOnly: Boolean = false,
+    /** Accounts with no bank link, and the last day a statement covers each. */
+    coverage: Map<String, java.time.LocalDate?> = emptyMap(),
     modifier: Modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
 ) {
     val now = System.currentTimeMillis()
     val unassigned = NotificationSpend.unanswered(seen).sortedByDescending { it.seenAt }
-    val unconfirmed = if (accountsOnly) emptyList() else NotificationSpend.unconfirmed(seen, now)
+    val unconfirmed = if (accountsOnly) emptyList() else NotificationSpend.unconfirmed(seen, now, coverage)
     if (unassigned.isEmpty() && unconfirmed.isEmpty()) return
 
     Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {

@@ -114,6 +114,8 @@ fun ImportScreen(
     var check by remember { mutableStateOf<WebImport.Check?>(null) }
     var adding by remember { mutableStateOf(false) }
     var added by remember { mutableStateOf(0) }
+    // A manual account's balance, typed when the file doesn't give one.
+    var typedBalance by remember { mutableStateOf("") }
 
     val account = accounts.firstOrNull { it.id == accountId }
     val layouts = remember { WebImport.layouts(context) }
@@ -191,7 +193,12 @@ fun ImportScreen(
                 when (step) {
                     Step.FILE -> FileStep(loaded, problem, accounts, accountId, { picker.launch(FILE_TYPES) }, { accountId = it })
                     Step.MATCH -> MatchStep(loaded!!.parsed, layout!!, rows, onChange = { layout = it; edited = true })
-                    Step.CHECK -> CheckStep(loaded!!, layout!!, rows, check, account, onFlip = { layout = layout!!.copy(flip = it); edited = true })
+                    Step.CHECK -> CheckStep(
+                        loaded!!, layout!!, rows, check, account, onFlip = { layout = layout!!.copy(flip = it); edited = true },
+                        closing = closingFor(loaded!!.parsed, layout!!, account),
+                        typedBalance = typedBalance,
+                        onTypedBalance = { typedBalance = it },
+                    )
                     Step.DONE -> DoneStep(added, account)
                 }
                 Spacer(Modifier.height(8.dp))
@@ -226,7 +233,14 @@ fun ImportScreen(
                         if (c != null && p != null && id != null && l != null) {
                             adding = true
                             scope.launch {
-                                WebImport.add(context, id, p.name, c.toAdd, if (edited) StatementFile.remembered(p.parsed, l) else null)
+                                // A manual account starts from the statement's closing balance, or the one typed.
+                                val closing = if (account?.manual == true) {
+                                    closingFor(p.parsed, l, account)
+                                        ?: StatementFile.toMinor(typedBalance)?.let { typed -> c.toAdd.maxOfOrNull { it.date }?.let { it to typed } }
+                                } else {
+                                    null
+                                }
+                                WebImport.add(context, id, p.name, c.toAdd, if (edited) StatementFile.remembered(p.parsed, l) else null, closing = closing)
                                 added = c.toAdd.size
                                 adding = false
                                 step = Step.DONE
@@ -575,6 +589,9 @@ internal fun CheckStep(
     check: WebImport.Check?,
     account: AccountEntity?,
     onFlip: (Boolean) -> Unit,
+    closing: Pair<java.time.LocalDate, Long>? = null,
+    typedBalance: String = "",
+    onTypedBalance: (String) -> Unit = {},
 ) {
     val good = rows.filter { it.ok }
     val bad = rows.filter { !it.ok && !it.left }
@@ -599,6 +616,41 @@ internal fun CheckStep(
             "In the file: money out ${formatMoney(out, "GBP")} · in ${formatMoney(inn, "GBP")}",
             style = MaterialTheme.typography.labelSmall, color = Charcoal.Muted, modifier = Modifier.padding(top = 6.dp),
         )
+    }
+    // A manual account's balance comes from the statement: its closing balance, or typed once.
+    if (account?.manual == true) {
+        Panel {
+            SectionHeading("Balance")
+            Spacer(Modifier.height(6.dp))
+            if (closing != null) {
+                Text(
+                    "${formatMoney(closing.second, account.currency)} at the end of ${closing.first.format(DAY)}. " +
+                        "${account.label}'s balance carries on from there.",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            } else if (account.anchorMinor == null) {
+                Text(
+                    "This file doesn't show a balance. What was it after the last line? Leave it blank to add it later.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Charcoal.Muted,
+                )
+                androidx.compose.material3.OutlinedTextField(
+                    value = typedBalance,
+                    onValueChange = onTypedBalance,
+                    label = { Text("Balance") },
+                    prefix = { Text("£") },
+                    singleLine = true,
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal),
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                )
+            } else {
+                Text(
+                    "This file doesn't show a balance, so ${account.label}'s carries on from the one it has.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Charcoal.Muted,
+                )
+            }
+        }
     }
     Panel {
         SectionHeading("How it reads")
@@ -638,4 +690,14 @@ private fun DoneStep(added: Int, account: AccountEntity?) {
             style = MaterialTheme.typography.bodyMedium, color = Charcoal.Muted, modifier = Modifier.padding(top = 8.dp),
         )
     }
+}
+
+/**
+ * A statement's closing balance as the account holds balances: a card's file usually shows what's
+ * owed as a positive figure, and the account holds it as negative.
+ */
+internal fun closingFor(parsed: StatementFile.Parsed, layout: StatementFile.Layout, account: AccountEntity?): Pair<java.time.LocalDate, Long>? {
+    val (day, minor) = StatementFile.closingBalance(parsed, layout) ?: return null
+    val owed = account?.accountType == AccountType.CREDIT_CARD && minor > 0
+    return day to if (owed) -minor else minor
 }

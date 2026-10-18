@@ -126,6 +126,8 @@ data class RootUiState(
     val spendSources: List<com.spendroid.domain.NotificationSpend.Source> = emptyList(),
     /** "Always put this shop here", by [com.spendroid.domain.NotificationSpend.placeKey]. */
     val spendPlaces: Map<String, String> = emptyMap(),
+    /** Each account with no bank link, and the last day an imported statement covers it. */
+    val manualCoverage: Map<String, java.time.LocalDate?> = emptyMap(),
     /** Rows the bank has stopped listing, put to the user. */
     val duplicateQuestions: List<com.spendroid.domain.DuplicateCheck.Question> = emptyList(),
     /** The forecast to payday, any dip below zero ahead, and bills' price changes. */
@@ -506,6 +508,55 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
     /** Where "always put this shop here" sends payments, by [com.spendroid.domain.NotificationSpend.placeKey]. */
     val spendPlaces = repo.spendPlaces
         .stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.WhileSubscribed(5_000), emptyMap())
+
+    // --- Accounts with no bank link ---
+
+    /**
+     * Adds an account by hand. If its bank's app is on the phone, that app's notifications are
+     * read for it - added to Card alerts, or the account added to the app already there.
+     */
+    fun addManualAccount(label: String, bank: String, type: com.spendroid.data.db.AccountType, balanceMinor: Long?) {
+        viewModelScope.launch {
+            val account = repo.addManualAccount(label, bank, type, balanceMinor)
+            val name = bank.trim().lowercase()
+            if (name.length >= 3) {
+                val app = withContext(Dispatchers.IO) { runCatching { launcherApps(getApplication()) }.getOrDefault(emptyList()) }
+                    .firstOrNull { val app = it.label.lowercase(); app.contains(name) || (app.length >= 5 && name.contains(app)) }
+                if (app != null) {
+                    val sources = repo.spendSources.first()
+                    val existing = sources.firstOrNull { it.packageName == app.packageName }
+                    repo.saveSpendSources(
+                        if (existing != null) sources.map { if (it == existing) it.copy(accountIds = it.accountIds + account.id) else it }
+                        else sources + com.spendroid.domain.NotificationSpend.Source(app.packageName, app.label, listOf(account.id), account.id),
+                    )
+                }
+            }
+            loadLocal()
+        }
+    }
+
+    fun removeManualAccount(accountId: String) {
+        viewModelScope.launch {
+            repo.deleteManualAccount(accountId)
+            loadLocal()
+        }
+    }
+
+    fun setManualBalance(accountId: String, balanceMinor: Long) {
+        viewModelScope.launch {
+            repo.setManualBalance(accountId, balanceMinor)
+            loadLocal()
+        }
+    }
+
+    suspend fun previewBalanceCheck(accountId: String, typedMinor: Long) = repo.previewBalanceCheck(accountId, typedMinor)
+
+    fun applyBalanceCheck(accountId: String, typedMinor: Long, moveSpendId: String?) {
+        viewModelScope.launch {
+            repo.applyBalanceCheck(accountId, typedMinor, moveSpendId)
+            loadLocal()
+        }
+    }
 
     fun dismissSeenSpend(id: String) {
         com.spendroid.work.SpendQuestions.answered(getApplication(), id)
@@ -948,6 +999,7 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
                 seenSpends = repo.seenSpends.first(),
                 spendSources = repo.spendSources.first(),
                 spendPlaces = repo.spendPlaces.first(),
+                manualCoverage = repo.manualCoverage(),
                 duplicateQuestions = questions,
                 outlook = outlook,
                 heldDuplicateKeys = repo.heldDuplicateKeys(),

@@ -49,7 +49,9 @@ class RefreshWidgetsAction : ActionCallback {
  * current account stuck on 09:29, and the figures looked fresher than they were.
  */
 fun updatedLabel(accounts: List<AccountEntity>, zone: ZoneId = ZoneId.systemDefault()): String? {
-    val current = accounts.filter { it.accountType == com.spendroid.data.db.AccountType.PERSONAL }.ifEmpty { accounts }
+    // Accounts with no bank link never sync, so they say nothing about how fresh the figures are.
+    val linked = accounts.filter { !it.manual }
+    val current = linked.filter { it.accountType == com.spendroid.data.db.AccountType.PERSONAL }.ifEmpty { linked }
     val latest = current.minOfOrNull { it.lastSynced }?.takeIf { it > 0L } ?: return null
     val at = Instant.ofEpochMilli(latest).atZone(zone)
     return if (at.toLocalDate() == LocalDate.now(zone)) {

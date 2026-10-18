@@ -488,9 +488,29 @@ object NotificationSpend {
     fun unanswered(seen: List<SeenSpendEntity>): List<SeenSpendEntity> =
         seen.filter { it.accountId == null && it.matchedTransactionId == null && !it.dismissed }
 
-    /** Counted for a week without the bank reporting them: worth asking about. */
-    fun unconfirmed(seen: List<SeenSpendEntity>, now: Long): List<SeenSpendEntity> =
-        counted(seen).filter { it.accountId != null && !it.keptByUser && now - it.seenAt > REVIEW_AFTER_MS }
+    /**
+     * Worth asking about: counted for a week without the bank reporting them. On a manual
+     * account - [coverage], by account, the last day a statement covers - there is no sync to
+     * report them, so only once a statement covers the day and still doesn't list it.
+     */
+    fun unconfirmed(seen: List<SeenSpendEntity>, now: Long, coverage: Map<String, LocalDate?> = emptyMap()): List<SeenSpendEntity> =
+        counted(seen).filter { spend ->
+            spend.accountId != null && !spend.keptByUser &&
+                if (spend.accountId in coverage) ManualAccounts.covers(coverage[spend.accountId], spend)
+                else now - spend.seenAt > REVIEW_AFTER_MS
+        }
+
+    /**
+     * Seen spends old enough to forget: past [before], except on a manual account no statement
+     * covers yet - there, forgetting it would forget real spending.
+     */
+    fun forgettable(seen: List<SeenSpendEntity>, before: Long, coverage: Map<String, LocalDate?>): List<SeenSpendEntity> =
+        seen.filter { spend ->
+            spend.seenAt < before && !(
+                spend.countedOn in coverage && spend.matchedTransactionId == null && !spend.dismissed &&
+                    !ManualAccounts.covers(coverage[spend.countedOn], spend)
+                )
+        }
 
     /** A seen spend as the pending row the budget reads. */
     fun asTransaction(spend: SeenSpendEntity, sourceLabel: String, zone: ZoneId = ZoneId.systemDefault()) =

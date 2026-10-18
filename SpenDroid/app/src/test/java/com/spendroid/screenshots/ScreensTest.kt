@@ -512,4 +512,38 @@ class ScreensTest {
         compose.waitForIdle()
         com.github.takahirom.roborazzi.captureScreenRoboImage("build/screenshots/paid-from.png")
     }
+
+    /** 4.9: a manual account on Accounts, with the reminders, and Home's "how current" line. */
+    @Test
+    @Config(qualifiers = "w411dp-h1900dp-xxhdpi")
+    fun manualAccounts() {
+        val base = Sample.state()
+        val today = java.time.LocalDate.now()
+        val savings = com.spendroid.data.db.AccountEntity(
+            "manual:1", "Example Bank", "Rainy Day", "GBP", 250_000, 0L, com.spendroid.data.db.AccountType.SAVINGS,
+            manual = true, anchorMinor = 250_000, anchorDate = today.minusDays(9).toString(),
+            checkedAt = System.currentTimeMillis() - 9 * 86_400_000L,
+        )
+        val state = base.copy(accounts = base.accounts + savings, manualCoverage = mapOf(savings.id to today.minusDays(9)))
+        val step = androidx.compose.runtime.mutableIntStateOf(0)
+        compose.setContent {
+            if (step.intValue == 0) {
+                Frame(AppScreen.Accounts) {
+                    com.spendroid.ui.AccountManagementScreen(state = state, onLink = {}, onRelink = {}, onUpdateAccount = {})
+                }
+            } else {
+                Frame(AppScreen.Home) {
+                    HomeScreen(
+                        state, onRefresh = {}, onRelink = {}, onSeeAllTransactions = {}, onSetBudgetGoal = { _, _ -> }, onLinkBank = {},
+                        prompts = { com.spendroid.ui.ManualFreshness(state, {}, {}) },
+                    )
+                }
+            }
+        }
+        compose.waitForIdle()
+        compose.onRoot().captureRoboImage("build/screenshots/manual-accounts.png")
+        step.intValue = 1
+        compose.waitForIdle()
+        compose.onRoot().captureRoboImage("build/screenshots/manual-home.png")
+    }
 }

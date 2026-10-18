@@ -57,7 +57,10 @@ object WebImport {
         val repo = (context.applicationContext as BudgetApplication).repository
         val stored = repo.storedTransactions(accountId).filter { !it.isPending }
         val fromBank = stored
-            .filter { !it.transactionId.startsWith(DuplicateCheck.IMPORTED_PREFIX) && !it.transactionId.startsWith(NotificationSpend.SEEN_PREFIX) }
+            .filter {
+                !it.transactionId.startsWith(DuplicateCheck.IMPORTED_PREFIX) && !it.transactionId.startsWith(NotificationSpend.SEEN_PREFIX) &&
+                    !it.transactionId.startsWith(com.spendroid.domain.ManualAccounts.CHECK_PREFIX)
+            }
             .mapNotNull { runCatching { LocalDate.parse(it.bookingDate) }.getOrNull() }
             .minOrNull()
         val (covered, older) = rows.partition { fromBank != null && !it.date.isBefore(fromBank) }
@@ -118,7 +121,16 @@ object WebImport {
      * remembers a layout matched by hand. Allowed from the notification, or straight from the
      * phone's own import, where the user is already holding the phone.
      */
-    suspend fun add(context: Context, accountId: String, fileName: String, rows: List<Row>, layout: JSONObject?, id: String = UUID.randomUUID().toString().take(8)) {
+    suspend fun add(
+        context: Context,
+        accountId: String,
+        fileName: String,
+        rows: List<Row>,
+        layout: JSONObject?,
+        id: String = UUID.randomUUID().toString().take(8),
+        /** The statement's closing balance and its day: a manual account's balance starts from it. */
+        closing: Pair<java.time.LocalDate, Long>? = null,
+    ) {
         if (rows.isEmpty()) return
         val repo = (context.applicationContext as BudgetApplication).repository
         val currency = repo.accounts().firstOrNull { it.id == accountId }?.currency ?: "GBP"
@@ -137,6 +149,7 @@ object WebImport {
                     rawJson = null,
                 )
             },
+            closing,
         )
         remember(context, Batch(id, accountId, fileName, rows.size, System.currentTimeMillis(), rows.minOf { it.date }.toString(), rows.maxOf { it.date }.toString()))
         layout?.let { saveLayout(context, it) }

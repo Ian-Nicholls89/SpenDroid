@@ -133,7 +133,7 @@ fun RoundupScreen(state: RootUiState, onBack: () -> Unit, onSeeQuestions: () -> 
             }
             val toCheck = state.duplicateQuestions.size +
                 state.seenSpends.count { it.accountId == null && !it.dismissed && it.matchedTransactionId == null } +
-                NotificationSpend.unconfirmed(state.seenSpends, System.currentTimeMillis()).size
+                NotificationSpend.unconfirmed(state.seenSpends, System.currentTimeMillis(), state.manualCoverage).size
             if (toCheck > 0) {
                 Spacer(Modifier.height(12.dp))
                 Column(

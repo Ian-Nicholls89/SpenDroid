@@ -36,6 +36,8 @@ object StatementFile {
         val grid: List<List<String>> = emptyList(),
         val start: Int = 0,
         val fromFile: List<FileRow> = emptyList(),
+        /** An OFX's own closing balance and the day it's for, when it gives one. */
+        val ledger: Pair<LocalDate?, Long>? = null,
     ) {
         val heads: List<String> get() = if (start >= 0) grid.getOrNull(start).orEmpty() else emptyList()
         val data: List<List<String>> get() = grid.drop(start + 1)
@@ -78,7 +80,7 @@ object StatementFile {
     fun parse(text: String, dayFirst: Boolean = true): Parsed {
         val t = text.removePrefix(BOM)
         return when {
-            Regex("<OFX>|OFXHEADER", RegexOption.IGNORE_CASE).containsMatchIn(t) -> Parsed(Kind.OFX, fromFile = parseOfx(t))
+            Regex("<OFX>|OFXHEADER", RegexOption.IGNORE_CASE).containsMatchIn(t) -> Parsed(Kind.OFX, fromFile = parseOfx(t), ledger = ledgerOf(t))
             Regex("^!Type:", setOf(RegexOption.IGNORE_CASE, RegexOption.MULTILINE)).containsMatchIn(t) -> Parsed(Kind.QIF, fromFile = parseQif(t, dayFirst))
             else -> parseCsv(t).let { grid -> Parsed(Kind.CSV, grid, findStart(grid)) }
         }
@@ -120,6 +122,46 @@ object StatementFile {
             val date = if (d.length >= 8) parseDate("${d.take(4)}-${d.substring(4, 6)}-${d.substring(6, 8)}", true) else null
             FileRow(date, toMinor(tag("TRNAMT")), tag("NAME").ifEmpty { tag("MEMO") })
         }
+
+    /** An OFX's <LEDGERBAL>: the balance at the end of the statement, and the day it's for. */
+    private fun ledgerOf(text: String): Pair<LocalDate?, Long>? {
+        val block = Regex("<LEDGERBAL>(.*?)(</LEDGERBAL>|<AVAILBAL>|</STMTRS>|$)", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
+            .find(text)?.groupValues?.get(1) ?: return null
+        fun tag(t: String) = Regex("<$t>([^<\\r\\n]*)", RegexOption.IGNORE_CASE).find(block)?.groupValues?.get(1)?.trim().orEmpty()
+        val amount = toMinor(tag("BALAMT")) ?: return null
+        val d = tag("DTASOF")
+        val date = if (d.length >= 8) parseDate("${d.take(4)}-${d.substring(4, 6)}-${d.substring(6, 8)}", true) else null
+        return date to amount
+    }
+
+    /**
+     * The balance at the end of the statement, and the day it's for - the newest row's balance
+     * column in a CSV, an OFX's own closing balance - or null when the file doesn't say. A
+     * manual account's balance starts from it.
+     */
+    fun closingBalance(p: Parsed, layout: Layout): Pair<LocalDate, Long>? {
+        if (p.kind == Kind.OFX) {
+            val (day, amount) = p.ledger ?: return null
+            val latest = p.fromFile.mapNotNull { it.date }.maxOrNull()
+            return (day ?: latest ?: return null) to amount
+        }
+        if (p.kind != Kind.CSV) return null
+        val b = layout.col(BALANCE)
+        val d = layout.col(DATE)
+        if (b < 0 || d < 0) return null
+        val rows = p.data.mapNotNull { r ->
+            val date = parseDate(r.getOrNull(d), layout.dayFirst) ?: return@mapNotNull null
+            val balance = toMinor(r.getOrNull(b)) ?: return@mapNotNull null
+            date to balance
+        }
+        if (rows.isEmpty()) return null
+        // Newest first or oldest first, the end of the statement is the newest day's last entry
+        // in the order the bank wrote them.
+        val newestFirst = rows.first().first.isAfter(rows.last().first)
+        val newest = rows.maxOf { it.first }
+        val onThatDay = rows.filter { it.first == newest }
+        return if (newestFirst) onThatDay.first() else onThatDay.last()
+    }
 
     private fun parseQif(text: String, dayFirst: Boolean): List<FileRow> {
         val out = mutableListOf<FileRow>()

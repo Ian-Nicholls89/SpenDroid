@@ -52,6 +52,17 @@ data class AccountEntity(
     val walletLinked: Boolean = false,
     /** The card's last four digits, as payment notifications show them. */
     val cardLastFour: String? = null,
+    /**
+     * Added by hand, with no bank link: its transactions come from statement files and
+     * notifications, and its balance is worked out from [anchorMinor] rather than reported.
+     */
+    val manual: Boolean = false,
+    /** For a manual account: a balance known for certain - from a statement or a balance check... */
+    val anchorMinor: Long? = null,
+    /** ...and the day it was at the end of. Transactions dated after it move the balance on. */
+    val anchorDate: String? = null,
+    /** For a manual account: when the user last checked its balance against their bank's. */
+    val checkedAt: Long? = null,
 )
 
 /**

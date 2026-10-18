@@ -91,6 +91,8 @@ fun TransactionDetailSheet(
     payeeCycle: PayeeCycle? = null,
     /** For a payment read from a notification: which account it came from, changeable. */
     paidFrom: PaidFrom? = null,
+    /** Read from a notification on an account with no bank link, so a statement will list it. */
+    waitingForStatement: Boolean = false,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val current = CategoryEngine.classify(transaction, userRules, cardPaymentKeys, creditCardAccountIds)
@@ -163,6 +165,7 @@ fun TransactionDetailSheet(
                 Chip(current.label, visual.color, Color.White)
                 Chip(
                     when {
+                        seen && waitingForStatement -> "Seen, waiting for your statement"
                         seen -> "Seen, not yet listed"
                         transaction.isPending -> "Pending"
                         else -> "Booked"
