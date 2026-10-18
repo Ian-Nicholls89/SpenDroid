@@ -33,15 +33,32 @@ object NotificationSpend {
      * Seen spends that repeat an earlier one, by the same rule as [duplicateOf] - for tidying up
      * after the fact. Oldest first, so the first announcement is the one kept.
      */
-    fun repeats(seen: List<SeenSpendEntity>): List<SeenSpendEntity> {
+    fun repeats(seen: List<SeenSpendEntity>): List<SeenSpendEntity> = repeatPairs(seen).map { it.second }
+
+    /** Each repeat with the earlier announcement it repeats. */
+    fun repeatPairs(seen: List<SeenSpendEntity>): List<Pair<SeenSpendEntity, SeenSpendEntity>> {
         val kept = mutableListOf<SeenSpendEntity>()
-        val repeats = mutableListOf<SeenSpendEntity>()
+        val repeats = mutableListOf<Pair<SeenSpendEntity, SeenSpendEntity>>()
         seen.filter { !it.dismissed }.sortedBy { it.seenAt }.forEach { spend ->
-            if (duplicateOf(spend.source, -spend.amountMinor, spend.cardDigits, spend.seenAt, kept) != null) repeats += spend
-            else kept += spend
+            val first = duplicateOf(spend.source, -spend.amountMinor, spend.cardDigits, spend.seenAt, kept)
+            if (first != null) repeats += first to spend else kept += spend
         }
         return repeats
     }
+
+    /**
+     * The announcements to drop as repeats of one purchase: the later one - unless the bank has
+     * already taken that one over, and then the earlier, still counted on its own. One the bank
+     * reported is never dropped.
+     */
+    fun toDrop(seen: List<SeenSpendEntity>): List<SeenSpendEntity> =
+        repeatPairs(seen).mapNotNull { (first, repeat) ->
+            when {
+                repeat.matchedTransactionId == null -> repeat
+                first.matchedTransactionId == null -> first
+                else -> null
+            }
+        }.distinctBy { it.id }
 
     /** One bank app the user picked, and the accounts it speaks for. */
     data class Source(
@@ -338,7 +355,9 @@ object NotificationSpend {
      * The spend this notification repeats, if any.
      *
      * Two apps announcing one purchase - Wallet at the till, the bank a little later - are one
-     * spend: the same amount within half an hour, and the same card when both show one. One app
+     * spend: the same amount within half an hour, and the same card when both show one. When both
+     * show the same card's digits, within three hours: NatWest's app once told of a lunch 53
+     * minutes after Wallet, and it was counted twice. One app
      * announcing the same amount twice is two purchases, unless it is the same notification
      * posted again within a minute; ten minutes either way both double-counted a slow bank and
      * merged two coffees.
@@ -356,8 +375,11 @@ object NotificationSpend {
             if (it.source == source) {
                 apart <= REPOST_WINDOW_MS
             } else {
-                apart <= CROSS_APP_WINDOW_MS &&
-                    (cardDigits == null || it.cardDigits == null || cardDigits == it.cardDigits)
+                if (cardDigits != null && it.cardDigits != null) {
+                    cardDigits == it.cardDigits && apart <= SAME_CARD_WINDOW_MS
+                } else {
+                    apart <= CROSS_APP_WINDOW_MS
+                }
             }
         }
 
@@ -438,6 +460,7 @@ object NotificationSpend {
 
     const val SEEN_PREFIX = "seen:"
     private const val CROSS_APP_WINDOW_MS = 30 * 60_000L
+    private const val SAME_CARD_WINDOW_MS = 3 * 60 * 60_000L
     private const val REPOST_WINDOW_MS = 60_000L
     private const val HANDOVER_DAYS = 5L
     const val REVIEW_AFTER_MS = 7 * 24 * 60 * 60_000L

@@ -106,9 +106,12 @@ class NotificationSpendTest {
         assertEquals(wallet, NotificationSpend.duplicateOf(natwest, 425, "4168", at(26, 12, 20), listOf(wallet)))
         // No digits on one side is still the same purchase.
         assertEquals(wallet, NotificationSpend.duplicateOf(natwest, 425, null, at(26, 12, 20), listOf(wallet)))
-        // Another card, or over half an hour, is another purchase.
+        // Another card is another purchase; so is the same card over three hours later (4.8.1:
+        // NatWest has been 53 minutes behind Wallet). Without digits on both, half an hour.
         assertNull(NotificationSpend.duplicateOf(natwest, 425, "9999", at(26, 12, 20), listOf(wallet)))
-        assertNull(NotificationSpend.duplicateOf(natwest, 425, "4168", at(26, 12, 45), listOf(wallet)))
+        assertEquals(wallet, NotificationSpend.duplicateOf(natwest, 425, "4168", at(26, 12, 55), listOf(wallet)))
+        assertNull(NotificationSpend.duplicateOf(natwest, 425, "4168", at(26, 15, 5), listOf(wallet)))
+        assertNull(NotificationSpend.duplicateOf(natwest, 425, null, at(26, 12, 45), listOf(wallet)))
     }
 
     @Test
@@ -206,7 +209,7 @@ class NotificationSpendTest {
             seen("n1", 3565, t + 900).copy(source = natwest, cardDigits = "4168"),
         )
         assertEquals(listOf("w2", "n1"), NotificationSpend.repeats(three).map { it.id })
-        // Two lunches an hour apart on the same card stay two.
-        assertEquals(emptyList<String>(), NotificationSpend.repeats(listOf(three[0], three[2].copy(seenAt = t + 3_600_000))).map { it.id })
+        // Two lunches four hours apart on the same card stay two.
+        assertEquals(emptyList<String>(), NotificationSpend.repeats(listOf(three[0], three[2].copy(seenAt = t + 4 * 3_600_000))).map { it.id })
     }
 }

@@ -286,8 +286,11 @@ class GoCardlessRepository private constructor(
      * on the seen spend across. Run after every sync and every new notification.
      */
     suspend fun reconcileSeenSpends() {
-        // Any purchase counted more than once - as the race before 3.2.1 could - is one again.
-        NotificationSpend.repeats(dao.seenSpends().filter { it.matchedTransactionId == null })
+        // Any purchase counted more than once - as the race before 3.2.1 could, or a bank app
+        // announcing it long after Wallet - is one again. Ones the bank already reported are
+        // looked at too, so the twin of a purchase the bank took over goes as well; only
+        // ones not yet reported are ever dropped.
+        NotificationSpend.toDrop(dao.seenSpends())
             .forEach { dao.upsertSeenSpend(it.copy(dismissed = true)) }
         val seen = dao.seenSpends()
         if (seen.isEmpty()) return
