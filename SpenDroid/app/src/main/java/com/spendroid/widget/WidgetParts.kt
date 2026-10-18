@@ -6,6 +6,9 @@ import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.RectF
 import androidx.glance.GlanceId
+import androidx.glance.layout.size
+import androidx.glance.layout.width
+import androidx.compose.ui.unit.dp
 import androidx.glance.action.ActionParameters
 import androidx.glance.appwidget.action.ActionCallback
 import com.spendroid.data.db.AccountEntity
@@ -345,4 +348,37 @@ fun droidBitmap(pace: com.spendroid.domain.BudgetPace.Pace, used: Float?, elapse
     }
     c.drawPath(mouth, paint(white, 4.5f))
     return bitmap
+}
+
+/** The droid as the budget has it now, for a widget's header: its face from the shared budget. */
+suspend fun widgetDroid(context: Context, sizePx: Int = 72): Bitmap {
+    val accent = widgetAccent(context)
+    val snapshot = runCatching { SharedSnapshot.get(context) }.getOrNull()
+    val pace = snapshot?.let { com.spendroid.domain.BudgetPace.of(it) } ?: com.spendroid.domain.BudgetPace.Pace.ON_TRACK
+    return droidBitmap(
+        pace,
+        snapshot?.let { com.spendroid.domain.BudgetPace.usedFraction(it) },
+        snapshot?.let { com.spendroid.domain.BudgetPace.elapsedFraction(it) },
+        accent,
+        sizePx,
+    )
+}
+
+/** The droid every widget header shows, provided once at the top of each widget. */
+internal val LocalWidgetDroid = androidx.compose.runtime.staticCompositionLocalOf<Bitmap?> { null }
+
+/** A widget's title with the droid in front of it, as the app's headers have it. */
+@androidx.compose.runtime.Composable
+internal fun DroidTitle(title: String, style: androidx.glance.text.TextStyle, modifier: androidx.glance.GlanceModifier = androidx.glance.GlanceModifier) {
+    androidx.glance.layout.Row(modifier, verticalAlignment = androidx.glance.layout.Alignment.Vertical.CenterVertically) {
+        LocalWidgetDroid.current?.let { droid ->
+            androidx.glance.Image(
+                provider = androidx.glance.ImageProvider(droid),
+                contentDescription = null,
+                modifier = androidx.glance.GlanceModifier.size(16.dp),
+            )
+            androidx.glance.layout.Spacer(androidx.glance.GlanceModifier.width(5.dp))
+        }
+        androidx.glance.text.Text(title, style = style)
+    }
 }

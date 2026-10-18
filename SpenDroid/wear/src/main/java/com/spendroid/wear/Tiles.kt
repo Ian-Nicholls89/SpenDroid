@@ -34,6 +34,25 @@ import com.google.common.util.concurrent.ListenableFuture
  * glance) and this cycle's categories. Material 3 tile layouts; tapping Open opens the watch app.
  */
 private const val RESOURCES = "1"
+private const val DEFAULT_ACCENT = 0xFF3DDC84.toInt()
+
+private fun versionFor(accent: Int) = "2-" + Integer.toHexString(accent)
+private fun droidId(mood: WatchMood) = "droid_" + mood.name.lowercase()
+
+/** The droid as a tile image: tiles take pictures, sent once per version. */
+private fun droidImage(mood: WatchMood, accent: Int): ResourceBuilders.ImageResource {
+    val size = 72
+    val bytes = java.io.ByteArrayOutputStream().also { watchDroidBitmap(mood, accent, size).compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }.toByteArray()
+    return ResourceBuilders.ImageResource.Builder()
+        .setInlineResource(
+            ResourceBuilders.InlineImageResource.Builder()
+                .setData(bytes)
+                .setWidthPx(size).setHeightPx(size)
+                .setFormat(ResourceBuilders.IMAGE_FORMAT_UNDEFINED)
+                .build(),
+        )
+        .build()
+}
 private const val GREEN = 0xFF43B05C.toInt()
 private const val RED = 0xFFE5534B.toInt()
 private const val AMBER = 0xFFF5A623.toInt()
@@ -48,9 +67,9 @@ private fun paceArgb(pace: String) = when (pace) {
     else -> GREEN
 }
 
-private fun tile(layout: LayoutElement): TileBuilders.Tile =
+private fun tile(layout: LayoutElement, version: String = RESOURCES): TileBuilders.Tile =
     TileBuilders.Tile.Builder()
-        .setResourcesVersion(RESOURCES)
+        .setResourcesVersion(version)
         // The phone asks for a redraw whenever it sends new figures; this is only a backstop.
         .setFreshnessIntervalMillis(60 * 60 * 1000L)
         .setTileTimeline(TimelineBuilders.Timeline.fromLayoutElement(layout))
@@ -61,6 +80,20 @@ private fun MaterialScope.openButton(context: Context): LayoutElement =
         onClick = clickable(launchAction(ComponentName(context, BudgetActivity::class.java)), id = "open"),
         labelContent = { text("Open".layoutString) },
     )
+
+/** A tile's name with the droid in front, wearing the budget's face - as the phone's headers. */
+private fun MaterialScope.droidTitle(label: String, reading: BudgetReading?): LayoutElement =
+    LayoutElementBuilders.Row.Builder()
+        .setVerticalAlignment(LayoutElementBuilders.VERTICAL_ALIGN_CENTER)
+        .addContent(
+            LayoutElementBuilders.Image.Builder()
+                .setResourceId(droidId(reading?.let { moodOf(it) } ?: WatchMood.AHEAD))
+                .setWidth(dp(18f)).setHeight(dp(18f))
+                .build(),
+        )
+        .addContent(LayoutElementBuilders.Spacer.Builder().setWidth(dp(4f)).build())
+        .addContent(text(label.layoutString, color = (reading?.accent ?: DEFAULT_ACCENT).argb, typography = Typography.LABEL_MEDIUM))
+        .build()
 
 private fun MaterialScope.noFigures(): LayoutElement =
     text("Open SpenDroid on your phone".layoutString, typography = Typography.BODY_MEDIUM, maxLines = 3)
@@ -91,7 +124,7 @@ fun budgetTileLayout(context: Context, device: DeviceParameters, reading: Budget
     materialScope(context, device) {
         val accent = reading?.accent ?: 0xFFF5A623.toInt()
         primaryLayout(
-            titleSlot = { text("SPENDROID".layoutString, color = accent.argb, typography = Typography.LABEL_MEDIUM) },
+            titleSlot = { droidTitle("spendroid", reading) },
             mainSlot = {
                 if (reading == null) return@primaryLayout noFigures()
                 val colour = paceArgb(reading.pace)
@@ -144,7 +177,7 @@ fun budgetTileLayout(context: Context, device: DeviceParameters, reading: Budget
 fun categoriesTileLayout(context: Context, device: DeviceParameters, reading: BudgetReading?): LayoutElement =
     materialScope(context, device) {
         primaryLayout(
-            titleSlot = { text("MOST SPENT".layoutString, color = (reading?.accent ?: 0xFFF5A623.toInt()).argb, typography = Typography.LABEL_MEDIUM) },
+            titleSlot = { droidTitle("most spent", reading) },
             mainSlot = {
                 val rows = reading?.categories.orEmpty().take(3)
                 if (reading == null || rows.isEmpty()) return@primaryLayout noFigures()
@@ -203,11 +236,18 @@ abstract class SpenDroidTileService : TileService() {
 
     override fun onTileRequest(requestParams: RequestBuilders.TileRequest): ListenableFuture<TileBuilders.Tile> =
         SuspendToFutureAdapter.launchFuture {
-            tile(layout(requestParams.deviceConfiguration, BudgetReading.load(this@SpenDroidTileService)))
+            val reading = BudgetReading.load(this@SpenDroidTileService)
+            // The droid's pictures are drawn in the phone's colour, so a new colour is a new version.
+            tile(layout(requestParams.deviceConfiguration, reading), versionFor(reading?.accent ?: DEFAULT_ACCENT))
         }
 
     override fun onTileResourcesRequest(requestParams: RequestBuilders.ResourcesRequest): ListenableFuture<ResourceBuilders.Resources> =
-        SuspendToFutureAdapter.launchFuture { ResourceBuilders.Resources.Builder().setVersion(RESOURCES).build() }
+        SuspendToFutureAdapter.launchFuture {
+            val accent = requestParams.version.substringAfter("-", "").toLongOrNull(16)?.toInt() ?: DEFAULT_ACCENT
+            ResourceBuilders.Resources.Builder().setVersion(requestParams.version).apply {
+                WatchMood.entries.forEach { mood -> addIdToImageMapping(droidId(mood), droidImage(mood, accent)) }
+            }.build()
+        }
 
     companion object {
         /** Asks both tiles to redraw: new figures have arrived from the phone. */

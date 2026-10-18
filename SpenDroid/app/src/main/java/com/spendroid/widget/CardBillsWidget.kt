@@ -61,11 +61,13 @@ class CardBillsWidget : GlanceAppWidget() {
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val first = loadCards(context)
         val firstAccent = widgetAccent(context)
+        val firstDroid = widgetDroid(context)
         provideContent {
+            val droid = rememberFresh(firstDroid) { widgetDroid(context) }
             val cards = rememberFresh(first) { loadCards(context) }
             val accent = rememberFresh(firstAccent) { widgetAccent(context) }
             // Locked, with figures hidden: the heading and the way in, nothing else.
-            if (!com.spendroid.data.Privacy(context).widgetFigures) LockedBody("CARD BILLS", accent) else Body(cards, accent)
+            androidx.compose.runtime.CompositionLocalProvider(LocalWidgetDroid provides droid) { if (!com.spendroid.data.Privacy(context).widgetFigures) LockedBody("CARD BILLS", accent) else Body(cards, accent) }
         }
     }
 
@@ -181,7 +183,7 @@ class CardBillsWidget : GlanceAppWidget() {
 
         Column(modifier = GlanceModifier.fillMaxSize()) {
             Row(modifier = GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.Vertical.CenterVertically) {
-                Text(
+                DroidTitle(
                     "Card bills",
                     modifier = GlanceModifier.defaultWeight(),
                     style = TextStyle(

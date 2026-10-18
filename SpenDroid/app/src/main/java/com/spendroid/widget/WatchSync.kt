@@ -105,6 +105,8 @@ internal object WatchSync {
                     putFloat("budgetLeft", BudgetPace.remainingFraction(s))
                     putFloat("cycleLeft", elapsed?.let { 1f - it } ?: -1f)
                     putString("pace", BudgetPace.of(s).name)
+                    // The droid celebrates on payday, on the watch as on the phone.
+                    putBoolean("payday", s.asOf == s.cycleStart)
 
                     // The watch app published with this phone app, so the watch can update itself.
                     putInt("wearLatestCode", com.spendroid.BuildConfig.WEAR_VERSION_CODE)

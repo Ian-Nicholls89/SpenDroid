@@ -55,10 +55,12 @@ class ComingUpWidget : GlanceAppWidget() {
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val first = load(context)
         val accent = widgetAccent(context)
+        val firstDroid = widgetDroid(context)
         provideContent {
+            val droid = rememberFresh(firstDroid) { widgetDroid(context) }
             val content = rememberFresh(first) { load(context) }
             // Locked, with figures hidden: the heading and the way in, nothing else.
-            if (!com.spendroid.data.Privacy(context).widgetFigures) LockedBody("COMING UP", accent) else Body(content)
+            androidx.compose.runtime.CompositionLocalProvider(LocalWidgetDroid provides droid) { if (!com.spendroid.data.Privacy(context).widgetFigures) LockedBody("COMING UP", accent) else Body(content) }
         }
     }
 
@@ -102,7 +104,7 @@ class ComingUpWidget : GlanceAppWidget() {
             )
             Column(modifier = GlanceModifier.fillMaxSize().padding(12.dp)) {
                 Row(modifier = GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.Vertical.CenterVertically) {
-                    Text("COMING UP", style = TextStyle(color = ColorProvider(Color(content.accent)), fontSize = 11.sp, fontWeight = FontWeight.Bold), modifier = GlanceModifier.defaultWeight())
+                    DroidTitle("coming up", TextStyle(color = ColorProvider(Color(content.accent)), fontSize = 12.sp, fontWeight = FontWeight.Bold), GlanceModifier.defaultWeight())
                     content.total?.let { Text("$it before payday", style = TextStyle(color = ColorProvider(Color(0xFF9AA0AA)), fontSize = 10.sp)) }
                 }
                 Spacer(GlanceModifier.height(8.dp))

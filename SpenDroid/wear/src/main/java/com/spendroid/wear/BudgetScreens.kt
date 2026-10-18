@@ -270,7 +270,9 @@ private fun Hero(r: BudgetReading) {
     val accent = Color(r.accent)
     NzbScreen("SpenDroid", accent) {
         Centre {
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(10.dp))
+            // The droid wears the budget's face, as on the phone.
+            WatchDroid(moodOf(r), r.used, r.elapsed, r.accent, 34.dp)
             Text(r.text("availableFull"), style = MaterialTheme.typography.numeralMedium, maxLines = 1)
             WatchChip(paceWord(r.pace), pace(r.pace))
             Spacer(Modifier.height(6.dp))

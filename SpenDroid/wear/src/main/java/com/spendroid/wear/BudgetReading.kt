@@ -25,8 +25,8 @@ class BudgetReading(val map: DataMap) {
 
     fun text(key: String): String = map.getString(key).orEmpty()
 
-    /** The phone's accent, for the glow and the curved title. Orange until a phone says otherwise. */
-    val accent: Int get() = map.getInt("accent", 0xFFF5A623.toInt())
+    /** The phone's colour, for the glow, the curved title and the droid. Green until a phone says otherwise. */
+    val accent: Int get() = map.getInt("accent", 0xFF3DDC84.toInt())
     /** Share of the budget used, 0 to 1, for the bar; null when unknown. */
     val used: Float? get() = map.getFloat("used", -1f).takeIf { it >= 0f }
     /** Share of the cycle gone, 0 to 1, for the bar's tick; null when unknown. */

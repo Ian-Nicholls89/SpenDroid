@@ -56,9 +56,11 @@ class AheadWidget : GlanceAppWidget() {
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val accent = widgetAccent(context)
         val first = load(context, accent)
+        val firstDroid = widgetDroid(context)
         provideContent {
+            val droid = rememberFresh(firstDroid) { widgetDroid(context) }
             val content = rememberFresh(first) { load(context, widgetAccent(context)) }
-            if (!Privacy(context).widgetFigures) LockedBody("AHEAD", content.accent) else Body(content)
+            androidx.compose.runtime.CompositionLocalProvider(LocalWidgetDroid provides droid) { if (!Privacy(context).widgetFigures) LockedBody("AHEAD", content.accent) else Body(content) }
         }
     }
 
@@ -91,7 +93,7 @@ class AheadWidget : GlanceAppWidget() {
             Image(ImageProvider(glowBitmap(c.accent, 0.26f)), contentDescription = null, contentScale = ContentScale.FillBounds, modifier = GlanceModifier.fillMaxSize())
             Column(modifier = GlanceModifier.fillMaxSize().padding(12.dp)) {
                 Row(modifier = GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.Vertical.CenterVertically) {
-                    Text("AHEAD", style = TextStyle(color = ColorProvider(Color(c.accent)), fontSize = 11.sp, fontWeight = FontWeight.Bold), modifier = GlanceModifier.defaultWeight())
+                    DroidTitle("ahead", TextStyle(color = ColorProvider(Color(c.accent)), fontSize = 12.sp, fontWeight = FontWeight.Bold), GlanceModifier.defaultWeight())
                     c.until?.let { Text(it, style = TextStyle(color = ColorProvider(Color(0xFF9AA0AA)), fontSize = 10.sp)) }
                 }
                 Spacer(GlanceModifier.height(6.dp))
@@ -149,7 +151,10 @@ internal fun LockedBody(title: String, accent: Int) {
             .clickable(actionStartActivity<MainActivity>()),
     ) {
         Column(modifier = GlanceModifier.fillMaxSize().padding(14.dp)) {
-            Text(title, style = TextStyle(color = ColorProvider(Color(accent)), fontSize = 11.sp, fontWeight = FontWeight.Bold))
+            // Figures hidden, so the droid's visor - the budget used - is hidden too: a plain droid.
+            androidx.compose.runtime.CompositionLocalProvider(LocalWidgetDroid provides droidBitmap(com.spendroid.domain.BudgetPace.Pace.ON_TRACK, null, null, accent, 72)) {
+                DroidTitle(title.lowercase(), TextStyle(color = ColorProvider(Color(accent)), fontSize = 12.sp, fontWeight = FontWeight.Bold))
+            }
             Spacer(GlanceModifier.height(6.dp))
             Text(Privacy.HIDDEN, style = TextStyle(color = ColorProvider(Color.White), fontSize = 26.sp, fontWeight = FontWeight.Bold))
             Text("Locked · tap to open", style = TextStyle(color = ColorProvider(Color(0xFF9AA0AA)), fontSize = 11.sp))

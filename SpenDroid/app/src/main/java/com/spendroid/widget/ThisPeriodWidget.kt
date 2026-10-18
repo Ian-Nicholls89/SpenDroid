@@ -58,11 +58,13 @@ class ThisPeriodWidget : GlanceAppWidget() {
         val widgetId = GlanceAppWidgetManager(context).getAppWidgetId(id)
         val first = load(context, widgetId)
         val firstAccent = widgetAccent(context)
+        val firstDroid = widgetDroid(context)
         provideContent {
+            val droid = rememberFresh(firstDroid) { widgetDroid(context) }
             val content = rememberFresh(first) { load(context, widgetId) }
             val accent = rememberFresh(firstAccent) { widgetAccent(context) }
             // Locked, with figures hidden: the heading and the way in, nothing else.
-            if (!com.spendroid.data.Privacy(context).widgetFigures) LockedBody("THIS PERIOD", accent) else Body(content, accent)
+            androidx.compose.runtime.CompositionLocalProvider(LocalWidgetDroid provides droid) { if (!com.spendroid.data.Privacy(context).widgetFigures) LockedBody("THIS PERIOD", accent) else Body(content, accent) }
         }
     }
 
@@ -136,8 +138,8 @@ class ThisPeriodWidget : GlanceAppWidget() {
         val (density, room) = rowLayout(size.height.value, content.rows.size)
         Column(modifier = GlanceModifier.fillMaxSize()) {
             Row(modifier = GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.Vertical.CenterVertically) {
-                Text(
-                    "THIS PERIOD",
+                DroidTitle(
+                    "this period",
                     modifier = GlanceModifier.defaultWeight(),
                     style = TextStyle(color = GlanceTheme.colors.onSurface, fontSize = 11.sp, fontWeight = FontWeight.Bold),
                 )

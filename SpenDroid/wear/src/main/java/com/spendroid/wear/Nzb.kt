@@ -69,15 +69,15 @@ internal fun NzbScreen(title: String, colour: Color, glow: Float = 0.5f, content
     }
 }
 
-/** The screen's name along the top edge, in spaced capitals: the wordmark, curved. */
+/** The screen's name along the top edge, in lowercase as the phone's wordmark: curved. */
 @Composable
 internal fun CurvedTitle(text: String, colour: Color) {
     // Inset below the clock the watch draws along the top edge, which it would otherwise sit under.
     CurvedLayout(Modifier.fillMaxSize().padding(26.dp), anchor = 270f) {
         curvedRow {
             basicCurvedText(
-                text.uppercase().toCharArray().joinToString(" "),
-                style = CurvedTextStyle(color = colour, fontSize = 12.sp, fontWeight = FontWeight.Black),
+                text.lowercase(),
+                style = CurvedTextStyle(color = colour, fontSize = 14.sp, fontWeight = FontWeight.Black),
             )
         }
     }

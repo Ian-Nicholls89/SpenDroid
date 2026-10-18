@@ -60,10 +60,12 @@ class PaydayTimelineWidget : GlanceAppWidget() {
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val first = load(context)
         val accent = widgetAccent(context)
+        val firstDroid = widgetDroid(context)
         provideContent {
+            val droid = rememberFresh(firstDroid) { widgetDroid(context) }
             val timeline = rememberFresh(first) { load(context) }
             // Locked, with figures hidden: the heading and the way in, nothing else.
-            if (!com.spendroid.data.Privacy(context).widgetFigures) LockedBody("PAYDAY", accent) else Body(timeline)
+            androidx.compose.runtime.CompositionLocalProvider(LocalWidgetDroid provides droid) { if (!com.spendroid.data.Privacy(context).widgetFigures) LockedBody("PAYDAY", accent) else Body(timeline) }
         }
     }
 
@@ -139,10 +141,10 @@ class PaydayTimelineWidget : GlanceAppWidget() {
         val tall = LocalSize.current.height >= STANDARD.height
         Column(modifier = GlanceModifier.fillMaxSize()) {
             Row(modifier = GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.Vertical.CenterVertically) {
-                Text(
+                DroidTitle(
                     "Until payday · ${timeline.daysLeft} day${if (timeline.daysLeft == 1) "" else "s"}",
-                    style = text(11.sp).copy(fontWeight = FontWeight.Medium),
-                    modifier = GlanceModifier.defaultWeight(),
+                    text(11.sp).copy(fontWeight = FontWeight.Medium),
+                    GlanceModifier.defaultWeight(),
                 )
                 Text(paceLabel(timeline.pace), style = text(10.sp).copy(fontWeight = FontWeight.Bold))
             }
