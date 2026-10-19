@@ -203,6 +203,8 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
         // With or without a bank link: setup reads what's imported as it goes.
         // Merges any purchase counted more than once from notifications, straight away.
         runCatching { repo.reconcileSeenSpends() }
+        // Rules made from a pending name with the card's digits match the shop's name instead.
+        runCatching { repo.tidyCardDigitRules() }
         loadLocal()
     }
 

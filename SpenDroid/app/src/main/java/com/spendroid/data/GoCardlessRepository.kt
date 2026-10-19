@@ -12,6 +12,7 @@ import com.spendroid.data.db.TransactionEntity
 import com.spendroid.data.db.SeenSpendEntity
 import com.spendroid.data.db.NotificationSampleEntity
 import com.spendroid.domain.DuplicateCheck
+import com.spendroid.domain.CardDigits
 import com.spendroid.domain.NotificationSpend
 import com.spendroid.domain.countedOn
 import com.spendroid.domain.ManualAccounts
@@ -273,7 +274,8 @@ class GoCardlessRepository private constructor(
                 seenAt = postedAt,
                 amountMinor = -parsed.amountMinor,
                 currency = accounts.firstOrNull { it.id == (accountId ?: placement?.provisionalAccountId) }?.currency ?: "GBP",
-                merchant = parsed.merchant,
+                // A bank app's "GREGGS 4168" is Greggs, as its pending row will be.
+                merchant = CardDigits.trim(parsed.merchant, cardDigits() + listOfNotNull(parsed.cardDigits)),
                 cardDigits = parsed.cardDigits,
                 accountId = accountId,
                 accountGuessed = placement?.guessed == true,
@@ -765,6 +767,25 @@ class GoCardlessRepository private constructor(
     suspend fun allowanceFor(accountId: String, now: Long = System.currentTimeMillis()): SyncAllowance.Account? =
         SyncAllowance.forAccount(syncAllowances.first()[accountId].orEmpty(), now, generalAllowance.first())
 
+    private suspend fun cardDigits(): Set<String> =
+        CardDigits.known(dao.accounts().map { it.cardLastFour }, dao.seenSpends().map { it.cardDigits })
+
+    /**
+     * Once, after card digits came off pending names (5.2.2): a rule made from one - "always
+     * file WAITROSE STORES 4168 as Groceries" - becomes the shop's name, so it goes on matching.
+     */
+    suspend fun tidyCardDigitRules() {
+        val cards = cardDigits()
+        val rules = dao.categoryRules()
+        val patterns = rules.mapTo(HashSet()) { it.pattern }
+        rules.forEach { rule ->
+            val trimmed = CardDigits.trim(rule.pattern, cards)
+            if (trimmed == rule.pattern) return@forEach
+            if (trimmed !in patterns) dao.upsertCategoryRule(rule.copy(pattern = trimmed))
+            dao.deleteCategoryRule(rule.pattern)
+        }
+    }
+
     suspend fun importAccount(institutionName: String, accountId: String): AccountEntity {
         val metadata: AccountDetailsDto = dataApi.accountMetadata(accountId)
         val details: AccountInfoWrapperDto = runCatching { dataApi.accountDetails(accountId) }.getOrDefault(AccountInfoWrapperDto())
@@ -795,7 +816,12 @@ class GoCardlessRepository private constructor(
         // comes back - so pending is always exactly the bank's current word. Edits made to a
         // pending row are read first and carried onto whichever row replaces it.
         val stored = dao.transactionsFor(accountId)
-        val rows = booked + stillPendingOnly(booked, pending)
+        // A pending card payment named with the card's digits - "WAITROSE STORES 4168" - is
+        // shown and filed by the shop's name. Only pending ones: they're rebuilt every sync and
+        // never make a regular payment, so nothing kept is keyed on the old name. Their made-up
+        // ids were worked out from the name as sent, so they stay the same from sync to sync.
+        val cards = cardDigits()
+        val rows = booked + stillPendingOnly(booked, pending).map { it.copy(payee = CardDigits.trim(it.payee, cards)) }
         // Booked rows the bank has stopped listing, followed until the user says what they were.
         val checks = DuplicateCheck.afterSync(stored, booked, dao.duplicateChecksFor(accountId), LocalDate.now())
         dao.replaceSync(accountId, preserveUserEdits(rows, stored), checks)
