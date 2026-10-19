@@ -78,7 +78,13 @@ function render(card, name, r) {
     a.click();
   };
   card.querySelector('[data-act="layout"]').onclick = async (e) => {
-    await navigator.clipboard.writeText(anonymise(r.report));
+    const head = [
+      `Verdict: ${!r.transactions.length ? "no transactions" : !r.checks.length ? "nothing to check" : r.allChecksOk ? "everything adds up" : "doesn't add up"}`,
+      `${r.transactions.length} transactions, read as ${r.kind}, period ${r.period ? "found" : "not found"}`,
+      ...r.checks.map((c) => `Check ${c.ok ? "OK" : "FAILED"}: ${c.what.replace(/Balance after .*/, "Balance after a row")}${c.page ? ` (page ${c.page})` : ""}`),
+      ...r.notes,
+    ].join("\n");
+    await navigator.clipboard.writeText(head + "\n" + anonymise(r.report));
     e.target.textContent = "Copied - paste it to Claude";
   };
   card.querySelector('[data-act="seen"]').onclick = () => { const s = card.querySelector(".seen"); s.hidden = !s.hidden; };

@@ -225,6 +225,8 @@ export function readStatement(pages) {
   const checks = [];
 
   let columns = null, descX = null, sawHeader = false;
+  let closed = false; // after the closing balance: the table is over until a heading starts another
+  let pendingSummary = null; // "Balance brought forward from" / "£1,234.56" / "previous statement"
   let lastDate = null; // for statements that print the date once per day
   // Running sums, the way the statement keeps them.
   let section = 0, sectionRows = 0; // since the last sub-total, as the statement adds them (owed, for a card)
@@ -241,13 +243,13 @@ export function readStatement(pages) {
       const tag = (kind, extra = {}) => seen.push({ text: line.text, kind, ...extra });
       const h = headerOf(line);
       if (h) {
-        columns = h.columns; descX = h.descX ?? descX; sawHeader = true; headerHere = true;
+        columns = h.columns; descX = h.descX ?? descX; sawHeader = true; headerHere = true; closed = false;
         tag("header", { columns: columns.map((c) => c.kind) });
         prevTx = null;
         continue;
       }
       // Before any table on this page - a cover page, the top of a page - only checks are read.
-      const tableOpen = sawHeader && (headerHere || tableRows >= 3);
+      const tableOpen = sawHeader && !closed && (headerHere || tableRows >= 3);
       const { dates, rest } = leadingDates(line.text);
       const { amounts, textCells } = amountsOf(line, tableOpen ? columns : null);
       const check = CHECK_LINES.find((c) => c.re.test(rest || line.text));
@@ -256,10 +258,18 @@ export function readStatement(pages) {
         // A cover page or summary box: "Previous balance £410.20", "Opening balance £120.00
         // Closing balance £163.49" - kept to check against at the end, never counted.
         let found = false;
+        const alone = parseAmount(line.text.replace(/^[=+]\s*/, ""));
+        if (pendingSummary && alone) {
+          if (summary[pendingSummary] == null) summary[pendingSummary] = signedForCheck(alone);
+          pendingSummary = null;
+          tag("summary");
+          continue;
+        }
+        pendingSummary = null;
         for (const k of CHECK_LINES.filter((c) => c.kind === "opening" || c.kind === "closing")) {
           const m = new RegExp("(?:" + k.re.source + ")[^£\\d(\\-]{0,25}(\\(?-?£?\\s?[\\d,]+\\.\\d{2}\\)?(?:\\s?(?:CR|DR|-(?!\\d)))?)", "i").exec(line.text);
           const a = m && parseAmount(m[m.length - 1]);
-          if (!a) continue;
+          if (!a) { if (k.re.test(line.text)) pendingSummary = k.kind; continue; }
           found = true;
           if (summary[k.kind] == null) summary[k.kind] = signedForCheck(a);
         }
@@ -279,10 +289,13 @@ export function readStatement(pages) {
           tag("check", { check: check.kind, value, ok });
           if (check.kind === "subtotal") { section = 0; sectionRows = 0; }
         } else {
-          const counted = running ?? total;
+          // A card adds up what's owed; an account follows its balance.
+          const counted = isCard ? total : (running ?? total);
           const ok = Math.abs(counted - value) < 1;
           checks.push({ what: "Closing balance", printed: value, counted, ok, page: p + 1 });
           tag("check", { check: "closing", value, ok });
+          // Whatever follows - interest rates, a summary of fees - isn't the statement's list.
+          closed = true;
         }
         prevTx = null;
         continue;
@@ -291,7 +304,9 @@ export function readStatement(pages) {
       // A transaction: money in a money column, and a date - its own, or the day's above it.
       const money = amounts.filter((a) => a.col && a.col.kind !== "balance");
       const balance = amounts.find((a) => a.col && a.col.kind === "balance");
-      if (money.length && (dates.length || lastDate)) {
+      const inDescColumn = descX == null || (line.cells[0] && line.cells[0].x >= descX - 8);
+      const carried = !dates.length && lastDate && inDescColumn;
+      if (money.length && (dates.length || carried) && !/\d%/.test(line.text)) {
         if (dates.length) lastDate = dates;
         const ds = dates.length ? dates : lastDate;
         let descCells = textCells.filter((c) => !LEAD_DATE.test(c.text) || c.x > (descX ?? 0) - 5);

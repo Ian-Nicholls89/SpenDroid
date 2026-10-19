@@ -140,3 +140,57 @@ def odd_d():
 
 card_a(); current_b(); card_c(); odd_d()
 print("ok")
+
+# --- E: the user's second layout, made up: summary box over several lines, giro on page 1, and an
+# interest-rate table after NEW BALANCE that must not become transactions.
+def card_e():
+    c = canvas.Canvas("/tmp/pdfimp/samples/e-card-interest-table.pdf", pagesize=A4)
+    c.setFont("Helvetica", 9)
+    c.drawRightString(W - 60, H - 40, "1 of 3")
+    c.drawString(60, H - 70, "Total Credit Limit"); c.drawRightString(300, H - 70, "£3,000")
+    c.drawString(60, H - 85, "Account  23 June 2026")
+    c.drawString(60, H - 110, "Balance brought forward from"); c.drawRightString(300, H - 117, "£500.00"); c.drawString(60, H - 124, "previous statement")
+    c.drawString(60, H - 140, "Payments to your account"); c.drawRightString(300, H - 140, "£500.00 -")
+    c.drawString(60, H - 155, "Spending on your account"); c.drawRightString(300, H - 162, "+ £61.75"); c.drawString(60, H - 169, "Fees and interest")
+    c.setFont("Helvetica-Bold", 10); c.drawString(60, H - 190, "New Balance"); c.drawRightString(300, H - 190, "= £61.75")
+    c.setFont("Helvetica", 9); c.drawString(60, H - 205, "Minimum Payment"); c.drawRightString(300, H - 205, "£25.00")
+    c.drawString(60, H - 230, "If you only pay the minimum payment of £25.00 by the due date of 17 July 2026 it will take longer.")
+    c.drawString(60, 300, "bank giro credit"); c.drawString(60, 285, "Paid in by"); c.drawString(60, 270, "Date")
+    c.drawString(60, 255, "0000 0000 0000 1234"); c.drawString(60, 240, "Total cash"); c.drawString(60, 225, "Fee  Cheques  00-00-00  00  £")
+    c.drawString(60, 200, "<0000000000001234<  000000+<  00  x")
+    c.showPage()
+    c.setFont("Helvetica", 9); c.drawRightString(W - 60, H - 40, "2 of 3")
+    c.drawString(60, H - 70, "24 May - 23 June 2026")
+    def header(y):
+        c.setFont("Helvetica-Bold", 10)
+        c.drawString(70, y + 12, "Trans"); c.drawString(110, y + 12, "Post")
+        c.drawString(70, y, "Date"); c.drawString(110, y, "Date"); c.drawString(230, y, "Description"); c.drawRightString(W - 60, y, "Amount")
+        c.setFont("Helvetica", 9)
+    y = H - 100; header(y); y -= 22
+    c.setFont("Helvetica-Bold", 9); c.drawString(230, y, "BALANCE FROM PREVIOUS STATEMENT"); c.drawRightString(W - 60, y, "£500.00"); y -= 16
+    c.setFont("Helvetica", 9)
+    c.drawString(70, y, "17 JUN 17 JUN"); c.drawString(230, y, "DIRECT DEBIT PAYMENT"); c.drawRightString(W - 60, y, "500.00 -"); y -= 16
+    c.drawString(330, y, "Sub-Total"); c.drawRightString(W - 60, y, "0.00"); y -= 30
+    header(y); y -= 18
+    c.drawString(70, y, "A N OTHER"); c.drawString(330, y, "Card ending in 1234"); y -= 16
+    for t, p, r, d, a in [("25 MAY", "26 MAY", "31313131", "CORNER SHOP  SALISBURY  GBR", "12.40"),
+                          ("30 MAY", "02 JUN", "41414141", "Zettle_*Fish Van  Fordingbridge", "8.35")]:
+        c.drawString(70, y, f"{t} {p}"); c.drawString(160, y, r); c.drawString(230, y, d); c.drawRightString(W - 60, y, a); y -= 16
+    c.showPage()
+    c.setFont("Helvetica", 9); c.drawRightString(W - 60, H - 40, "3 of 3")
+    y = H - 100; header(y); y -= 22
+    c.drawString(70, y, "20 JUN 22 JUN"); c.drawString(160, y, "51515151"); c.drawString(230, y, "GARDEN CENTRE  WILTON"); c.drawRightString(W - 60, y, "41.00"); y -= 16
+    c.drawString(330, y, "Sub-Total"); c.drawRightString(W - 60, y, "61.75"); y -= 16
+    c.setFont("Helvetica-Bold", 9); c.drawString(230, y, "NEW BALANCE"); c.drawRightString(W - 60, y, "£61.75"); y -= 30
+    c.setFont("Helvetica", 8)
+    c.drawString(70, y, "INTEREST RATES"); y -= 14
+    c.drawString(70, y, "BALANCE  STANDARD  MONTHLY  INTEREST"); y -= 12
+    c.drawString(70, y, "Interest rate  Interest charged  BALANCE"); y -= 14
+    c.drawString(70, y, "Purchases"); c.drawString(250, y, "24.949%"); c.drawString(380, y, "£0.00"); c.drawRightString(W - 60, y, "£61.75"); y -= 14
+    c.drawString(70, y, "Money transfers"); c.drawString(250, y, "29.949%"); c.drawString(380, y, "£0.00"); c.drawRightString(W - 60, y, "£0.00"); y -= 20
+    c.drawString(70, y, "This year  Year TO DATE"); y -= 12
+    c.drawString(70, y, "Interest charged so far"); c.drawString(380, y, "0"); c.drawRightString(W - 60, y, "0"); y -= 12
+    c.drawString(70, y, "Total fees charged"); c.drawString(380, y, "0"); c.drawRightString(W - 60, y, "0")
+    c.showPage(); c.save()
+
+card_e()
