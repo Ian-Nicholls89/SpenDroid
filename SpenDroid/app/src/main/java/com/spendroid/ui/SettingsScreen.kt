@@ -492,7 +492,16 @@ private fun UpdatesSection(
     )
     Spacer(Modifier.height(4.dp))
     Text(
-        "A personal budgeting app with GoCardless integration",
+        "Penny works out what's left to spend until payday, after your bills and card statements. " +
+            "She keeps up from a bank link, your banking apps' and Google Wallet's notifications, or " +
+            "statements you import - with a bank link or without one - and asks when she isn't sure.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    Spacer(Modifier.height(4.dp))
+    Text(
+        "Everything stays on this phone: no account, no server. On your watch, your home screen and, " +
+            "when you ask, your computer.",
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
