@@ -229,8 +229,6 @@ object CreditCardEngine {
                         RecurringAnalyzer.parseBookingDate(tx.bookingDate)?.isAfter(statementClose) != false
                 }
                 .sumOf { -it.amountMinor }
-            val unbilledBooked = chargesSince(cardTxs, statementClose, paymentIds)
-            val unbilled = unbilledBooked + pendingCharges
 
             val bankOwed = card.balanceMinor?.let { maxOf(0L, -it) }
 
@@ -249,13 +247,36 @@ object CreditCardEngine {
                     chargesBetween(cardTxs, previousClose, close, paymentIds)
                 }
             }
+            // A credit after the close for the statement's own total is its payment, whatever
+            // else is or isn't visible: the statement balance is what gets paid. Taken for a
+            // refund, the £1,294.20 paid on the Monday cancelled every charge since the close.
+            val paidInFull = if (statementClose != null && statementTotal != null && statementTotal > 0L) {
+                cardTxs.filter { tx ->
+                    tx.amountMinor > 0L && tx.transactionId !in paymentIds &&
+                        abs(tx.amountMinor - statementTotal) <= STATEMENT_PAYMENT_TOLERANCE &&
+                        RecurringAnalyzer.parseBookingDate(tx.bookingDate)?.let { it.isAfter(statementClose) && !it.isAfter(today) } == true
+                }.take(1)
+            } else {
+                emptyList()
+            }
+            paidInFull.forEach { tx ->
+                paymentIds += tx.transactionId
+                val settlement = "${tx.accountId}|${tx.transactionId}"
+                settlementKeys.add(settlement)
+                confirmedSettlements.add(settlement)
+            }
+
+            // Charges since the close, payments left out.
+            val unbilledBooked = chargesSince(cardTxs, statementClose, paymentIds)
+            val unbilled = unbilledBooked + pendingCharges
+
             // What has already gone towards that statement since it closed.
             val paidSinceClose = statementClose?.let { close ->
-                payments
-                    .filter { (cardTx, _) ->
+                (payments.map { it.first } + paidInFull)
+                    .filter { cardTx ->
                         RecurringAnalyzer.parseBookingDate(cardTx.bookingDate)?.let { it.isAfter(close) && !it.isAfter(today) } == true
                     }
-                    .sumOf { (cardTx, _) -> maxOf(0L, cardTx.amountMinor) }
+                    .sumOf { cardTx -> maxOf(0L, cardTx.amountMinor) }
             } ?: 0L
 
             val billed: Long
@@ -272,7 +293,7 @@ object CreditCardEngine {
             // to be paid, the statement is all that leaves. Once a payment has landed since the
             // close it is settled, and what is owed now is what the next bill will be built on.
             val statementPaid = statementClose != null &&
-                paymentDates.any { it.isAfter(statementClose) && !it.isAfter(today) }
+                (paidInFull.isNotEmpty() || paymentDates.any { it.isAfter(statementClose) && !it.isAfter(today) })
             val dueNext = when {
                 statementClose == null -> outstanding
                 statementPaid -> outstanding
@@ -717,6 +738,8 @@ object CreditCardEngine {
     }
 
     private const val PAYMENT_MATCH_DAYS = 5L
+    /** A statement paid in full: the credit within a pound of its total. */
+    private const val STATEMENT_PAYMENT_TOLERANCE = 100L
 
     /** Enough past bills to see a pattern, few enough to read on a phone. */
     private const val PAST_BILLS_SHOWN = 6

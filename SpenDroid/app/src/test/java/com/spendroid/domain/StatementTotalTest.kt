@@ -76,6 +76,22 @@ class StatementTotalTest {
     }
 
     @Test
+    fun `the statement paid in full on the Monday is a payment, not a refund - its debit unseen`() {
+        val since = listOf(tx("2026-09-29", -3565), tx("2026-10-06", -3565), tx("2026-10-12", -605))
+        val b = bill(since + tx("2026-10-19", 129420, payee = "DIRECT DEBIT"), today = "2026-10-19")
+        assertEquals(3565L + 3565L + 605L, b.unbilledMinor)
+        // Paid: nothing of that statement is still due.
+        assertEquals(0L, b.billedMinor)
+    }
+
+    @Test
+    fun `a credit for some other amount is still a refund`() {
+        val since = listOf(tx("2026-09-29", -3565), tx("2026-10-06", -3565))
+        val b = bill(since + tx("2026-10-10", 2000, payee = "REFUND ARGOS"), today = "2026-10-19")
+        assertEquals(3565L + 3565L - 2000L, b.unbilledMinor)
+    }
+
+    @Test
     fun `a refund in the period comes off, as it does on the statement`() {
         assertEquals(129420L - 2000L, bill(listOf(tx("2026-09-05", 2000, payee = "REFUND ARGOS"))).billedMinor)
     }
