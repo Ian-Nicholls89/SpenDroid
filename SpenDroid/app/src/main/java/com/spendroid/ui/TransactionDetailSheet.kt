@@ -93,6 +93,8 @@ fun TransactionDetailSheet(
     paidFrom: PaidFrom? = null,
     /** Read from a notification on an account with no bank link, so a statement will list it. */
     waitingForStatement: Boolean = false,
+    /** For a payment read from a notification: why it has or hasn't paired with the bank's line. */
+    matching: List<String> = emptyList(),
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val current = CategoryEngine.classify(transaction, userRules, cardPaymentKeys, creditCardAccountIds)
@@ -330,6 +332,13 @@ fun TransactionDetailSheet(
                         style = MaterialTheme.typography.labelSmall,
                         color = Charcoal.Muted,
                     )
+                    if (matching.isNotEmpty()) {
+                        Spacer(Modifier.height(10.dp))
+                        Text("MATCHING", style = MaterialTheme.typography.labelMedium, color = Charcoal.Muted)
+                        matching.forEach { line ->
+                            Text(line, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp))
+                        }
+                    }
                 } else {
                     transaction.description?.takeIf { it.isNotBlank() }?.let { Detail("As the bank sent it", it) }
                     // Pending is the bank's word at the last sync: its own app may already show it landed.

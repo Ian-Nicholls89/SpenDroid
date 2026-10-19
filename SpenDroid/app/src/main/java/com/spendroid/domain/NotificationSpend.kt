@@ -490,6 +490,70 @@ object NotificationSpend {
     }
 
     /**
+     * Why a seen spend has or hasn't been handed to a bank row, line by line, for the detail
+     * sheet: how it's held, what [matches] would do with it now, and every bank row for the
+     * same amount within ten days with the first reason it doesn't fit. Built on the same rules
+     * as [matches], so it can't tell a different story from it.
+     */
+    fun explain(
+        spend: SeenSpendEntity,
+        seen: List<SeenSpendEntity>,
+        bank: List<TransactionEntity>,
+        alternatives: Set<String>,
+        name: (String?) -> String,
+        zone: ZoneId = ZoneId.systemDefault(),
+    ): List<String> {
+        val lines = mutableListOf<String>()
+        val time = Instant.ofEpochMilli(spend.seenAt).atZone(zone)
+        val day = time.toLocalDate()
+        lines += "Seen ${time.format(java.time.format.DateTimeFormatter.ofPattern("d MMM HH:mm"))} · " +
+            (spend.cardDigits?.let { "card ••$it" } ?: "no card digits")
+        lines += "Counted on ${name(spend.countedOn)}" + when {
+            spend.accountId == null -> " for now, waiting for you to say"
+            spend.accountGuessed -> ", guessed"
+            spend.cardDigits != null -> ", certain from the card digits"
+            else -> ""
+        }
+        val certain = spend.cardDigits != null && !spend.accountGuessed && spend.accountId != null
+        val elsewhere = if (certain) emptySet() else alternatives
+        if (elsewhere.isNotEmpty()) lines += "Could also be on ${elsewhere.joinToString { name(it) }}"
+        spend.matchedTransactionId?.let { lines += "Handed over to bank line …${it.takeLast(6)}" }
+        if (spend.dismissed) lines += "Dismissed"
+
+        val now = matches(seen, bank, zone) { if (it.id == spend.id) alternatives else emptySet() }[spend.id]
+        lines += if (now != null) {
+            "Would pair now with ${now.payee} on ${name(now.accountId)}, ${now.bookingDate} - it pairs at the next sync or refresh"
+        } else {
+            "Would not pair now"
+        }
+
+        val rows = bank.filter { tx ->
+            tx.amountMinor == spend.amountMinor && !tx.transactionId.startsWith(SEEN_PREFIX) &&
+                RecurringAnalyzer.parseBookingDate(tx.bookingDate)?.let { abs(it.toEpochDay() - day.toEpochDay()) <= 10 } == true
+        }
+        if (rows.isEmpty()) {
+            lines += "No bank line for this amount within ten days"
+            return lines
+        }
+        rows.forEach { tx ->
+            val date = RecurringAnalyzer.parseBookingDate(tx.bookingDate)!!
+            val holder = seen.firstOrNull { it.id != spend.id && it.matchedTransactionId == tx.transactionId }
+            val why = when {
+                tx.accountId != spend.countedOn && tx.accountId !in elsewhere ->
+                    if (sharesWord(tx.payee, spend.merchant) && !certain) "another account, but the shop's name fits" else "another account"
+                date.isBefore(day.minusDays(1)) -> "dated before the purchase"
+                date.isAfter(day.plusDays(HANDOVER_DAYS)) -> "dated too long after"
+                holder != null && abs(holder.seenAt - spend.seenAt) <= CLAIM_WINDOW_MS ->
+                    "already taken by ${holder.merchant}, seen ${Instant.ofEpochMilli(holder.seenAt).atZone(zone).format(java.time.format.DateTimeFormatter.ofPattern("d MMM HH:mm"))}"
+                else -> "fits"
+            }
+            lines += "${tx.payee} · ${name(tx.accountId)} · ${tx.bookingDate}" +
+                (if (tx.isPending) " · pending" else "") + " · id …${tx.transactionId.takeLast(6)}: $why"
+        }
+        return lines
+    }
+
+    /**
      * Seen spends still counted: not yet reported by the bank, not dismissed, and with an
      * account - the one it's in, or while the user is asked, the likeliest.
      */

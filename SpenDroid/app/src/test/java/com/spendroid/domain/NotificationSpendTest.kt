@@ -8,6 +8,7 @@ import com.spendroid.domain.NotificationSpend.GOOGLE_WALLET
 import java.time.LocalDateTime
 import java.time.ZoneOffset
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Assert.assertNull
 import org.junit.Test
 
@@ -154,6 +155,20 @@ class NotificationSpendTest {
         // Another shop at the same price on another account is not it.
         val other = row.copy(payee = "TESCO STORES 2231")
         assertEquals(emptyMap<String, TransactionEntity>(), NotificationSpend.matches(listOf(wallet), listOf(other), zone))
+    }
+
+    @Test
+    fun `the matching notes say what the matcher would do, and why each line doesn't fit`() {
+        val wallet = seen("w", 6350, at(26, 16)).copy(merchant = "WAITROSE STORES", cardDigits = "4168")
+        val other = bank("x", 6350, "2026-09-26").copy(accountId = "card", payee = "WAITROSE STORES", isPending = true)
+        val name = { id: String? -> id ?: "none" }
+        val lines = NotificationSpend.explain(wallet, listOf(wallet), listOf(other), emptySet(), name, zone)
+        assertTrue(lines.toString(), lines.any { it == "Would not pair now" })
+        assertTrue(lines.toString(), lines.any { it.startsWith("WAITROSE STORES · card · 2026-09-26 · pending") && it.endsWith("another account") })
+        val here = other.copy(accountId = "current")
+        val fits = NotificationSpend.explain(wallet, listOf(wallet), listOf(here), emptySet(), name, zone)
+        assertTrue(fits.toString(), fits.any { it.startsWith("Would pair now with WAITROSE STORES on current") })
+        assertTrue(fits.toString(), fits.any { it.endsWith(": fits") })
     }
 
     @Test

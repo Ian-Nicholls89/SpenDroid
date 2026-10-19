@@ -506,6 +506,19 @@ fun TransactionsScreen(
             accountLabel = accountNames[tx.accountId],
             waitingForStatement = tx.transactionId in seenById && manualIds.contains(tx.accountId),
             paidFrom = seenById[tx.transactionId]?.let { spend -> paidFrom(spend, state, onAssignSeen) { selected = null } },
+            matching = remember(tx, state.seenSpends, state.transactions) {
+                seenById[tx.transactionId]?.let { spend ->
+                    val alternatives = if (spend.source == NotificationSpend.GOOGLE_WALLET) {
+                        state.accounts.filter { it.walletLinked }.mapTo(HashSet()) { it.id }
+                    } else {
+                        state.spendSources.firstOrNull { it.packageName == spend.source }?.accountIds?.toSet().orEmpty()
+                    }
+                    NotificationSpend.explain(
+                        spend, state.seenSpends, state.transactions.filter { !it.transactionId.startsWith(NotificationSpend.SEEN_PREFIX) },
+                        alternatives, { id -> state.accounts.firstOrNull { it.id == id }?.label ?: "no account" },
+                    )
+                }.orEmpty()
+            },
             payeeCycle = remember(tx, state.transactions, state.budget) { payeeCycle(tx, state) },
         )
     }
