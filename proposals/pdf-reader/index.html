@@ -64,7 +64,7 @@ const heading = (words) => new RegExp("^(?:\\(?£\\)?\\s*)?(?:" + words + ")(?:\
 const HEADER_AMOUNT_WORDS = [
   { kind: "out", re: heading("paid out|money out|out|debits?|withdrawals?|payments? out|spent") },
   { kind: "in", re: heading("paid in|money in|in|credits?|deposits?|receipts?|payments? in") },
-  { kind: "balance", re: heading("balance") },
+  { kind: "balance", re: heading("(?:total |running |available |account )?balance") },
   { kind: "amount", re: heading("amount|value|sum|how much") },
 ];
 // A bank's code for the kind of payment, at the start of its details: dropped from the description.
@@ -79,8 +79,15 @@ const HEADER_DESC = /\b(description|details|transaction|what|narrative|merchant|
 const FOOTER = /^(page \d+( of \d+)?|continued( overleaf| on next page)?|\d+ of \d+)$/i;
 const CARD_HINTS = /credit limit|card ending|available credit|credit card statement/i;
 
-function parseAmount(text) {
-  const m = AMOUNT.exec(text.trim());
+const WHOLE = /^(\()?([-+])?\s?£?\s?(\d{1,3}(?:,\d{3})+|\d{1,7})\)?(?:\s?(CR|DR|-))?$/i;
+
+function parseAmount(text, whole = false) {
+  let m = AMOUNT.exec(text.trim());
+  if (!m && whole) {
+    // A statement in whole pounds - "2,000", "15" - as mock statements are; never a real bank's.
+    const w = WHOLE.exec(text.trim());
+    if (w) m = [w[0], w[1], w[2], w[3], "00", w[4]];
+  }
   if (!m) return null;
   const pence = parseInt(m[3].replace(/,/g, ""), 10) * 100 + parseInt(m[4], 10);
   const marker = (m[5] || "").toUpperCase();
@@ -153,7 +160,13 @@ function findPeriod(allText) {
     const d = ymd(+f[3], monthOf(f[2]), +f[1]);
     if (!latest || d > latest) latest = d;
   }
-  return latest ? { start: null, end: latest, how: "latest date" } : null;
+  if (latest) return { start: null, end: latest, how: "latest date" };
+  // "Issue date: 15 MAR 13", "Statement date 01/02/26": a two-digit year where it's labelled.
+  const labelled = new RegExp("(?:statement|issue|print(?:ed)?)\\s+date:?\\s*(\\d{1,2})[ \\-]" + MONTH_RE + "[ \\-](\\d{2})\\b", "i").exec(allText);
+  if (labelled) return { start: null, end: ymd(2000 + +labelled[3], monthOf(labelled[2]), +labelled[1]), how: "statement date" };
+  const slash = /(?:statement|issue|print(?:ed)?)\s+date:?\s*(\d{1,2})\/(\d{1,2})\/(\d{2,4})\b/i.exec(allText);
+  if (slash) return { start: null, end: ymd(slash[3].length === 2 ? 2000 + +slash[3] : +slash[3], +slash[2], +slash[1]), how: "statement date" };
+  return null;
 }
 
 function monthOf(name) { return MONTHS[name.toLowerCase().slice(0, name.toLowerCase().startsWith("sept") ? 4 : 3)] || MONTHS[name.toLowerCase().slice(0, 3)]; }
@@ -190,18 +203,32 @@ function resolve(date, period) {
 }
 function addDays(iso, n) { const t = new Date(iso + "T00:00:00Z"); t.setUTCDate(t.getUTCDate() + n); return t.toISOString().slice(0, 10); }
 
+/** Headings stacked over two or three lines - "Money" over "out", "Trans" over "Date" - as one. */
+function stacked(line, above, below) {
+  const words = (l) => l && Math.abs(l.y - line.y) < line.h * 1.9 && !LEAD_DATE.test(l.text) &&
+    l.cells.every((c) => c.text.length <= 20 && !/\d/.test(c.text)) ? l.cells : [];
+  const parts = [...words(above).map((c) => ({ ...c, order: 0 })), ...line.cells.map((c) => ({ ...c, order: 1 })), ...words(below).map((c) => ({ ...c, order: 2 }))];
+  const groups = [];
+  for (const c of parts.sort((a, b) => a.x - b.x)) {
+    const g = groups.find((g) => c.x <= g.right + 3 && g.x <= c.right + 3 && !g.parts.some((q) => q.order === c.order));
+    if (g) { g.parts.push(c); g.x = Math.min(g.x, c.x); g.right = Math.max(g.right, c.right); }
+    else groups.push({ x: c.x, right: c.right, parts: [c] });
+  }
+  return groups.map((g) => ({ x: g.x, right: g.right, w: g.right - g.x, text: g.parts.sort((a, b) => a.order - b.order).map((q) => q.text).join(" ") }));
+}
+
 /** A header row: a date heading, and at least one money heading. Returns its money columns. */
-function headerOf(line) {
+function headerOf(line, above, below) {
   if (!HEADER_DATE.test(line.text)) return null;
   const columns = [];
-  for (const c of line.cells) {
+  for (const c of stacked(line, above, below)) {
     // A cell may hold several headings run together: "Paid out  Paid in  Balance" stays split by cells.
     for (const w of HEADER_AMOUNT_WORDS) {
       if (w.re.test(c.text.trim())) { columns.push({ kind: w.kind, x: c.x, right: c.right, label: c.text }); break; }
     }
   }
   if (!columns.length) return null;
-  const desc = line.cells.find((c) => HEADER_DESC.test(c.text));
+  const desc = stacked(line, above, below).find((c) => HEADER_DESC.test(c.text));
   return { columns, descX: desc ? desc.x : null };
 }
 
@@ -216,11 +243,17 @@ function nearestColumn(cell, columns) {
 }
 
 /** The money on a line: cells that are amounts, or end in one, matched to the header's columns. */
-function amountsOf(line, columns) {
+function amountsOf(line, columns, whole = false) {
   const found = [];
   const textCells = [];
   for (const c of line.cells) {
     let amt = parseAmount(c.text);
+    if (!amt && whole && columns) {
+      const a = parseAmount(c.text, true);
+      const col = a && nearestColumn(c, columns);
+      // Exactly under a money column: right-aligned to its heading, or centred under it.
+      if (col && Math.min(Math.abs(c.right - col.right), Math.abs((c.x + c.right) / 2 - (col.x + col.right) / 2)) < 25) amt = a;
+    }
     let cell = c, rest = null;
     if (!amt) {
       const t = TRAILING_AMOUNT.exec(c.text);
@@ -254,7 +287,12 @@ function readStatement(pages) {
   // Which way round its figures go. A statement with Paid out and Paid in columns says so;
   // one with a single Amount column says it with its marks: "626.04 -" or "12.50CR" on the odd
   // line means the plain figures are spending (a card); "-3.20" or "DR" means they're money in.
-  const hasInOut = pageLines.some((ls) => ls.some((l) => { const h = headerOf(l); return h && h.columns.some((c) => c.kind === "out" || c.kind === "in"); }));
+  const headersOf = (ls) => ls.map((l, i) => headerOf(l, ls[i - 1], ls[i + 1]));
+  const pageHeaders = pageLines.map(headersOf);
+  const hasInOut = pageHeaders.some((hs) => hs.some((h) => h && h.columns.some((c) => c.kind === "out" || c.kind === "in")));
+  // Pence on any figure after a heading means figures without them aren't money.
+  const afterHeading = pageLines.flatMap((ls, p) => ls.filter((l, i) => pageHeaders[p].slice(0, i).some(Boolean)));
+  const whole = afterHeading.length > 0 && !afterHeading.some((l) => /\d\.\d{2}\b/.test(l.text));
   const marks = { credit: 0, signed: 0 };
   pageLines.forEach((ls) => ls.forEach((l) => l.cells.forEach((c) => {
     const t = TRAILING_AMOUNT.exec(c.text);
@@ -271,6 +309,8 @@ function readStatement(pages) {
   const checks = [];
 
   let columns = null, descX = null, sawHeader = false;
+  // Where descriptions really start, learnt from dated rows: a heading is often centred over them.
+  let descStart = null;
   let closed = false; // after the closing balance: the table is over until a heading starts another
   let pendingSummary = null; // "Balance brought forward from" / "£1,234.56" / "previous statement"
   let lastDate = null; // for statements that print the date once per day
@@ -286,11 +326,11 @@ function readStatement(pages) {
   let amountLast = false;
   {
     let afterHeader = false, dateOnly = 0;
-    for (const ls of pageLines) for (const l of ls) {
-      if (headerOf(l)) { afterHeader = true; continue; }
+    for (const [p, ls] of pageLines.entries()) for (const [i, l] of ls.entries()) {
+      if (pageHeaders[p][i]) { afterHeader = true; continue; }
       if (!afterHeader) continue;
       const lead = leadingDates(l.text);
-      const hasMoney = l.cells.some((c) => parseAmount(c.text) || TRAILING_AMOUNT.exec(c.text));
+      const hasMoney = l.cells.some((c) => parseAmount(c.text, whole) || TRAILING_AMOUNT.exec(c.text));
       if (lead.dates.length && !hasMoney && !CHECK_LINES.some((c) => c.re.test(lead.rest))) dateOnly++;
     }
     amountLast = dateOnly >= 2;
@@ -316,11 +356,12 @@ function readStatement(pages) {
       pending = null;
     };
     const tableRows = lines.filter((l) => leadingDates(l.text).dates.length).length;
-    for (const line of lines) {
+    for (const [li, line] of lines.entries()) {
       const tag = (kind, extra = {}) => seen.push({ text: line.text, kind, ...extra });
-      const h = headerOf(line);
+      const h = pageHeaders[p][li];
       if (h) {
         flush();
+        if (h.descX !== descX) descStart = null;
         columns = h.columns; descX = h.descX ?? descX; sawHeader = true; headerHere = true; closed = false;
         tag("header", { columns: columns.map((c) => c.kind) });
         prevTx = null;
@@ -329,8 +370,14 @@ function readStatement(pages) {
       // Before any table on this page - a cover page, the top of a page - only checks are read.
       const tableOpen = sawHeader && !closed && (headerHere || tableRows >= 3);
       const { dates, rest } = leadingDates(line.text);
-      const { amounts, textCells } = amountsOf(line, tableOpen ? columns : null);
-      const check = CHECK_LINES.find((c) => c.re.test(rest || line.text));
+      const { amounts, textCells } = amountsOf(line, tableOpen ? columns : null, whole);
+      // A check line names itself before its figure: "Closing balance 1,234.56", never a note
+      // after one ("... 25,092  closing balance,").
+      const firstMoney = amounts.length ? (rest || line.text).indexOf(amounts[0].text.trim()) : -1;
+      const check = CHECK_LINES.find((c) => {
+        const m = c.re.exec(rest || line.text);
+        return m && (firstMoney < 0 || m.index < firstMoney);
+      });
 
       if (!tableOpen) {
         // A cover page or summary box: "Previous balance £410.20", "Opening Balance £1,234.56D",
@@ -390,11 +437,16 @@ function readStatement(pages) {
       // one its details started under.
       const money = amounts.filter((a) => a.col && a.col.kind !== "balance");
       const balance = amounts.find((a) => a.col && a.col.kind === "balance");
-      const inDescColumn = descX == null || (line.cells[0] && line.cells[0].x >= descX - 8);
+      const descFrom = descStart ?? descX;
+      const inDescColumn = descFrom == null || (line.cells[0] && line.cells[0].x >= descFrom - 8);
       const near = (y) => line.y - y < line.h * 4.5;
       if (money.length && !/\d%/.test(line.text)) {
         let ds = null, prefix = [];
-        if (dates.length) { flush(); ds = dates; }
+        if (dates.length) {
+          flush(); ds = dates;
+          const first = line.cells.find((c) => !LEAD_DATE.test(c.text) && !parseAmount(c.text, whole));
+          if (first && first.x > line.cells[0].x) descStart = descStart == null ? first.x : Math.min(descStart, first.x);
+        }
         else if (amountLast && pending && near(pending.y)) { ds = pending.dates || lastDate; prefix = pending.parts; pending = null; }
         else { flush(); if (lastDate && (inDescColumn || amountLast)) ds = lastDate; }
         if (ds) {
@@ -452,7 +504,7 @@ function readStatement(pages) {
       // Details without a date or money: more of the transaction above, or the start of the next.
       if (!amounts.length && !dates.length && line.text.length < 80 &&
           ((pending && near(pending.y)) || (prevTx && near(prevY))) &&
-          (descX == null || line.cells[0].x >= descX - 8 || amountLast)) {
+          (descFrom == null || line.cells[0].x >= descFrom - 8 || amountLast)) {
         if (!pending) pending = { dates: null, parts: [], y: line.y };
         pending.parts.push(line.text);
         pending.y = line.y;
