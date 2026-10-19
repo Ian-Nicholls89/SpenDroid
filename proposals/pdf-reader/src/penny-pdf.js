@@ -304,6 +304,8 @@ export function readStatement(pages) {
   let closedForPage = false; // after "carried forward": over for this page, on again at the next
   let openAtPageEnd = false; // the list ran to the foot of the last page without a closing line
   let dateX = null; // where dates sit, for a year printed on the line below one
+  let undatedRows = 0; // money in the table with no date to give it
+  let lastActivePage = -1; // the last page with any of the statement's list on it
   let pendingSummary = null; // "Balance brought forward from" / "£1,234.56" / "previous statement"
   let lastDate = null; // for statements that print the date once per day
   // Running sums, the way the statement keeps them.
@@ -336,8 +338,48 @@ export function readStatement(pages) {
     return t.replace(/\s{2,}/g, "  ").trim();
   };
 
+  /**
+   * A cover page or summary box: "Previous balance £410.20", "Opening Balance £1,234.56D",
+   * "Payments In £2,000.00" - kept to check against at the end, never counted. True if it held one.
+   */
+  const readSummary = (text) => {
+      let found = false;
+      const alone = parseAmount(text.replace(/^[=+]\s*/, ""));
+      if (pendingSummary && alone) {
+        if (summary[pendingSummary] == null) summary[pendingSummary] = signedForCheck(alone, isCard);
+        pendingSummary = null;
+        return true;
+      }
+      pendingSummary = null;
+      // "Balance on 01 February 2024. £4,978.68." - the first such is the opening, the next the closing.
+      const on = /balance on \d{1,2} [a-z]+ \d{4}[^£\d]{0,6}(£?[\d,]+\.\d{2})/i.exec(text);
+      if (on) {
+        const a = parseAmount(on[1]);
+        if (a) { found = true; if (summary.opening == null) summary.opening = signedForCheck(a, isCard); else if (summary.closing == null) summary.closing = signedForCheck(a, isCard); }
+      }
+      for (const k of [...CHECK_LINES.filter((c) => c.kind === "opening" || c.kind === "closing"), ...SUMMARY_TOTALS]) {
+        const m = new RegExp("(?:" + k.re.source + ")[^£\\d(\\-]{0,25}(\\(?-?£?\\s?[\\d,]+\\.\\d{2}\\)?(?:\\s?(?:CR|DR|C|D|-(?!\\d)))?)", "i").exec(text);
+        const a = m && parseAmount(m[m.length - 1]);
+        if (!a) { if (k.re.test(text) && !SUMMARY_TOTALS.includes(k)) pendingSummary = k.kind; continue; }
+        found = true;
+        const value = SUMMARY_TOTALS.includes(k) ? a.pence : signedForCheck(a, isCard);
+        const weak = k.kind === "closing" && /carried/i.test(m[0]);
+        if (k.kind === "closing" && summary.closing != null && summary.closingWeak && !weak) {
+          // "Balance carried forward £0.00 ... Statement balance £877.97": the first was last time's.
+          if (summary.opening == null) summary.opening = summary.closing;
+          summary.closing = value; summary.closingWeak = false;
+        } else if (summary[k.kind] == null) {
+          summary[k.kind] = value;
+          if (k.kind === "closing") summary.closingWeak = weak;
+        }
+      }
+    return found;
+  };
+
   pageLines.forEach((lines, p) => {
-    if (closedForPage) { closed = false; closedForPage = false; }
+    // After "carried forward", the list goes on overleaf only where the page says it does.
+    if (closedForPage && (pageHeaders[p].some(Boolean) || lines.some((l) => /brought forward|continued/i.test(l.text)))) closed = false;
+    closedForPage = false;
     const seen = [];
     let headerHere = false;
     let prevTx = null, prevY = null;
@@ -353,7 +395,21 @@ export function readStatement(pages) {
       const tag = (kind, extra = {}) => seen.push({ text: line.text, kind, ...extra });
       if (!line.cells.length) continue; // nothing but screen-reader labels
       const h = pageHeaders[p][li];
+      // A box beside the table - Barclays' "At a glance": Start balance, Money out, End balance -
+      // shares its lines. Whatever sits right of the last column is that box, read as a summary.
+      const sideOf = (cols) => {
+        // Only where something out there names a summary figure: plain amounts right of their
+        // heading are the table's own, as cards often print them.
+        const right = Math.max(...cols.map((c) => c.right)) + 8;
+        const names = (t) => [...CHECK_LINES.filter((c) => c.kind !== "subtotal"), ...SUMMARY_TOTALS].some((k) => k.re.test(t));
+        const at = line.cells.findIndex((c) => c.x > right && names(c.text));
+        if (at < 0) return;
+        readSummary(line.cells.slice(at).map((c) => c.text).join("  "));
+        line.cells = line.cells.slice(0, at);
+        line.text = line.cells.map((c) => c.text).join("  ");
+      };
       if (h) {
+        sideOf(h.columns);
         flush();
         // The same heading again, row by row - as a screen-reader-friendly PDF repeats it - keeps
         // the full heading's columns; it only says a new row starts.
@@ -371,6 +427,7 @@ export function readStatement(pages) {
       if (line.cells.length && line.cells.every((c) => HEADING_WORD.test(c.text))) { tag("ignored"); continue; }
       // Before any table on this page - a cover page, the top of a page - only checks are read.
       const tableOpen = sawHeader && !closed && (headerHere || tableRows >= 3 || (openAtPageEnd && tableRows >= 1));
+      if (tableOpen && columns) { sideOf(columns); if (!line.cells.length) { tag("summary"); continue; } }
       const { dates, rest } = leadingDates(line.text);
       const { amounts, textCells } = amountsOf(line, tableOpen ? columns : null, whole);
       // A check line names itself before its figure: "Closing balance 1,234.56", never a note
@@ -382,45 +439,14 @@ export function readStatement(pages) {
       });
 
       if (!tableOpen) {
-        // A cover page or summary box: "Previous balance £410.20", "Opening Balance £1,234.56D",
-        // "Payments In £2,000.00" - kept to check against at the end, never counted.
-        let found = false;
-        const alone = parseAmount(line.text.replace(/^[=+]\s*/, ""));
-        if (pendingSummary && alone) {
-          if (summary[pendingSummary] == null) summary[pendingSummary] = signedForCheck(alone, isCard);
-          pendingSummary = null;
-          tag("summary");
-          continue;
-        }
-        pendingSummary = null;
-        // "Balance on 01 February 2024. £4,978.68." - the first such is the opening, the next the closing.
-        const on = /balance on \d{1,2} [a-z]+ \d{4}[^£\d]{0,6}(£?[\d,]+\.\d{2})/i.exec(line.text);
-        if (on) {
-          const a = parseAmount(on[1]);
-          if (a) { found = true; if (summary.opening == null) summary.opening = signedForCheck(a, isCard); else if (summary.closing == null) summary.closing = signedForCheck(a, isCard); }
-        }
-        for (const k of [...CHECK_LINES.filter((c) => c.kind === "opening" || c.kind === "closing"), ...SUMMARY_TOTALS]) {
-          const m = new RegExp("(?:" + k.re.source + ")[^£\\d(\\-]{0,25}(\\(?-?£?\\s?[\\d,]+\\.\\d{2}\\)?(?:\\s?(?:CR|DR|C|D|-(?!\\d)))?)", "i").exec(line.text);
-          const a = m && parseAmount(m[m.length - 1]);
-          if (!a) { if (k.re.test(line.text) && !SUMMARY_TOTALS.includes(k)) pendingSummary = k.kind; continue; }
-          found = true;
-          const value = SUMMARY_TOTALS.includes(k) ? a.pence : signedForCheck(a, isCard);
-          const weak = k.kind === "closing" && /carried/i.test(m[0]);
-          if (k.kind === "closing" && summary.closing != null && summary.closingWeak && !weak) {
-            // "Balance carried forward £0.00 ... Statement balance £877.97": the first was last time's.
-            if (summary.opening == null) summary.opening = summary.closing;
-            summary.closing = value; summary.closingWeak = false;
-          } else if (summary[k.kind] == null) {
-            summary[k.kind] = value;
-            if (k.kind === "closing") summary.closingWeak = weak;
-          }
-        }
-        tag(found ? "summary" : "ignored");
+        tag(readSummary(line.text) ? "summary" : "ignored");
         continue;
       }
 
       if (check && amounts.length) {
         flush();
+        const wasActive = lastActivePage;
+        lastActivePage = p;
         // "14 Feb Interim balance brought forward": the day the rows below it belong to.
         if (dates.length) lastDate = dates;
         const a = amounts[amounts.length - 1];
@@ -428,6 +454,12 @@ export function readStatement(pages) {
         const counted = isCard ? total : (running ?? total);
         if (check.kind === "opening" && opening == null) {
           opening = value; section += value; running = value; total += value;
+          tag("check", { check: "opening", value });
+        } else if (check.kind === "opening" && headerHere && wasActive < p - 1 && Math.abs(counted - value) >= 1) {
+          // A page or more of something else, then a heading and a balance brought forward that
+          // isn't where the last one ended: the next statement in a pack, not a mistake.
+          section = value; running = value; total = value;
+          notes.push(`Another statement starts on page ${p + 1}.`);
           tag("check", { check: "opening", value });
         } else if (check.kind === "opening") {
           // Brought forward again at the top of a page: it should be where the last page ended.
@@ -511,9 +543,10 @@ export function readStatement(pages) {
             else tx.balanceChecked = true;
           }
           tag("transaction", { pence, date: tx.date });
-          prevTx = tx; prevY = line.y;
+          prevTx = tx; prevY = line.y; lastActivePage = p;
           continue;
         }
+        undatedRows++;
       }
 
       if (FOOTER.test(line.text.trim())) { tag("footer"); continue; }
@@ -591,6 +624,8 @@ export function readStatement(pages) {
   }
   const balanceRows = transactions.filter((t) => t.balanceChecked).length;
   if (balanceRows) checks.push({ what: `Running balance on ${balanceRows} rows`, ok: true });
+  // Only worth saying when the checks don't all agree: where they do, those lines were totals.
+  if (undatedRows && !(checks.length && checks.every((c) => c.ok))) notes.push(`${undatedRows} row${undatedRows === 1 ? "" : "s"} with money but no date ${undatedRows === 1 ? "was" : "were"} left out.`);
   if (!sawHeader) notes.push("No table heading found - this layout isn't one Penny knows yet.");
   if (!period && undated) notes.push("No statement period or date found - dates without a year are taken as this year.");
   return {
