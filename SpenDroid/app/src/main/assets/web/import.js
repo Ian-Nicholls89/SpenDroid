@@ -330,7 +330,7 @@ function matching() {
     <button class="btn" id="impsend" ${c && c.toAdd > 0 ? "" : "disabled style='opacity:.4;cursor:default'"}>Send to my phone to approve</button>
     ${I.sendError ? `<p class="err">${esc(I.sendError)}</p>` : ""}
     <button class="chip" id="impagain" style="margin-top:12px">Choose a different file</button></div>`;
-  return `${grid}<div style="display:flex;gap:16px;margin-top:16px;flex-wrap:wrap"><div class="panel" style="flex:1.3;min-width:320px"><div style="display:flex"><span class="sec">How SpenDroid reads it</span><span class="k2" style="margin-left:auto">updates as you change the columns</span></div>${preview || `<p class="k2" style="margin-top:8px">Nothing readable yet.</p>`}</div>${summary}</div>`;
+  return `${grid}<div style="display:flex;gap:16px;margin-top:16px;flex-wrap:wrap"><div class="panel" style="flex:1.3;min-width:320px"><div style="display:flex"><span class="sec">How Penny reads it</span><span class="k2" style="margin-left:auto">updates as you change the columns</span></div>${preview || `<p class="k2" style="margin-top:8px">Nothing readable yet.</p>`}</div>${summary}</div>`;
 }
 
 function waiting() {

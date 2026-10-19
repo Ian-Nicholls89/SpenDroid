@@ -196,7 +196,7 @@ private fun NoAccounts(state: RootUiState, onLinkBank: () -> Unit) {
         SectionHeading("No accounts yet")
         Spacer(Modifier.height(6.dp))
         Text(
-            "Link a bank and SpenDroid will work out your pay cycle from what it finds.",
+            "Link a bank and Penny will work out your pay cycle from what it finds.",
             style = MaterialTheme.typography.bodyMedium,
             color = Charcoal.Muted,
         )

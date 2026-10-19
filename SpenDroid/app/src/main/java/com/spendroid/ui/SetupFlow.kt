@@ -271,13 +271,13 @@ private fun Primary(text: String, enabled: Boolean = true, onClick: () -> Unit) 
 private fun Welcome(onStatements: () -> Unit, onFresh: () -> Unit, onGoCardless: () -> Unit) {
     Spacer(Modifier.height(36.dp))
     Title("Know what you can spend, every day")
-    Lead("SpenDroid works out what's left until payday, after your bills and card statements. Everything stays on this phone: no account, no server.")
+    Lead("Meet Penny. She works out what's left until payday, after your bills and card statements. Everything stays on this phone: no account, no server.")
     Choice(
         "⇪", "Use your bank's statements", "RECOMMENDED",
-        "Download a statement from your bank's app or website. SpenDroid reads it, then stays up to date from your banking notifications.",
+        "Download a statement from your bank's app or website. Penny reads it, then stays up to date from your banking notifications.",
         onStatements,
     )
-    Choice("✎", "Start from today", null, "No statement to hand? Tell SpenDroid your balance and payday, and it learns your bills as they come.", onFresh)
+    Choice("✎", "Start from today", null, "No statement to hand? Tell Penny your balance and payday, and she learns your bills as they come.", onFresh)
     Spacer(Modifier.height(18.dp))
     Text(
         "I have GoCardless keys · link a bank",
@@ -357,7 +357,7 @@ private fun History(
 ) {
     var howFor by remember { mutableStateOf<String?>(null) }
     Title("Bring in your history")
-    Lead("Download a statement from each bank's app or website, as a CSV, OFX or QIF file. The more months, the better SpenDroid knows your bills.")
+    Lead("Download a statement from each bank's app or website, as a CSV, OFX or QIF file. The more months, the better Penny knows your bills.")
     accounts.forEach { a ->
         val covered = state.manualCoverage[a.id]
         val imported = state.transactions.count { it.accountId == a.id && it.transactionId.startsWith(com.spendroid.domain.DuplicateCheck.IMPORTED_PREFIX) }

@@ -566,6 +566,31 @@ object NotificationSpend {
         return result
     }
 
+    /**
+     * Penny's answer about a payment, for changing it: [counted] is the one that stands - the
+     * seen spend shown, or the one the bank's row took over from - and [repeats] those counted
+     * once with it (said "once", dropped as a repeat, or the same purchase from a second app);
+     * [twin], when the user said both were real, the other of the two.
+     */
+    data class Answer(val counted: SeenSpendEntity, val repeats: List<SeenSpendEntity>, val twin: SeenSpendEntity?)
+
+    fun answerFor(seenId: String?, bankRow: TransactionEntity?, seen: List<SeenSpendEntity>, zone: ZoneId = ZoneId.systemDefault()): Answer? {
+        val counted = seenId?.let { id -> seen.firstOrNull { it.id == id } }
+            ?: bankRow?.let { row -> seen.firstOrNull { it.matchedTransactionId == row.transactionId && it.accountId == row.accountId } }
+            ?: return null
+        val repeats = seen.filter { it.dismissed && it.pairedWithId == counted.id }
+        val twin = if (counted.confirmedSeparate) {
+            seen.firstOrNull { other ->
+                other.id != counted.id && !other.dismissed && other.amountMinor == counted.amountMinor &&
+                    dateOf(other.seenAt, zone) == dateOf(counted.seenAt, zone) && sameShop(other.merchant, counted.merchant)
+            }
+        } else {
+            null
+        }
+        if (repeats.isEmpty() && twin == null) return null
+        return Answer(counted, repeats, twin)
+    }
+
     private fun sameShop(a: String, b: String): Boolean =
         a.isBlank() || b.isBlank() || a.trim().equals(b.trim(), ignoreCase = true) || sharesWord(a, b)
 

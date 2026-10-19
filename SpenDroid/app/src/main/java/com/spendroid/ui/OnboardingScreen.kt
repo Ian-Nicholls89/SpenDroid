@@ -83,7 +83,7 @@ fun OnboardingScreen(
         OnboardingStep(
             number = "3",
             title = "Approve each bank",
-            detail = "Your bank grants access for 90 days at a time. SpenDroid reminds you " +
+            detail = "Your bank grants access for 90 days at a time. Penny reminds you " +
                 "before it lapses, and keeps everything it has already downloaded.",
         )
 

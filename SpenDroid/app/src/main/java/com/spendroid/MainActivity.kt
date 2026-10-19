@@ -491,6 +491,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                                             onSetBudgetGoal = viewModel::setBudgetGoal,
                                             onTreatAsBill = viewModel::treatAsBill,
                                             onAssignSeen = { id, account, always -> viewModel.assignSeenSpend(id, account, always) },
+                                            onAnswerRepeat = viewModel::answerRepeat,
                                             tabIndex = spendingTab,
                                             onTabIndex = { spendingTab = it },
                                             prompts = {

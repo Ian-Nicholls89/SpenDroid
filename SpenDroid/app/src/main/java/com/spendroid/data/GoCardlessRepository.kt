@@ -377,7 +377,12 @@ class GoCardlessRepository private constructor(
     /** The user's answer to "twice, or once?": [once] drops [spendId] as a repeat of [twinId]. */
     suspend fun answerRepeat(spendId: String, twinId: String, once: Boolean) {
         val spend = dao.seenSpends().firstOrNull { it.id == spendId } ?: return
-        dao.upsertSeenSpend(if (once) spend.copy(dismissed = true, pairedWithId = twinId) else spend.copy(confirmedSeparate = true))
+        // Either way round, so a wrong answer can be put right: once drops it as a repeat; twice
+        // brings it back if it was dropped, and keeps it from being dropped again.
+        dao.upsertSeenSpend(
+            if (once) spend.copy(dismissed = true, pairedWithId = twinId, confirmedSeparate = false)
+            else spend.copy(dismissed = false, pairedWithId = null, confirmedSeparate = true),
+        )
     }
 
     suspend fun dismissSeenSpend(id: String) {

@@ -53,7 +53,7 @@ object ManualAlerts {
             if (!watch.told(key)) {
                 post(
                     context, key.hashCode(), "Check ${account.label}'s balance",
-                    "Type in what your banking app shows. Anything SpenDroid hasn't seen is counted, so your budget stays right.",
+                    "Type in what your banking app shows. Anything Penny hasn't seen is counted, so your budget stays right.",
                     EXTRA_OPEN_BALANCE_CHECK, account.id,
                 )
                 told += key

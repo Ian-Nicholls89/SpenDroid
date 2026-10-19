@@ -112,6 +112,7 @@ fun TransactionsScreen(
     onCategoryFilter: (Category?) -> Unit,
     onTreatAsBill: ((TransactionEntity, com.spendroid.domain.Cadence) -> Unit)? = null,
     onAssignSeen: (String, String, Boolean) -> Unit = { _, _, _ -> },
+    onAnswerRepeat: (String, String, Boolean) -> Unit = { _, _, _ -> },
     /** Only what is still pending: the Pending tab. */
     pendingOnly: Boolean = false,
 ) {
@@ -506,6 +507,10 @@ fun TransactionsScreen(
             accountLabel = accountNames[tx.accountId],
             waitingForStatement = tx.transactionId in seenById && manualIds.contains(tx.accountId),
             paidFrom = seenById[tx.transactionId]?.let { spend -> paidFrom(spend, state, onAssignSeen) { selected = null } },
+            pennyAnswer = remember(tx, state.seenSpends) {
+                NotificationSpend.answerFor(seenById[tx.transactionId]?.id, tx.takeUnless { it.transactionId in seenById }, state.seenSpends)
+            },
+            onChangeAnswer = { spendId, twinId, once -> onAnswerRepeat(spendId, twinId, once); selected = null },
             matching = remember(tx, state.seenSpends, state.transactions) {
                 seenById[tx.transactionId]?.let { spend ->
                     val alternatives = if (spend.source == NotificationSpend.GOOGLE_WALLET) {
@@ -541,7 +546,7 @@ private fun paidFrom(
         currentId = spend.accountId,
         how = when {
             spend.accountId == null -> "waiting for you to say"
-            spend.accountGuessed -> "SpenDroid guessed this"
+            spend.accountGuessed -> "Penny guessed this"
             else -> null
         },
         always = state.spendPlaces[NotificationSpend.placeKey(spend.source, spend.merchant)] != null,

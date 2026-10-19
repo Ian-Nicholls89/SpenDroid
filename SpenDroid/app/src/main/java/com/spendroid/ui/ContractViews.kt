@@ -131,7 +131,7 @@ internal fun ContractSection(
                 )
             }
             Text(
-                "Already ended? Pick the date it ended if you know it - SpenDroid will see whether the bill went up then.",
+                "Already ended? Pick the date it ended if you know it - Penny will see whether the bill went up then.",
                 style = MaterialTheme.typography.labelSmall,
                 color = Charcoal.Muted,
                 modifier = Modifier.padding(top = 6.dp),

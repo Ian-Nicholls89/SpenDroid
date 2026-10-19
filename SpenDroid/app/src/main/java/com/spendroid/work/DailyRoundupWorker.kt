@@ -55,7 +55,7 @@ class DailyRoundupWorker(
         val shown = if (com.spendroid.data.Privacy(applicationContext).notificationFigures) body else "Your roundup is ready - open SpenDroid to see it."
         val notification = NotificationCompat.Builder(applicationContext, CHANNEL_ID)
             .setSmallIcon(com.spendroid.R.drawable.ic_stat_droid)
-            .setContentTitle("SpenDroid roundup")
+            .setContentTitle("Penny's roundup")
             .setContentText(shown)
             .setStyle(NotificationCompat.BigTextStyle().bigText(shown))
             .setCategory(NotificationCompat.CATEGORY_REMINDER)

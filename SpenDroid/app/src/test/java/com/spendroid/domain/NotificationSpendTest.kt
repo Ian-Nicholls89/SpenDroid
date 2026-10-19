@@ -227,6 +227,20 @@ class NotificationSpendTest {
     }
 
     @Test
+    fun `penny's answer is found from the payment or from the bank's row that took it over`() {
+        val kept = seen("a", 6350, at(26, 15, 47), matched = "row")
+        val repeat = seen("b", 6350, at(26, 15, 57)).copy(dismissed = true, pairedWithId = "a")
+        val row = bank("row", 6350, "2026-09-26")
+        assertEquals(listOf("b"), NotificationSpend.answerFor("a", null, listOf(kept, repeat), zone)!!.repeats.map { it.id })
+        assertEquals(listOf("b"), NotificationSpend.answerFor(null, row, listOf(kept, repeat), zone)!!.repeats.map { it.id })
+        // Said "both were real": the other of the two, to change it back.
+        val both = seen("c", 6350, at(26, 15, 57)).copy(confirmedSeparate = true)
+        assertEquals("a", NotificationSpend.answerFor("c", null, listOf(kept, both), zone)!!.twin!!.id)
+        // Nothing answered: nothing to say.
+        assertEquals(null, NotificationSpend.answerFor("a", null, listOf(kept), zone))
+    }
+
+    @Test
     fun `a bank row too late or for another amount does not`() {
         val m = NotificationSpend.matches(
             listOf(seen("a", 320, at(20))),

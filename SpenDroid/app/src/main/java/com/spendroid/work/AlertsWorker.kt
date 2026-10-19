@@ -66,12 +66,16 @@ class AlertsWorker(
 
         val duplicates = duplicateQuestions(repo)
 
+        // Each with what it's about, so the title says it plainly: a vague "Penny noticed
+        // something" about money is a worry until it's opened.
         val alerts = buildList {
-            billsDueTomorrow(snapshot)?.let(::add)
-            large.message?.let(::add)
-            addAll(goals.messages)
-            addAll(cards.messages)
-            duplicates.message?.let(::add)
+            billsDueTomorrow(snapshot)?.let { add(Alert("Penny's heads-up: bills leave tomorrow", "tomorrow's bills", it)) }
+            large.message?.let { add(Alert("Penny noticed a large payment${large.payee?.let { p -> " at $p" }.orEmpty()}", "a large payment", it)) }
+            if (goals.messages.isNotEmpty()) {
+                goals.messages.forEach { add(Alert("Penny noticed your spending is near a limit you set", "your spending limits", it)) }
+            }
+            cards.messages.forEach { add(Alert("Penny has an update on your card spending", "your card spending", it)) }
+            duplicates.message?.let { add(Alert("Penny has a question about transactions your bank stopped listing", "transactions to check", it)) }
         }
         if (alerts.isEmpty()) return Result.success()
 
@@ -84,6 +88,17 @@ class AlertsWorker(
 
         notify(alerts)
         return Result.success()
+    }
+
+    /** One alert: the title it gets alone, what it's about among others, and what it says. */
+    private data class Alert(val title: String, val topic: String, val message: String)
+
+    /** A title naming what's inside: "Penny has updates on tomorrow's bills and your card spending". */
+    private fun titleFor(alerts: List<Alert>): String {
+        if (alerts.size == 1) return alerts.single().title
+        val topics = alerts.map { it.topic }.distinct()
+        if (topics.size == 1) return "Penny has updates on ${topics.single()}"
+        return "Penny has updates on " + topics.dropLast(1).joinToString(", ") + " and " + topics.last()
     }
 
     private data class DuplicateNotice(val message: String?, val keys: Set<String>)
@@ -180,7 +195,7 @@ class AlertsWorker(
             "That leaves ${formatMoney(snapshot.availableToSpend, snapshot.baseCurrency)} to spend."
     }
 
-    private data class LargeTransaction(val message: String?, val keys: Set<String>)
+    private data class LargeTransaction(val message: String?, val keys: Set<String>, val payee: String? = null)
 
     /**
      * A debit far above the usual for its size, judged against the median rather than the
@@ -223,11 +238,13 @@ class AlertsWorker(
             "${formatMoney(recent.amountMinor, recent.currency)} at ${recent.payee.tidyPayee()} — " +
                 "about ${multiple}× your usual transaction.",
             keys,
+            com.spendroid.work.SpendQuestions.shopName(recent.payee),
         )
     }
 
-    private fun notify(alerts: List<String>) {
+    private fun notify(found: List<Alert>) {
         if (!NotificationManagerCompat.from(applicationContext).areNotificationsEnabled()) return
+        val alerts = found.map { it.message }
         val manager = applicationContext.getSystemService(NotificationManager::class.java)
         manager.createNotificationChannel(
             NotificationChannel(CHANNEL_ID, "Alerts", NotificationManager.IMPORTANCE_DEFAULT).apply {
@@ -240,7 +257,7 @@ class AlertsWorker(
         val body = if (figures) alerts.joinToString("\n\n") else "Open SpenDroid to see ${if (alerts.size == 1) "it" else "them"}."
         val notification = NotificationCompat.Builder(applicationContext, CHANNEL_ID)
             .setSmallIcon(com.spendroid.R.drawable.ic_stat_droid)
-            .setContentTitle(if (alerts.size == 1) "SpenDroid" else "SpenDroid · ${alerts.size} things")
+            .setContentTitle(titleFor(found))
             .setContentText(if (figures) alerts.first() else body)
             .setStyle(NotificationCompat.BigTextStyle().bigText(body))
             .setContentIntent(openAppIntent(applicationContext, NOTIFICATION_ID))

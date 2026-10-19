@@ -150,7 +150,7 @@ data class Roundup(
             )
             val builder = NotificationCompat.Builder(context, CHANNEL_ID)
                 .setSmallIcon(R.drawable.ic_roundup)
-                .setContentTitle("SpenDroid roundup")
+                .setContentTitle("Penny's roundup")
                 .setContentText(roundup.headline)
                 .setStyle(NotificationCompat.BigTextStyle().bigText((listOf(roundup.headline) + roundup.lines).joinToString("\n")))
                 .setCategory(NotificationCompat.CATEGORY_REMINDER)

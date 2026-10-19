@@ -17,6 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.unit.dp
 import com.github.takahirom.roborazzi.captureRoboImage
 import com.spendroid.AppScreen
@@ -129,6 +130,37 @@ class ScreensTest {
                 },
             )
         }
+    }
+
+    /** 5.3.1: just answered - said back, with the way to change it. */
+    @Test
+    @Config(qualifiers = "w411dp-h1500dp-xxhdpi")
+    fun pennyAnswered() {
+        val state = Sample.state()
+        val nine = java.time.LocalDate.now().atTime(9, 5).atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+        fun shop(id: String, at: Long) = com.spendroid.data.db.SeenSpendEntity(
+            id = id, source = "com.google.android.apps.walletnfcrel", seenAt = at, amountMinor = -10_000, currency = "GBP",
+            merchant = "TESCO STORES", cardDigits = "1234", accountId = state.accounts.first().id,
+        )
+        val seen = androidx.compose.runtime.mutableStateOf(listOf(shop("p1", nine), shop("p2", nine + 4 * 60_000)))
+        compose.setContent {
+            Frame(AppScreen.Home) {
+                HomeScreen(
+                    state, onRefresh = {}, onRelink = {}, onSeeAllTransactions = {}, onSetBudgetGoal = { _, _ -> }, onLinkBank = {},
+                    prompts = {
+                        com.spendroid.ui.SeenSpendPrompts(
+                            seen.value, state.accounts, { _, _ -> }, {}, {}, accountsOnly = true, modifier = Modifier,
+                            onRepeat = { id, twin, once ->
+                                seen.value = seen.value.map { if (it.id == id) it.copy(dismissed = once, pairedWithId = twin.takeIf { once }, confirmedSeparate = !once) else it }
+                            },
+                        )
+                    },
+                )
+            }
+        }
+        compose.onNodeWithText("Once, remove the extra").performClick()
+        compose.waitForIdle()
+        compose.onRoot().captureRoboImage("build/screenshots/penny-answered.png")
     }
 
     @Test
@@ -526,7 +558,7 @@ class ScreensTest {
                     onAlwaysCategorise = { _, _ -> }, onMarkTransfer = { _, _ -> }, accountLabel = "Joint Account",
                     paidFrom = com.spendroid.ui.PaidFrom(
                         choices = state.accounts.filter { it.id == "acc-personal" || it.id == "acc-joint" },
-                        currentId = "acc-joint", how = "SpenDroid guessed this", always = false, onChoose = { _, _ -> },
+                        currentId = "acc-joint", how = "Penny guessed this", always = false, onChoose = { _, _ -> },
                         allAccounts = state.accounts,
                     ),
                 )

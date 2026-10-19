@@ -55,8 +55,10 @@ internal fun SeenSpendPrompts(
     val unassigned = NotificationSpend.unanswered(seen).sortedByDescending { it.seenAt }
     val unconfirmed = if (accountsOnly) emptyList() else NotificationSpend.unconfirmed(seen, now, coverage)
     // Asked on Home as well as Spending: it changes the budget either way.
-    val repeats = NotificationSpend.possibleRepeats(seen)
-    if (unassigned.isEmpty() && unconfirmed.isEmpty() && repeats.isEmpty()) return
+    // Answers given here, kept on screen with a way to change them until the screen is left.
+    val justAnswered = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateMapOf<String, Pair<NotificationSpend.Repeat, Boolean>>() }
+    val repeats = NotificationSpend.possibleRepeats(seen).filter { it.spend.id !in justAnswered }
+    if (unassigned.isEmpty() && unconfirmed.isEmpty() && repeats.isEmpty() && justAnswered.isEmpty()) return
 
     Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
         repeats.forEach { repeat ->
@@ -64,21 +66,48 @@ internal fun SeenSpendPrompts(
             val times = listOf(repeat.twin.seenAt, spend.seenAt).sorted().joinToString(" and ") {
                 java.time.Instant.ofEpochMilli(it).atZone(java.time.ZoneId.systemDefault()).format(TIME)
             }
+            val day = NotificationSpend.dateOf(spend.seenAt)
+            val whenSaid = if (day == java.time.LocalDate.now()) "today" else "on ${day.format(DAY)}"
+            val shop = com.spendroid.work.SpendQuestions.shopName(spend.merchant) ?: spend.merchant
             QuestionCard("Penny has a question", Charcoal.Warn) {
                 Text(
-                    "${formatMoney(-spend.amountMinor, spend.currency)} at ${spend.merchant}, twice · ${NotificationSpend.dateOf(spend.seenAt).format(DAY)}, $times",
+                    "Did you pay ${formatMoney(-spend.amountMinor, spend.currency)} at $shop once or twice $whenSaid?",
                     style = MaterialTheme.typography.titleSmall,
                 )
                 Text(
-                    "The same amount at the same place on one day. It could be two purchases, or one counted twice. Both are counted until you say.",
+                    "Seen at $times. Both are counted until you say, and you can change your answer later.",
                     style = MaterialTheme.typography.labelSmall,
                     color = Charcoal.Muted,
                 )
                 Spacer(Modifier.height(10.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    BigButton("Just once", null, { onRepeat(spend.id, repeat.twin.id, true) }, Modifier.weight(1f), colour = Charcoal.Warn, textColour = Color(0xFF111111))
-                    BigButton("Both were real", null, { onRepeat(spend.id, repeat.twin.id, false) }, Modifier.weight(1f))
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    BigButton("Once, remove the extra", null, {
+                        onRepeat(spend.id, repeat.twin.id, true)
+                        justAnswered[spend.id] = repeat to true
+                    }, Modifier.fillMaxWidth(), colour = Charcoal.Warn, textColour = Color(0xFF111111))
+                    BigButton("Twice, keep both", null, {
+                        onRepeat(spend.id, repeat.twin.id, false)
+                        justAnswered[spend.id] = repeat to false
+                    }, Modifier.fillMaxWidth())
                 }
+            }
+        }
+        // Just answered: said back, with the way to change it, while still on screen.
+        justAnswered.forEach { (id, answered) ->
+            val (repeat, once) = answered
+            val spend = repeat.spend
+            val shop = com.spendroid.work.SpendQuestions.shopName(spend.merchant) ?: spend.merchant
+            QuestionCard("Penny's noted it", Charcoal.Good) {
+                Text(
+                    if (once) "Counted once: ${formatMoney(-spend.amountMinor, spend.currency)} at $shop. The extra is removed."
+                    else "Counted twice: both payments at $shop stay.",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Spacer(Modifier.height(8.dp))
+                BigButton(if (once) "Change: it was twice" else "Change: it was once", null, {
+                    onRepeat(spend.id, repeat.twin.id, !once)
+                    justAnswered[id] = repeat to !once
+                }, Modifier.fillMaxWidth())
             }
         }
         unassigned.forEach { spend ->

@@ -95,6 +95,9 @@ fun TransactionDetailSheet(
     waitingForStatement: Boolean = false,
     /** For a payment read from a notification: why it has or hasn't paired with the bank's line. */
     matching: List<String> = emptyList(),
+    /** Counted once or twice by Penny or by the user's answer: said, and changeable. */
+    pennyAnswer: NotificationSpend.Answer? = null,
+    onChangeAnswer: (spendId: String, twinId: String, once: Boolean) -> Unit = { _, _, _ -> },
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val current = CategoryEngine.classify(transaction, userRules, cardPaymentKeys, creditCardAccountIds)
@@ -311,6 +314,35 @@ fun TransactionDetailSheet(
                             style = MaterialTheme.typography.labelMedium,
                             color = Charcoal.Muted,
                         )
+                    }
+                }
+            }
+
+            // Penny counted this once, or twice on the user's word: said, and put right in a tap.
+            pennyAnswer?.let { a ->
+                Spacer(Modifier.height(12.dp))
+                Panel(Modifier.padding(horizontal = 14.dp)) {
+                    SectionHeading("Penny's answer")
+                    val time = java.time.format.DateTimeFormatter.ofPattern("HH:mm")
+                    fun at(spend: com.spendroid.data.db.SeenSpendEntity) =
+                        java.time.Instant.ofEpochMilli(spend.seenAt).atZone(java.time.ZoneId.systemDefault()).format(time)
+                    a.repeats.forEach { r ->
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            "Counted once. A second notification at ${at(r)} was taken as the same payment and removed.",
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        BigButton("It was two payments, count both", null, { onChangeAnswer(r.id, a.counted.id, false) }, Modifier.fillMaxWidth())
+                    }
+                    a.twin?.let { t ->
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            "Counted twice. You said this and the payment at ${at(t)} were both real.",
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        BigButton("It was one payment, remove the extra", null, { onChangeAnswer(a.counted.id, t.id, true) }, Modifier.fillMaxWidth())
                     }
                 }
             }

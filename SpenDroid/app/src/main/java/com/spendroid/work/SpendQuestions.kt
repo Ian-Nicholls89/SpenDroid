@@ -57,8 +57,8 @@ object SpendQuestions {
         }
         val builder = NotificationCompat.Builder(context, CHANNEL)
             .setSmallIcon(com.spendroid.R.drawable.ic_stat_droid)
-            .setContentTitle("$what · which account?")
-            .setContentText("It's counted already. Tap the account it came from.")
+            .setContentTitle(questionTitle(spend.merchant))
+            .setContentText("$what · which account? It's counted already.")
             .setContentIntent(open)
             .setAutoCancel(true)
         if (accounts.size <= MAX_ACTIONS) {
@@ -102,10 +102,11 @@ object SpendQuestions {
         )
         val spend = repeat.spend
         val id = repeatId(spend.id)
+        val shop = shopName(spend.merchant) ?: spend.merchant
         val what = if (Privacy(context).notificationFigures) {
-            "${formatMoney(-spend.amountMinor, spend.currency)} at ${spend.merchant} twice today"
+            "Did you pay ${formatMoney(-spend.amountMinor, spend.currency)} at $shop once or twice today?"
         } else {
-            "Two payments at ${spend.merchant} today"
+            "Did you pay at $shop once or twice today?"
         }
         val open = context.packageManager.getLaunchIntentForPackage(context.packageName)?.let {
             PendingIntent.getActivity(context, id, it, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
@@ -122,19 +123,32 @@ object SpendQuestions {
         )
         val builder = NotificationCompat.Builder(context, REPEAT_CHANNEL)
             .setSmallIcon(com.spendroid.R.drawable.ic_stat_droid)
-            .setContentTitle("Penny has a question about your recent spending")
-            .setContentText("$what - once, or twice?")
+            .setContentTitle(questionTitle(spend.merchant))
+            .setContentText(what)
             .setStyle(
                 NotificationCompat.BigTextStyle().bigText(
-                    "$what. It could be two purchases, or one counted twice. Both are counted until you say.",
+                    "$what Two payments alike were seen. Both are counted until you say, and you can change your answer later from the payment.",
                 ),
             )
             .setContentIntent(open)
             .setAutoCancel(true)
-            .addAction(0, "Just once", answer(once = true))
-            .addAction(0, "Both were real", answer(once = false))
+            // Short, as notification buttons are: they answer the question right above them.
+            .addAction(0, "Once", answer(once = true))
+            .addAction(0, "Twice", answer(once = false))
         NotificationManagerCompat.from(context).notify(id, builder.build())
     }
+
+    /**
+     * "Penny has a question about your spend at Tesco" - the shop's tidy name where there is a
+     * clean one, else "your recent spending" rather than a bank's raw string.
+     */
+    internal fun questionTitle(merchant: String): String =
+        shopName(merchant)?.let { "Penny has a question about your spend at $it" } ?: "Penny has a question about your recent spending"
+
+    /** A shop's name fit for a sentence, or null: no letters, or too long to read at a glance. */
+    internal fun shopName(merchant: String): String? =
+        com.spendroid.data.PayeeNames.nameFor(merchant.trim())?.trim()?.takeIf { it.length in 2..24 }
+            ?: com.spendroid.domain.ShopName.clean(merchant)
 
     /** Takes Penny's question away once answered in the app. */
     fun repeatAnswered(context: Context, spendId: String) {

@@ -160,7 +160,7 @@ internal fun BalanceCheckSheet(
                 when {
                     r.gapMinor == 0L -> Text("Spot on: ${money(r.typedMinor)}, as expected.", style = MaterialTheme.typography.titleMedium, color = Charcoal.In)
                     r.gapMinor < 0L -> Text(
-                        "${money(-r.gapMinor)} more than expected - a refund or money paid in that SpenDroid hasn't seen. The balance is updated.",
+                        "${money(-r.gapMinor)} more than expected - a refund or money paid in that Penny hasn't seen. The balance is updated.",
                         style = MaterialTheme.typography.bodyMedium,
                     )
                     else -> Text("${money(r.gapMinor)} less than expected", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
@@ -187,7 +187,7 @@ internal fun BalanceCheckSheet(
                 } else {
                     if (r.gapMinor > 0) {
                         Text(
-                            "Something SpenDroid hasn't seen yet, like a direct debit or cash. It's counted as spending until a statement shows what it was.",
+                            "Something Penny hasn't seen yet, like a direct debit or cash. It's counted as spending until a statement shows what it was.",
                             style = MaterialTheme.typography.bodySmall,
                             color = Charcoal.Muted,
                             modifier = Modifier.padding(top = 4.dp),

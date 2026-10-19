@@ -202,7 +202,7 @@ internal fun CardAlertsSection(
         Text("3. Cards in Google Wallet", style = MaterialTheme.typography.labelLarge)
         Text(
             "Turn on each account whose card is in Google Wallet. The last four digits tell cards apart; " +
-                "leave them blank and SpenDroid will ask once and remember.",
+                "leave them blank and Penny will ask once and remember.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -245,7 +245,7 @@ internal fun CardAlertsSection(
             TextButton(onClick = onClear, enabled = samples.isNotEmpty()) { Text("Clear") }
         }
         Text(
-            "Tap one to teach SpenDroid: count notifications worded like it, or ignore them.",
+            "Tap one to teach Penny: count notifications worded like it, or ignore them.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -349,7 +349,7 @@ private fun SamplesDialog(
         val reads = remember(sample, learned) { NotificationSpend.parse(sample.source, sample.title, sample.text, learned) }
         AlertDialog(
             onDismissRequest = { teaching = null },
-            title = { Text("Teach SpenDroid") },
+            title = { Text("Teach Penny") },
             text = {
                 Column {
                     sample.title?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
