@@ -79,12 +79,75 @@ object SpendQuestions {
         NotificationManagerCompat.from(context).notify(id, builder.build())
     }
 
+    private const val ACTION_REPEAT = "com.spendroid.SPEND_REPEAT"
+    private const val EXTRA_TWIN = "twin"
+    private const val EXTRA_ONCE = "once"
+    private const val REPEAT_CHANNEL = "spend_repeats"
+
+    private fun repeatId(spendId: String) = ("repeat|$spendId").hashCode()
+
+    /**
+     * "Penny has a question about your recent spending": two payments alike on one day - once,
+     * or twice? Answered from the notification, or later from the card at the top of Home.
+     */
+    fun askRepeat(context: Context, repeat: com.spendroid.domain.NotificationSpend.Repeat) {
+        if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) return
+        if (android.os.Build.VERSION.SDK_INT >= 33 &&
+            context.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) return
+        context.getSystemService(NotificationManager::class.java).createNotificationChannel(
+            NotificationChannel(REPEAT_CHANNEL, "Penny's questions", NotificationManager.IMPORTANCE_DEFAULT).apply {
+                description = "Two payments alike on one day: one purchase, or two?"
+            },
+        )
+        val spend = repeat.spend
+        val id = repeatId(spend.id)
+        val what = if (Privacy(context).notificationFigures) {
+            "${formatMoney(-spend.amountMinor, spend.currency)} at ${spend.merchant} twice today"
+        } else {
+            "Two payments at ${spend.merchant} today"
+        }
+        val open = context.packageManager.getLaunchIntentForPackage(context.packageName)?.let {
+            PendingIntent.getActivity(context, id, it, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        }
+        fun answer(once: Boolean) = PendingIntent.getBroadcast(
+            context,
+            id * 31 + if (once) 1 else 2,
+            Intent(context, SpendAnswerReceiver::class.java)
+                .setAction(ACTION_REPEAT)
+                .putExtra(EXTRA_SPEND, spend.id)
+                .putExtra(EXTRA_TWIN, repeat.twin.id)
+                .putExtra(EXTRA_ONCE, once),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+        val builder = NotificationCompat.Builder(context, REPEAT_CHANNEL)
+            .setSmallIcon(com.spendroid.R.drawable.ic_stat_droid)
+            .setContentTitle("Penny has a question about your recent spending")
+            .setContentText("$what - once, or twice?")
+            .setStyle(
+                NotificationCompat.BigTextStyle().bigText(
+                    "$what. It could be two purchases, or one counted twice. Both are counted until you say.",
+                ),
+            )
+            .setContentIntent(open)
+            .setAutoCancel(true)
+            .addAction(0, "Just once", answer(once = true))
+            .addAction(0, "Both were real", answer(once = false))
+        NotificationManagerCompat.from(context).notify(id, builder.build())
+    }
+
+    /** Takes Penny's question away once answered in the app. */
+    fun repeatAnswered(context: Context, spendId: String) {
+        NotificationManagerCompat.from(context).cancel(repeatId(spendId))
+    }
+
     /** Takes the question away once answered in the app, so it isn't answered twice. */
     fun answered(context: Context, spendId: String) {
         NotificationManagerCompat.from(context).cancel(spendId.hashCode())
     }
 
     internal fun answer(context: Context, intent: Intent, pending: BroadcastReceiver.PendingResult) {
+        if (intent.action == ACTION_REPEAT) return answerRepeat(context, intent, pending)
         val spendId = intent.getStringExtra(EXTRA_SPEND)
         val accountId = intent.getStringExtra(EXTRA_ACCOUNT)
         val app = context.applicationContext as? BudgetApplication
@@ -101,6 +164,26 @@ object SpendQuestions {
             } finally {
                 pending.finish()
             }
+        }
+    }
+}
+
+private fun answerRepeat(context: Context, intent: Intent, pending: BroadcastReceiver.PendingResult) {
+    val spendId = intent.getStringExtra("spend")
+    val twinId = intent.getStringExtra("twin")
+    val app = context.applicationContext as? BudgetApplication
+    if (spendId == null || twinId == null || app == null) {
+        pending.finish()
+        return
+    }
+    SpendQuestions.repeatAnswered(context, spendId)
+    CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
+        try {
+            app.repository.answerRepeat(spendId, twinId, once = intent.getBooleanExtra("once", false))
+            refreshWidgets(context)
+            refreshCardWidgets(context)
+        } finally {
+            pending.finish()
         }
     }
 }

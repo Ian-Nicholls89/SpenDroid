@@ -469,6 +469,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                                                     sources = viewModel.spendSources.collectAsStateWithLifecycle().value,
                                                     accountsOnly = true,
                                                     modifier = Modifier,
+                                                    onRepeat = viewModel::answerRepeat,
                                                 )
                                             },
                                         )
@@ -508,6 +509,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                                                     onDismiss = viewModel::dismissSeenSpend,
                                                     sources = viewModel.spendSources.collectAsStateWithLifecycle().value,
                                                     coverage = state.manualCoverage,
+                                                    onRepeat = viewModel::answerRepeat,
                                                 )
                                             },
                                         )

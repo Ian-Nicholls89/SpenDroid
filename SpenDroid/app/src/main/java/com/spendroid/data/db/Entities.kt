@@ -103,6 +103,8 @@ data class SeenSpendEntity(
      * dismissed, so it's never counted, but it marks the other as having its partner.
      */
     val pairedWithId: String? = null,
+    /** The user said this and a payment like it the same day were two purchases, not one twice. */
+    val confirmedSeparate: Boolean = false,
 )
 
 /**

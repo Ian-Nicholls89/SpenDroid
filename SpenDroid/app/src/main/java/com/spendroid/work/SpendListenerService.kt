@@ -48,6 +48,10 @@ class SpendListenerService : NotificationListenerService() {
                 runCatching { repo.questionFor(source, sbn.postTime) }.getOrNull()?.let { (spend, accounts) ->
                     SpendQuestions.ask(applicationContext, spend, accounts)
                 }
+                // The same amount at the same shop twice today: Penny asks, once or twice?
+                runCatching { repo.repeatQuestionFor(sbn.postTime) }.getOrNull()?.let {
+                    SpendQuestions.askRepeat(applicationContext, it)
+                }
             }
         }
     }

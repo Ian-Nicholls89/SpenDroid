@@ -27,6 +27,7 @@ import com.spendroid.domain.NotificationSpend
 import java.time.format.DateTimeFormatter
 
 private val DAY = DateTimeFormatter.ofPattern("EEE d MMM")
+private val TIME = DateTimeFormatter.ofPattern("HH:mm")
 
 /**
  * The questions card alerts can raise, pinned above the transaction list and on Home: which
@@ -47,13 +48,39 @@ internal fun SeenSpendPrompts(
     /** Accounts with no bank link, and the last day a statement covers each. */
     coverage: Map<String, java.time.LocalDate?> = emptyMap(),
     modifier: Modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+    /** Penny's "once, or twice?": the payment asked about, its twin, and whether it was just once. */
+    onRepeat: (spendId: String, twinId: String, once: Boolean) -> Unit = { _, _, _ -> },
 ) {
     val now = System.currentTimeMillis()
     val unassigned = NotificationSpend.unanswered(seen).sortedByDescending { it.seenAt }
     val unconfirmed = if (accountsOnly) emptyList() else NotificationSpend.unconfirmed(seen, now, coverage)
-    if (unassigned.isEmpty() && unconfirmed.isEmpty()) return
+    // Asked on Home as well as Spending: it changes the budget either way.
+    val repeats = NotificationSpend.possibleRepeats(seen)
+    if (unassigned.isEmpty() && unconfirmed.isEmpty() && repeats.isEmpty()) return
 
     Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        repeats.forEach { repeat ->
+            val spend = repeat.spend
+            val times = listOf(repeat.twin.seenAt, spend.seenAt).sorted().joinToString(" and ") {
+                java.time.Instant.ofEpochMilli(it).atZone(java.time.ZoneId.systemDefault()).format(TIME)
+            }
+            QuestionCard("Penny has a question", Charcoal.Warn) {
+                Text(
+                    "${formatMoney(-spend.amountMinor, spend.currency)} at ${spend.merchant}, twice · ${NotificationSpend.dateOf(spend.seenAt).format(DAY)}, $times",
+                    style = MaterialTheme.typography.titleSmall,
+                )
+                Text(
+                    "The same amount at the same place on one day. It could be two purchases, or one counted twice. Both are counted until you say.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Charcoal.Muted,
+                )
+                Spacer(Modifier.height(10.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    BigButton("Just once", null, { onRepeat(spend.id, repeat.twin.id, true) }, Modifier.weight(1f), colour = Charcoal.Warn, textColour = Color(0xFF111111))
+                    BigButton("Both were real", null, { onRepeat(spend.id, repeat.twin.id, false) }, Modifier.weight(1f))
+                }
+            }
+        }
         unassigned.forEach { spend ->
             // The accounts it could be: the ones its app covers, or the Wallet cards.
             val choices = NotificationSpend.candidatesFor(spend.source, sources, accounts)?.takeIf { it.isNotEmpty() }

@@ -108,6 +108,29 @@ class ScreensTest {
         }
     }
 
+    /** 5.3: Penny's "once, or twice?" on Home. Made-up figures. */
+    @Test
+    @Config(qualifiers = "w411dp-h1500dp-xxhdpi")
+    fun pennyQuestion() {
+        val state = Sample.state()
+        val nine = java.time.LocalDate.now().atTime(9, 5).atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+        fun shop(id: String, at: Long) = com.spendroid.data.db.SeenSpendEntity(
+            id = id, source = "com.google.android.apps.walletnfcrel", seenAt = at, amountMinor = -10_000, currency = "GBP",
+            merchant = "TESCO STORES", cardDigits = "1234", accountId = state.accounts.first().id,
+        )
+        shoot("penny-question", AppScreen.Home) {
+            HomeScreen(
+                state, onRefresh = {}, onRelink = {}, onSeeAllTransactions = {}, onSetBudgetGoal = { _, _ -> }, onLinkBank = {},
+                prompts = {
+                    com.spendroid.ui.SeenSpendPrompts(
+                        listOf(shop("p1", nine), shop("p2", nine + 4 * 60_000)), state.accounts, { _, _ -> }, {}, {},
+                        accountsOnly = true, modifier = Modifier,
+                    )
+                },
+            )
+        }
+    }
+
     @Test
     @Config(qualifiers = "w411dp-h1100dp-xxhdpi")
     fun accounts() {

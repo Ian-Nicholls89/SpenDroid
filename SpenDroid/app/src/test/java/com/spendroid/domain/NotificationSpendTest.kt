@@ -194,6 +194,39 @@ class NotificationSpendTest {
     }
 
     @Test
+    fun `penny asks about the same amount at the same shop twice in a day`() {
+        val shop = { id: String, h: Int, m: Int -> seen(id, 10000, at(26, h, m)).copy(merchant = "TESCO STORES", cardDigits = "4168") }
+        val first = shop("a", 9, 5)
+        val second = shop("b", 9, 6)
+        val r = NotificationSpend.possibleRepeats(listOf(first, second), zone).single()
+        assertEquals("b", r.spend.id)
+        assertEquals("a", r.twin.id)
+        // The later one is asked about even hours apart - the same day is enough to ask.
+        assertEquals("b", NotificationSpend.possibleRepeats(listOf(first, shop("b", 18, 0)), zone).single().spend.id)
+        // The one the bank hasn't listed is the one asked about.
+        assertEquals("a", NotificationSpend.possibleRepeats(listOf(first, second.copy(matchedTransactionId = "row")), zone).single().spend.id)
+        // Both listed by the bank, answered "both were real", or already dropped: no question.
+        val none = emptyList<NotificationSpend.Repeat>()
+        assertEquals(none, NotificationSpend.possibleRepeats(listOf(first.copy(matchedTransactionId = "r1"), second.copy(matchedTransactionId = "r2")), zone))
+        assertEquals(none, NotificationSpend.possibleRepeats(listOf(first, second.copy(confirmedSeparate = true)), zone))
+        assertEquals(none, NotificationSpend.possibleRepeats(listOf(first, second.copy(dismissed = true)), zone))
+        // Another day, amount, card or shop: no question.
+        assertEquals(none, NotificationSpend.possibleRepeats(listOf(first, second.copy(seenAt = at(27, 9, 6))), zone))
+        assertEquals(none, NotificationSpend.possibleRepeats(listOf(first, second.copy(amountMinor = -9999)), zone))
+        assertEquals(none, NotificationSpend.possibleRepeats(listOf(first, second.copy(cardDigits = "6627")), zone))
+        assertEquals(none, NotificationSpend.possibleRepeats(listOf(first, second.copy(merchant = "COSTA")), zone))
+        // A similar name is the same shop: "TESCO STORES 2231" and "TESCO".
+        assertEquals(1, NotificationSpend.possibleRepeats(listOf(first, second.copy(merchant = "TESCO")), zone).size)
+    }
+
+    @Test
+    fun `an answered "both were real" is never dropped as a repeat`() {
+        val first = seen("a", 6350, at(26, 15, 47), matched = "row").copy(cardDigits = "4168")
+        val second = seen("b", 6350, at(26, 15, 57)).copy(cardDigits = "4168", confirmedSeparate = true)
+        assertEquals(emptyList<Any>(), NotificationSpend.repeatsRuledOut(listOf(first, second), mapOf("current" to at(26, 20, 0))))
+    }
+
+    @Test
     fun `a bank row too late or for another amount does not`() {
         val m = NotificationSpend.matches(
             listOf(seen("a", 320, at(20))),

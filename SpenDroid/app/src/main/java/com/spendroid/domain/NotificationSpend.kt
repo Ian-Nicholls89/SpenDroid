@@ -509,7 +509,7 @@ object NotificationSpend {
         val matched = seen.filter { it.matchedTransactionId != null && !it.dismissed }
         val used = HashSet<String>()
         return seen
-            .filter { it.matchedTransactionId == null && !it.dismissed && !it.keptByUser }
+            .filter { it.matchedTransactionId == null && !it.dismissed && !it.keptByUser && !it.confirmedSeparate }
             .sortedBy { it.seenAt }
             .mapNotNull { spend ->
                 val account = spend.countedOn ?: return@mapNotNull null
@@ -528,6 +528,46 @@ object NotificationSpend {
                 spend to twin.id
             }
     }
+
+    /** Two payments alike on one day: [spend], counted, may be [twin] announced again. */
+    data class Repeat(val spend: SeenSpendEntity, val twin: SeenSpendEntity)
+
+    /**
+     * Payments Penny asks about: two seen the same day, for the same amount, at the same or a
+     * similar shop, on the same card where both show one - two coffees, or one shop counted
+     * twice. Not when the bank has listed both, nor once the user has said both were real. The
+     * one asked about is one the bank hasn't listed, the later where neither is. Both stay
+     * counted until answered: a cautious budget rather than a generous one.
+     */
+    fun possibleRepeats(seen: List<SeenSpendEntity>, zone: ZoneId = ZoneId.systemDefault()): List<Repeat> {
+        val live = seen.filter { !it.dismissed && it.countedOn != null }.sortedBy { it.seenAt }
+        val used = HashSet<String>()
+        val result = mutableListOf<Repeat>()
+        for (i in live.indices) {
+            for (j in i + 1 until live.size) {
+                val a = live[i]
+                val b = live[j]
+                if (a.id in used || b.id in used) continue
+                if (a.amountMinor != b.amountMinor || a.currency != b.currency) continue
+                if (dateOf(a.seenAt, zone) != dateOf(b.seenAt, zone)) continue
+                if (a.cardDigits != null && b.cardDigits != null && a.cardDigits != b.cardDigits) continue
+                if (!sameShop(a.merchant, b.merchant)) continue
+                val spend = when {
+                    b.matchedTransactionId == null -> b
+                    a.matchedTransactionId == null -> a
+                    else -> continue
+                }
+                if (spend.confirmedSeparate || spend.keptByUser) continue
+                used += a.id
+                used += b.id
+                result += Repeat(spend, if (spend === b) a else b)
+            }
+        }
+        return result
+    }
+
+    private fun sameShop(a: String, b: String): Boolean =
+        a.isBlank() || b.isBlank() || a.trim().equals(b.trim(), ignoreCase = true) || sharesWord(a, b)
 
     /**
      * Why a seen spend has or hasn't been handed to a bank row, line by line, for the detail

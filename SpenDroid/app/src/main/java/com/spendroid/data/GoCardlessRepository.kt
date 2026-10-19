@@ -370,6 +370,16 @@ class GoCardlessRepository private constructor(
         reconcileSeenSpends()
     }
 
+    /** The question to ask now, if the payment just seen at [postedAt] may be one counted twice. */
+    suspend fun repeatQuestionFor(postedAt: Long): NotificationSpend.Repeat? =
+        NotificationSpend.possibleRepeats(dao.seenSpends()).firstOrNull { it.spend.seenAt == postedAt || it.twin.seenAt == postedAt }
+
+    /** The user's answer to "twice, or once?": [once] drops [spendId] as a repeat of [twinId]. */
+    suspend fun answerRepeat(spendId: String, twinId: String, once: Boolean) {
+        val spend = dao.seenSpends().firstOrNull { it.id == spendId } ?: return
+        dao.upsertSeenSpend(if (once) spend.copy(dismissed = true, pairedWithId = twinId) else spend.copy(confirmedSeparate = true))
+    }
+
     suspend fun dismissSeenSpend(id: String) {
         dao.seenSpends().firstOrNull { it.id == id }?.let { dao.upsertSeenSpend(it.copy(dismissed = true)) }
     }

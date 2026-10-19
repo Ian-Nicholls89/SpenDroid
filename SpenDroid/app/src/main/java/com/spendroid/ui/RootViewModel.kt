@@ -634,6 +634,15 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch { repo.dismissSeenSpend(id) }
     }
 
+    /** Penny's "once, or twice?" answered: [once] drops [spendId] as a repeat of [twinId]. */
+    fun answerRepeat(spendId: String, twinId: String, once: Boolean) {
+        com.spendroid.work.SpendQuestions.repeatAnswered(getApplication(), spendId)
+        viewModelScope.launch {
+            repo.answerRepeat(spendId, twinId, once)
+            loadLocal()
+        }
+    }
+
     fun keepSeenSpend(id: String) {
         viewModelScope.launch { repo.keepSeenSpend(id) }
     }
