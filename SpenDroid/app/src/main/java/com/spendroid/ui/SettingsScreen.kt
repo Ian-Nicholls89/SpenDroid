@@ -492,16 +492,23 @@ private fun UpdatesSection(
     )
     Spacer(Modifier.height(4.dp))
     Text(
-        "Penny works out what's left to spend until payday, after your bills and card statements. " +
-            "She keeps up from a bank link, your banking apps' and Google Wallet's notifications, or " +
-            "statements you import - with a bank link or without one - and asks when she isn't sure.",
+        "Penny is a SpenDroid, a budgeting assistant. She works out what's left to spend until payday, " +
+            "after your bills and card statements.",
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
     Spacer(Modifier.height(4.dp))
     Text(
-        "Everything stays on this phone: no account, no server. On your watch, your home screen and, " +
-            "when you ask, your computer.",
+        "She keeps an eye on your spending through your banking apps' and Google Wallet's notifications, " +
+            "or statements you import, and can link straight to your bank through open banking (GoCardless). " +
+            "She learns your spending habits and asks when she isn't sure, to help you get a better handle " +
+            "on your day-to-day spending.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    Spacer(Modifier.height(4.dp))
+    Text(
+        "Everything stays on this phone: no account, no server.",
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
