@@ -271,7 +271,7 @@ private fun Primary(text: String, enabled: Boolean = true, onClick: () -> Unit) 
 private fun Welcome(onStatements: () -> Unit, onFresh: () -> Unit, onGoCardless: () -> Unit) {
     Spacer(Modifier.height(36.dp))
     Title("Know what you can spend, every day")
-    Lead("Meet Penny. She works out what's left until payday, after your bills and card statements. Everything stays on this phone: no account, no server.")
+    Lead("Meet Penny. She works out what's left until payday, after your bills and card statements. Your personal and private assistant: no account, no company cloud.")
     Choice(
         "⇪", "Use your bank's statements", "RECOMMENDED",
         "Download a statement from your bank's app or website. Penny reads it, then stays up to date from your banking notifications.",
