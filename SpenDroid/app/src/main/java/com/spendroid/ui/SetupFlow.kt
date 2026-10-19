@@ -270,7 +270,7 @@ private fun Primary(text: String, enabled: Boolean = true, onClick: () -> Unit) 
 @Composable
 private fun Welcome(onStatements: () -> Unit, onFresh: () -> Unit, onGoCardless: () -> Unit) {
     Spacer(Modifier.height(28.dp))
-    Title("Meet Penny.")
+    Title("Meet Penny")
     // And there she is, in her payday best - a smile, a full visor and confetti.
     androidx.compose.foundation.layout.Box(Modifier.fillMaxWidth().padding(vertical = 8.dp), contentAlignment = androidx.compose.ui.Alignment.Center) {
         Droid(DroidFace(DroidMood.PAYDAY, used = 1f, elapsed = 0f), 120.dp)
