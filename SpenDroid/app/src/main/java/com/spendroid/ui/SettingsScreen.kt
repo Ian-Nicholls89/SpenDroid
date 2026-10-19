@@ -508,7 +508,7 @@ private fun UpdatesSection(
     )
     Spacer(Modifier.height(4.dp))
     Text(
-        "She is your personal and private assistant: no account, no server.",
+        "She is your personal and private assistant: no account, no company cloud. Your data stays with you.",
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
