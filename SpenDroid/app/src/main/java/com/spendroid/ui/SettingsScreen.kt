@@ -508,7 +508,7 @@ private fun UpdatesSection(
     )
     Spacer(Modifier.height(4.dp))
     Text(
-        "Everything stays on this phone: no account, no server.",
+        "She is your personal and private assistant: no account, no server.",
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
