@@ -259,3 +259,42 @@ def current_f():
     c.save()
 
 current_f()
+
+# --- G: Barclays-style, made up: Payments / Receipts / Balance, date once per day, an interim
+# balance carried forward at the foot of page 1, and page 2 "Continued" with no heading.
+def barclays_g():
+    c = canvas.Canvas("/tmp/pdfimp/samples/g-barclays-interim.pdf", pagesize=A4)
+    c.setFont("Helvetica", 9)
+    c.drawString(60, H - 60, "Your Business Current Account"); c.drawString(60, H - 75, "1 Feb - 28 Feb 2026")
+    c.drawString(330, H - 60, "Start balance"); c.drawRightString(540, H - 60, "£1,000.00")
+    c.drawString(330, H - 74, "Money out"); c.drawRightString(540, H - 74, "£180.40")
+    c.drawString(330, H - 88, "Money in"); c.drawRightString(540, H - 88, "£500.00")
+    c.drawString(330, H - 102, "End balance"); c.drawRightString(540, H - 102, "£1,319.60")
+    y = H - 140
+    c.setFont("Helvetica-Bold", 9)
+    c.drawString(60, y, "Date"); c.drawString(110, y, "Description"); c.drawRightString(400, y, "Payments"); c.drawRightString(470, y, "Receipts"); c.drawRightString(540, y, "Balance")
+    c.setFont("Helvetica", 9); y -= 16
+    def row(d, desc, pay=None, rec=None, bal=None):
+        nonlocal y
+        if d: c.drawString(60, y, d)
+        c.drawString(110, y, desc)
+        if pay: c.drawRightString(400, y, pay)
+        if rec: c.drawRightString(470, y, rec)
+        if bal: c.drawRightString(540, y, bal)
+        y -= 14
+    row("1 Feb", "Start balance", bal="1,000.00")
+    row("3 Feb", "Card Payment to Corner Shop On 2 Feb", pay="12.40")
+    row(None, "Direct debit to Water Co", pay="38.00", bal="949.60")
+    row("10 Feb", "Direct credit from A Customer Ref: Inv 12", rec="500.00", bal="1,449.60")
+    row(None, "Interim balance carried forward", bal="1,449.60")
+    c.drawString(60, 40, "Barclays-style example. Page 1"); c.showPage()
+    c.setFont("Helvetica", 9); y = H - 80
+    c.drawString(60, y, "Continued"); y -= 18
+    row("14 Feb", "Interim balance brought forward", bal="1,449.60")
+    row(None, "Card Payment to Garage On 13 Feb", pay="65.00")
+    row(None, "Standing order to Landlord", pay="50.00", bal="1,334.60")
+    row("20 Feb", "Cash machine withdrawal at High St", pay="15.00", bal="1,319.60")
+    row("28 Feb", "Balance carried forward", bal="1,319.60")
+    c.drawString(60, 40, "Barclays-style example. Page 2"); c.showPage(); c.save()
+
+barclays_g()

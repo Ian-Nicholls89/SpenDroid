@@ -62,17 +62,18 @@ const CHECK_LINES = [
 
 const heading = (words) => new RegExp("^(?:\\(?£\\)?\\s*)?(?:" + words + ")(?:\\s*\\(?£\\)?)?$", "i");
 const HEADER_AMOUNT_WORDS = [
-  { kind: "out", re: heading("paid out|money out|out|debits?|withdrawals?|payments? out|spent") },
+  { kind: "out", re: heading("paid out|money out|out|debits?|withdrawals?|withdrawn|payments? out|payments|spent") },
   { kind: "in", re: heading("paid in|money in|in|credits?|deposits?|receipts?|payments? in") },
   { kind: "balance", re: heading("(?:total |running |available |account )?balance") },
   { kind: "amount", re: heading("amount|value|sum|how much") },
 ];
 // A bank's code for the kind of payment, at the start of its details: dropped from the description.
-const TYPE_CODE = /^(\)\)\)|VIS|DD|BP|SO|STO|CR|DR|TFR|CHQ|ATM|CPT|FPI|FPO|BGC|POS|DEB|FEE|INT|OBP|PAY|BAC|COR|CSH|MPI|MPO|SBT|TLR|CHG|ADV)\s+/;
+const TYPE_CODE = /^(\){3,4}|VIS|DD|BP|SO|STO|CR|DR|TFR|CHQ|ATM|CPT|FPI|FPO|BGC|POS|DEB|DEP|CC|FEE|INT|OBP|PAY|BAC|COR|CSH|MPI|MPO|SBT|TLR|CHG|ADV)\s+/;
+const TYPE_CELL = /^(\){3,4}|VIS|DD|BP|SO|STO|CR|DR|TFR|CHQ|ATM|CPT|FPI|FPO|BGC|POS|DEB|DEP|CC|FEE|INT|OBP|PAY|BAC|COR|CSH|MPI|MPO|SBT|TLR|CHG|ADV)$/;
 // Totals in a summary box worth checking against: "Payments In £1,234.56", "Payments Out ...".
 const SUMMARY_TOTALS = [
-  { kind: "totalIn", re: /(?:payments|money|paid|total) in\b/i },
-  { kind: "totalOut", re: /(?:payments|money|paid|total) out\b/i },
+  { kind: "totalIn", re: /(?:payments|money|paid|total) in\b|total deposits|deposits\b/i },
+  { kind: "totalOut", re: /(?:payments|money|paid|total) out\b|withdrawn\b|total withdrawals|withdrawals\b/i },
 ];
 const HEADER_DATE = /\b(date|when)\b/i;
 const HEADER_DESC = /\b(description|details|transaction|what|narrative|merchant|payee)\b/i;
@@ -108,6 +109,9 @@ function signedForCheck(a, card) {
   return below.includes(a.mark) ? -a.pence : a.pence;
 }
 
+const SCREEN_READER = /^(column|[a-z ]+(\(£\))?\s*blank)$/i;
+const HEADING_WORD = /^(date|description|details|type|money (in|out)|paid (in|out)|balance|amount)(\s*\(£\))?$/i;
+
 /** Words to lines: items on the same baseline, left to right, merged into cells where they touch. */
 function toLines(page) {
   const items = page.items
@@ -133,8 +137,15 @@ function toLines(page) {
         cells.push({ text: it.str, x: it.x, w: it.w });
       }
     }
-    cells.forEach((c) => { c.text = c.text.replace(/\s+/g, " ").trim(); c.right = c.x + c.w; });
-    return { y: line.y, h: line.h, cells: cells.filter((c) => c.text), text: cells.map((c) => c.text).join("  ").trim() };
+    cells.forEach((c) => {
+      // Lloyds writes "01 Feb 24." and "186.57."; and its screen-reader labels - "Column",
+      // "Money In (£)blank." - are in the text too, though nothing shows on the page.
+      c.text = c.text.replace(/\s+/g, " ").trim().replace(/\.$/, "").trim();
+      if (SCREEN_READER.test(c.text)) c.text = "";
+      c.right = c.x + c.w;
+    });
+    const kept = cells.filter((c) => c.text);
+    return { y: line.y, h: line.h, cells: kept, text: kept.map((c) => c.text).join("  ").trim() };
   });
 }
 
@@ -217,11 +228,23 @@ function stacked(line, above, below) {
   return groups.map((g) => ({ x: g.x, right: g.right, w: g.right - g.x, text: g.parts.sort((a, b) => a.order - b.order).map((q) => q.text).join(" ") }));
 }
 
+const ANY_HEADING = /(paid out|paid in|money out|money in|withdrawn|withdrawals?|deposits?|debits?|credits?|(?:total |running )?balance|amount)(\s*\(?£\)?)?/gi;
+
+/** "Paid In(£) Withdrawn(£)" run together in one cell: two headings, each where it sits. */
+function splitHeadings(cells) {
+  return cells.flatMap((c) => {
+    const found = [...c.text.matchAll(ANY_HEADING)];
+    if (found.length < 2) return [c];
+    const per = c.w / Math.max(c.text.length, 1);
+    return found.map((m) => ({ ...c, text: m[0].trim(), x: c.x + m.index * per, right: c.x + (m.index + m[0].length) * per, w: m[0].length * per }));
+  });
+}
+
 /** A header row: a date heading, and at least one money heading. Returns its money columns. */
 function headerOf(line, above, below) {
   if (!HEADER_DATE.test(line.text)) return null;
   const columns = [];
-  for (const c of stacked(line, above, below)) {
+  for (const c of splitHeadings(stacked(line, above, below))) {
     // A cell may hold several headings run together: "Paid out  Paid in  Balance" stays split by cells.
     for (const w of HEADER_AMOUNT_WORDS) {
       if (w.re.test(c.text.trim())) { columns.push({ kind: w.kind, x: c.x, right: c.right, label: c.text }); break; }
@@ -312,6 +335,7 @@ function readStatement(pages) {
   // Where descriptions really start, learnt from dated rows: a heading is often centred over them.
   let descStart = null;
   let closed = false; // after the closing balance: the table is over until a heading starts another
+  let closedForPage = false; // after "carried forward": over for this page, on again at the next
   let pendingSummary = null; // "Balance brought forward from" / "£1,234.56" / "previous statement"
   let lastDate = null; // for statements that print the date once per day
   // Running sums, the way the statement keeps them.
@@ -345,28 +369,38 @@ function readStatement(pages) {
   };
 
   pageLines.forEach((lines, p) => {
+    if (closedForPage) { closed = false; closedForPage = false; }
     const seen = [];
     let headerHere = false;
     let prevTx = null, prevY = null;
     // Details waiting for their amount, or run on from the transaction above.
-    let pending = null; // { dates, parts, y }
+    let pending = null; // { dates, parts, y, before } - before: no transaction above it to belong to
     const flush = () => {
       // Left over: on a statement whose amounts come first, the end of the transaction above.
-      if (pending && !amountLast && !pending.dates && prevTx && pending.parts.length) prevTx.description += " " + pending.parts.join(" ");
+      if (pending && !amountLast && !pending.dates && !pending.before && prevTx && pending.parts.length) prevTx.description += " " + pending.parts.join(" ");
       pending = null;
     };
     const tableRows = lines.filter((l) => leadingDates(l.text).dates.length).length;
     for (const [li, line] of lines.entries()) {
       const tag = (kind, extra = {}) => seen.push({ text: line.text, kind, ...extra });
+      if (!line.cells.length) continue; // nothing but screen-reader labels
       const h = pageHeaders[p][li];
       if (h) {
         flush();
-        if (h.descX !== descX) descStart = null;
-        columns = h.columns; descX = h.descX ?? descX; sawHeader = true; headerHere = true; closed = false;
-        tag("header", { columns: columns.map((c) => c.kind) });
+        // The same heading again, row by row - as a screen-reader-friendly PDF repeats it - keeps
+        // the full heading's columns; it only says a new row starts.
+        const repeat = columns && headerHere && h.columns.every((c) => columns.some((k) => k.kind === c.kind));
+        if (!repeat) {
+          if (h.descX !== descX) descStart = null;
+          columns = h.columns; descX = h.descX ?? descX;
+        }
+        sawHeader = true; headerHere = true; closed = false;
+        tag("header", { columns: h.columns.map((c) => c.kind), repeat });
         prevTx = null;
         continue;
       }
+      // Headings alone - "Description", "Money In (£)" - are labels, not details.
+      if (line.cells.length && line.cells.every((c) => HEADING_WORD.test(c.text))) { tag("ignored"); continue; }
       // Before any table on this page - a cover page, the top of a page - only checks are read.
       const tableOpen = sawHeader && !closed && (headerHere || tableRows >= 3);
       const { dates, rest } = leadingDates(line.text);
@@ -391,6 +425,12 @@ function readStatement(pages) {
           continue;
         }
         pendingSummary = null;
+        // "Balance on 01 February 2024. £4,978.68." - the first such is the opening, the next the closing.
+        const on = /balance on \d{1,2} [a-z]+ \d{4}[^£\d]{0,6}(£?[\d,]+\.\d{2})/i.exec(line.text);
+        if (on) {
+          const a = parseAmount(on[1]);
+          if (a) { found = true; if (summary.opening == null) summary.opening = signedForCheck(a, isCard); else if (summary.closing == null) summary.closing = signedForCheck(a, isCard); }
+        }
         for (const k of [...CHECK_LINES.filter((c) => c.kind === "opening" || c.kind === "closing"), ...SUMMARY_TOTALS]) {
           const m = new RegExp("(?:" + k.re.source + ")[^£\\d(\\-]{0,25}(\\(?-?£?\\s?[\\d,]+\\.\\d{2}\\)?(?:\\s?(?:CR|DR|C|D|-(?!\\d)))?)", "i").exec(line.text);
           const a = m && parseAmount(m[m.length - 1]);
@@ -404,6 +444,8 @@ function readStatement(pages) {
 
       if (check && amounts.length) {
         flush();
+        // "14 Feb Interim balance brought forward": the day the rows below it belong to.
+        if (dates.length) lastDate = dates;
         const a = amounts[amounts.length - 1];
         const value = signedForCheck(a, isCard);
         const counted = isCard ? total : (running ?? total);
@@ -426,8 +468,10 @@ function readStatement(pages) {
           const ok = Math.abs(counted - value) < 1;
           checks.push({ what: /carried/i.test(line.text) ? "Carried forward" : "Closing balance", printed: value, counted, ok, page: p + 1 });
           tag("check", { check: "closing", value, ok });
-          // Whatever follows - interest rates, a summary of fees - isn't the statement's list.
+          // Whatever follows - interest rates, a summary of fees - isn't the statement's list. A
+          // balance carried forward only ends the page: the list goes on overleaf.
           closed = true;
+          closedForPage = /carried/i.test(line.text);
         }
         prevTx = null;
         continue;
@@ -443,6 +487,7 @@ function readStatement(pages) {
       if (money.length && !/\d%/.test(line.text)) {
         let ds = null, prefix = [];
         if (dates.length) {
+          if (pending && pending.before && !pending.dates && near(pending.y)) { prefix = pending.parts; pending = null; }
           flush(); ds = dates;
           const first = line.cells.find((c) => !LEAD_DATE.test(c.text) && !parseAmount(c.text, whole));
           if (first && first.x > line.cells[0].x) descStart = descStart == null ? first.x : Math.min(descStart, first.x);
@@ -451,7 +496,7 @@ function readStatement(pages) {
         else { flush(); if (lastDate && (inDescColumn || amountLast)) ds = lastDate; }
         if (ds) {
           lastDate = ds;
-          let description = textCells.map((c) => c.text).join("  ");
+          let description = textCells.filter((c) => !TYPE_CELL.test(c.text)).map((c) => c.text).join("  ");
           description = leadingDates(description).rest;
           let reference = null;
           const r = /^(\d{6,12})\s+(.*)$/.exec(description);
@@ -502,10 +547,10 @@ function readStatement(pages) {
         continue;
       }
       // Details without a date or money: more of the transaction above, or the start of the next.
-      if (!amounts.length && !dates.length && line.text.length < 80 &&
-          ((pending && near(pending.y)) || (prevTx && near(prevY))) &&
+      if (!amounts.length && !dates.length && line.text.length < 80 && tableOpen &&
+          ((pending && near(pending.y)) || (prevTx && near(prevY)) || (!prevTx && headerHere)) &&
           (descFrom == null || line.cells[0].x >= descFrom - 8 || amountLast)) {
-        if (!pending) pending = { dates: null, parts: [], y: line.y };
+        if (!pending) pending = { dates: null, parts: [], y: line.y, before: !prevTx };
         pending.parts.push(line.text);
         pending.y = line.y;
         tag(amountLast ? "details" : "continued");
