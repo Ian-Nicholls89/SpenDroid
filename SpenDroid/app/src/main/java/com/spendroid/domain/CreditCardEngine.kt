@@ -176,14 +176,20 @@ object CreditCardEngine {
                     }
                 )
                 .flatMap { byAccount[it.id].orEmpty() }
-                .filter { tx -> !tx.isPending }
+                // Booked legs first; a pending one after. A direct debit is listed pending - dated
+                // the day it will be taken - while the card already shows the payment booked, and
+                // without that leg the £960 payment read as a refund that cancelled every charge
+                // since the statement closed: "£194.10 so far", the pending charges alone.
+                .sortedBy { it.isPending }
 
             val payments = identifyPayments(cardTxs, payerTxs)
             payments.forEach { (cardTx, payerTx) ->
                 val settlement = "${cardTx.accountId}|${cardTx.transactionId}"
                 settlementKeys.add(settlement)
                 if (payerTx != null) {
-                    paymentKeys.add("${payerTx.accountId}|${payerTx.transactionId}")
+                    // A pending leg says what the credit is, nothing more: how the pending debit
+                    // itself is counted is left as it was until it books.
+                    if (!payerTx.isPending) paymentKeys.add("${payerTx.accountId}|${payerTx.transactionId}")
                     confirmedSettlements.add(settlement)
                 } else if (cardTx.isCardPayment) {
                     confirmedSettlements.add(settlement)
@@ -576,8 +582,9 @@ object CreditCardEngine {
         // settles every other credit worded the same on that card, past and future.
         // Refunds cannot be caught by this: they carry the merchant's name, which is the
         // whole reason the two can be told apart at all.
-        val declaredWordings = cardTxs
-            .filter { it.isCardPayment && it.amountMinor > 0 }
+        // A payment already found by its other leg teaches its wording too: next month's,
+        // booked on the card before the debit has booked, is still a payment.
+        val declaredWordings = (cardTxs.filter { it.isCardPayment && it.amountMinor > 0 } + matched.map { it.first })
             .mapTo(mutableSetOf()) { wording(it.payee) }
         val declared = credits
             .filter { credit ->
