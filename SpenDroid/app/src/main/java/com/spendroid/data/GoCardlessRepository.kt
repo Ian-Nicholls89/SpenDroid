@@ -347,7 +347,7 @@ class GoCardlessRepository private constructor(
         }
         // Announced twice, listed once by the bank: the second announcement was a repeat.
         val synced = dao.accounts().filter { !it.manual && it.lastSynced > 0L }.associate { it.id to it.lastSynced }
-        NotificationSpend.repeatsRuledOut(dao.seenSpends(), synced).forEach { (spend, twin) ->
+        NotificationSpend.repeatsRuledOut(dao.seenSpends(), synced, manualCoverage()).forEach { (spend, twin) ->
             dao.upsertSeenSpend(spend.copy(dismissed = true, pairedWithId = twin))
         }
     }

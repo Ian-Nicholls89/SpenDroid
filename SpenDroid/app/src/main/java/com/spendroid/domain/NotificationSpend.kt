@@ -497,9 +497,15 @@ object NotificationSpend {
      * [TWIN_WINDOW_MS]) the bank has, is a repeat. Wrong, it costs nothing: a real second
      * purchase arrives as the bank's own row and is counted from that.
      *
-     * [lastSynced] by account; an account missing from it (a manual one) has no bank to ask.
+     * [lastSynced] by account, for a bank link. On a manual account the bank has had its say
+     * once an imported statement covers the day ([coverage], as [ManualAccounts.covers]): it
+     * lists the payment once, and the second announcement goes the same way.
      */
-    fun repeatsRuledOut(seen: List<SeenSpendEntity>, lastSynced: Map<String, Long>): List<Pair<SeenSpendEntity, String>> {
+    fun repeatsRuledOut(
+        seen: List<SeenSpendEntity>,
+        lastSynced: Map<String, Long>,
+        coverage: Map<String, LocalDate?> = emptyMap(),
+    ): List<Pair<SeenSpendEntity, String>> {
         val matched = seen.filter { it.matchedTransactionId != null && !it.dismissed }
         val used = HashSet<String>()
         return seen
@@ -507,8 +513,12 @@ object NotificationSpend {
             .sortedBy { it.seenAt }
             .mapNotNull { spend ->
                 val account = spend.countedOn ?: return@mapNotNull null
-                val synced = lastSynced[account] ?: return@mapNotNull null
-                if (synced < spend.seenAt + SETTLE_AFTER_MS) return@mapNotNull null
+                val settled = if (account in coverage) {
+                    ManualAccounts.covers(coverage[account], spend)
+                } else {
+                    lastSynced[account]?.let { it >= spend.seenAt + SETTLE_AFTER_MS } == true
+                }
+                if (!settled) return@mapNotNull null
                 val twin = matched.firstOrNull { other ->
                     other.id !in used && other.source == spend.source && other.amountMinor == spend.amountMinor &&
                         abs(other.seenAt - spend.seenAt) <= TWIN_WINDOW_MS &&

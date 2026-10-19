@@ -179,8 +179,14 @@ class NotificationSpendTest {
         assertEquals(listOf(second to "a"), NotificationSpend.repeatsRuledOut(listOf(first, second), evening))
         // Before the bank has had time to list a second purchase, both stand.
         assertEquals(emptyList<Any>(), NotificationSpend.repeatsRuledOut(listOf(first, second), mapOf("current" to at(26, 16, 30))))
-        // No bank to ask - a manual account - both stand.
-        assertEquals(emptyList<Any>(), NotificationSpend.repeatsRuledOut(listOf(first, second), emptyMap()))
+        // A manual account: no statement yet, or one not reaching far enough past the day - both
+        // stand; a statement covering the day, listing it once - the second is a repeat.
+        val none = mapOf<String, java.time.LocalDate?>("current" to null)
+        assertEquals(emptyList<Any>(), NotificationSpend.repeatsRuledOut(listOf(first, second), emptyMap(), none))
+        val short = mapOf<String, java.time.LocalDate?>("current" to java.time.LocalDate.of(2026, 9, 28))
+        assertEquals(emptyList<Any>(), NotificationSpend.repeatsRuledOut(listOf(first, second), emptyMap(), short))
+        val covered = mapOf<String, java.time.LocalDate?>("current" to java.time.LocalDate.of(2026, 10, 2))
+        assertEquals(listOf(second to "a"), NotificationSpend.repeatsRuledOut(listOf(first, second), emptyMap(), covered))
         // An hour apart is two visits; another card is another purchase.
         val later = seen("c", 6350, at(26, 17, 0)).copy(cardDigits = "4168")
         assertEquals(emptyList<Any>(), NotificationSpend.repeatsRuledOut(listOf(first, later), evening))
