@@ -194,3 +194,68 @@ def card_e():
     c.showPage(); c.save()
 
 card_e()
+
+# --- F: a current account laid out like First Direct's, made up: "£ Paid out" headings, a
+# payment-type code, details over two lines with the amount on the last, the balance once a day,
+# brought/carried forward on each page, and a summary box with Payments In and Out.
+def current_f():
+    c = canvas.Canvas("/tmp/pdfimp/samples/f-current-amount-last.pdf", pagesize=A4)
+    def header(y):
+        c.setFont("Helvetica-Bold", 9)
+        c.drawString(60, y, "Date"); c.drawString(110, y, "Payment type and details")
+        c.drawRightString(400, y, "£ Paid out"); c.drawRightString(470, y, "£ Paid in"); c.drawRightString(540, y, "£ Balance")
+        c.setFont("Helvetica", 9)
+    def row(y, date=None, code=None, details="", out=None, inn=None, bal=None):
+        if date: c.drawString(60, y, date)
+        if code: c.drawString(110, y, code)
+        c.drawString(140, y, details)
+        if out: c.drawRightString(400, y, out)
+        if inn: c.drawRightString(470, y, inn)
+        if bal: c.drawRightString(540, y, bal)
+    c.setFont("Helvetica", 9)
+    c.drawString(60, H - 50, "examplebank.com"); c.drawString(60, H - 62, "03 000 000 000")
+    c.drawString(60, H - 90, "A N OTHER"); c.drawString(60, H - 102, "1 Example Road"); c.drawString(60, H - 114, "TOWN AB1 2CD")
+    c.drawString(330, H - 90, "Your Statement")
+    c.drawString(330, H - 110, "Opening Balance"); c.drawRightString(540, H - 110, "£1,250.00")
+    c.drawString(330, H - 124, "Payments In"); c.drawRightString(540, H - 124, "£2,340.00")
+    c.drawString(330, H - 138, "Payments Out"); c.drawRightString(540, H - 138, "£415.26")
+    c.drawString(330, H - 152, "Closing Balance"); c.drawRightString(540, H - 152, "£3,174.74")
+    c.drawString(330, H - 166, "Arranged Overdraft Limit"); c.drawRightString(540, H - 166, "£250.00")
+    c.drawString(60, H - 190, "29 September to 28 October 2026   Account Statement")
+    c.drawString(60, H - 210, "Account Name   Sortcode   Account Number   Sheet Number")
+    c.drawString(60, H - 222, "MR A N OTHER   00-00-00   00000000   123")
+    y = H - 250; header(y); y -= 18
+    row(y, "29 Sep 26", None, "BALANCE BROUGHT FORWARD", bal="1,250.00"); y -= 14
+    row(y, "29 Sep 26", "DD", "ENERGY COMPANY LTD"); y -= 12
+    row(y, details="GAS PAYMENT", out="92.00"); y -= 12
+    row(y, None, "DD", "NEXTCARD PLC"); y -= 12
+    row(y, details="Credit Card", out="60.04", bal="1,097.96"); y -= 14
+    row(y, "30 Sep 26", ")))", "THE CORNER CAFE"); y -= 12
+    row(y, details="SALISBURY", out="4.25", bal="1,093.71"); y -= 14
+    row(y, "01 Oct 26", "CR", "EXAMPLE EMPLOYER", inn="2,340.00"); y -= 12
+    row(y, None, "VIS", "GARDEN SHOP"); y -= 12
+    row(y, details="123456789", out="18.99"); y -= 12
+    row(y, None, ")))", "BAKERY Plc"); y -= 12
+    row(y, details="Amesbury", out="2.98", bal="3,411.74"); y -= 14
+    row(y, details="Balance carried forward", bal="3,411.74"); y -= 20
+    c.setFont("Helvetica", 7); c.drawString(60, 40, "Example Bank is a division of Example Bank UK plc"); c.showPage()
+    c.setFont("Helvetica", 9)
+    c.drawString(60, H - 50, "examplebank.com"); c.drawString(60, H - 70, "29 September to 28 October 2026")
+    y = H - 100; header(y); y -= 18
+    row(y, details="Balance brought forward", bal="3,411.74"); y -= 14
+    row(y, "05 Oct 26", "SO", "SAVINGS ACCOUNT"); y -= 12
+    row(y, details="TRANSFER", out="200.00"); y -= 12
+    row(y, None, ")))", "CAR PARK CA009"); y -= 12
+    row(y, details="SALISBURY", out="3.00", bal="3,208.74"); y -= 14
+    row(y, "12 Oct 26", "BP", "A FRIEND"); y -= 12
+    row(y, details="DINNER", out="34.00", bal="3,174.74"); y -= 14
+    row(y, "28 Oct 26", None, "Balance carried forward", bal="3,174.74"); y -= 30
+    c.setFont("Helvetica", 8)
+    c.drawString(60, y, "Credit interest rates  balance  AER  Overdraft interest  balance  EAR"); y -= 12
+    c.drawString(60, y, "Credit interest is not paid  over £0  0.00%"); y -= 12
+    c.drawString(60, y, "Arranged  over £0  39.90%"); y -= 12
+    c.drawString(60, 40, "Example Bank is a division of Example Bank UK plc"); c.showPage()
+    tc_page(c, 3, 3)
+    c.save()
+
+current_f()

@@ -49,22 +49,30 @@ const LEAD_DATE = new RegExp(
   "i",
 );
 // A sum of money: "1,234.56", "£1,234.56", "-£3.20", "(626.04)", "626.04 -", "12.50CR", "12.50 DR".
-const AMOUNT = /^(\()?([-+])?\s?£?\s?(\d{1,3}(?:,\d{3})*|\d+)\.(\d{2})\)?(?:\s?(CR|DR|-|\+))?$/i;
-const TRAILING_AMOUNT = /(?:^|\s)((?:\()?[-+]?\s?£?\s?(?:\d{1,3}(?:,\d{3})*|\d+)\.\d{2}\)?(?:\s?(?:CR|DR|-|\+))?)$/i;
+const AMOUNT = /^(\()?([-+])?\s?£?\s?(\d{1,3}(?:,\d{3})*|\d+)\.(\d{2})\)?(?:\s?(CR|DR|C|D|-|\+))?$/i;
+const TRAILING_AMOUNT = /(?:^|\s)((?:\()?[-+]?\s?£?\s?(?:\d{1,3}(?:,\d{3})*|\d+)\.\d{2}\)?(?:\s?(?:CR|DR|C|D|-|\+))?)$/i;
 
 // Lines that are the statement checking itself, never transactions.
 const CHECK_LINES = [
-  { kind: "opening", re: /balance (brought|carried) forward from|brought forward|balance from previous statement|previous (statement )?balance|opening balance|start balance/i },
-  { kind: "closing", re: /carried forward|closing balance|new balance|statement balance|end balance/i },
+  { kind: "opening", re: /balance (brought|carried) forward from|balance brought|brought forward|balance from previous statement|previous (statement )?balance|opening balance|start balance/i },
+  { kind: "closing", re: /balance carried|carried forward|closing balance|new balance|statement balance|end balance/i },
   { kind: "subtotal", re: /sub[- ]?total/i },
   { kind: "total", re: /^\s*total\b/i },
 ];
 
+const money = (words) => new RegExp("^(?:\\(?£\\)?\\s*)?(?:" + words + ")(?:\\s*\\(?£\\)?)?$", "i");
 const HEADER_AMOUNT_WORDS = [
-  { kind: "out", re: /^(paid out|money out|out|debits?|withdrawals?|payments? out|spent)$/i },
-  { kind: "in", re: /^(paid in|money in|in|credits?|deposits?|receipts?|payments? in)$/i },
-  { kind: "balance", re: /^balance(\s*\(?£\)?)?$/i },
-  { kind: "amount", re: /^(amount|value|sum|how much)(\s*\(?£\)?)?$/i },
+  { kind: "out", re: money("paid out|money out|out|debits?|withdrawals?|payments? out|spent") },
+  { kind: "in", re: money("paid in|money in|in|credits?|deposits?|receipts?|payments? in") },
+  { kind: "balance", re: money("balance") },
+  { kind: "amount", re: money("amount|value|sum|how much") },
+];
+// A bank's code for the kind of payment, at the start of its details: dropped from the description.
+const TYPE_CODE = /^(\)\)\)|VIS|DD|BP|SO|STO|CR|DR|TFR|CHQ|ATM|CPT|FPI|FPO|BGC|POS|DEB|FEE|INT|OBP|PAY|BAC|COR|CSH|MPI|MPO|SBT|TLR|CHG|ADV)\s+/;
+// Totals in a summary box worth checking against: "Payments In £1,234.56", "Payments Out ...".
+const SUMMARY_TOTALS = [
+  { kind: "totalIn", re: /(?:payments|money|paid|total) in\b/i },
+  { kind: "totalOut", re: /(?:payments|money|paid|total) out\b/i },
 ];
 const HEADER_DATE = /\b(date|when)\b/i;
 const HEADER_DESC = /\b(description|details|transaction|what|narrative|merchant|payee)\b/i;
@@ -80,15 +88,17 @@ function parseAmount(text) {
   let mark = "none";
   if (marker === "-") mark = "trail-minus"; // "626.04 -": a card's credit
   else if (m[1] || m[2] === "-") mark = "minus";
-  else if (marker === "CR") mark = "cr";
-  else if (marker === "DR") mark = "dr";
+  else if (marker === "CR" || marker === "C") mark = "cr";
+  else if (marker === "DR" || marker === "D") mark = "dr";
   else if (m[2] === "+" || marker === "+") mark = "plus";
   return { pence, mark };
 }
 
-function signedForCheck(a) {
-  // As a statement prints a balance: a minus or CR is below zero, anything else above.
-  return a.mark === "minus" || a.mark === "trail-minus" || a.mark === "cr" ? -a.pence : a.pence;
+function signedForCheck(a, card) {
+  // A balance as printed. A card's is what's owed, so a minus or CR is below zero; an account's
+  // is what's in it, so a minus, DR or D (overdrawn) is.
+  const below = card ? ["minus", "trail-minus", "cr"] : ["minus", "trail-minus", "dr"];
+  return below.includes(a.mark) ? -a.pence : a.pence;
 }
 
 /** Words to lines: items on the same baseline, left to right, merged into cells where they touch. */
@@ -270,15 +280,47 @@ function readStatement(pages) {
   let opening = null, total = 0;
   const summary = {};
 
+  // Where the amount goes: on the first line of a transaction (most cards), or on the last, after
+  // the date and a line or two of details (First Direct, HSBC and others). Dated lines with no
+  // money on them, in a table, mean the second.
+  let amountLast = false;
+  {
+    let afterHeader = false, dateOnly = 0;
+    for (const ls of pageLines) for (const l of ls) {
+      if (headerOf(l)) { afterHeader = true; continue; }
+      if (!afterHeader) continue;
+      const lead = leadingDates(l.text);
+      const hasMoney = l.cells.some((c) => parseAmount(c.text) || TRAILING_AMOUNT.exec(c.text));
+      if (lead.dates.length && !hasMoney && !CHECK_LINES.some((c) => c.re.test(lead.rest))) dateOnly++;
+    }
+    amountLast = dateOnly >= 2;
+  }
+
+  /** A description without the bank's payment-type code in front: ")))", "DD", "VIS". */
+  const tidy = (text) => {
+    let t = leadingDates(text.trim()).rest;
+    const code = TYPE_CODE.exec(t);
+    if (code) t = t.slice(code[0].length);
+    return t.replace(/\s{2,}/g, "  ").trim();
+  };
+
   pageLines.forEach((lines, p) => {
     const seen = [];
     let headerHere = false;
     let prevTx = null, prevY = null;
+    // Details waiting for their amount, or run on from the transaction above.
+    let pending = null; // { dates, parts, y }
+    const flush = () => {
+      // Left over: on a statement whose amounts come first, the end of the transaction above.
+      if (pending && !amountLast && !pending.dates && prevTx && pending.parts.length) prevTx.description += " " + pending.parts.join(" ");
+      pending = null;
+    };
     const tableRows = lines.filter((l) => leadingDates(l.text).dates.length).length;
     for (const line of lines) {
       const tag = (kind, extra = {}) => seen.push({ text: line.text, kind, ...extra });
       const h = headerOf(line);
       if (h) {
+        flush();
         columns = h.columns; descX = h.descX ?? descX; sawHeader = true; headerHere = true; closed = false;
         tag("header", { columns: columns.map((c) => c.kind) });
         prevTx = null;
@@ -291,34 +333,42 @@ function readStatement(pages) {
       const check = CHECK_LINES.find((c) => c.re.test(rest || line.text));
 
       if (!tableOpen) {
-        // A cover page or summary box: "Previous balance £410.20", "Opening balance £120.00
-        // Closing balance £163.49" - kept to check against at the end, never counted.
+        // A cover page or summary box: "Previous balance £410.20", "Opening Balance £1,234.56D",
+        // "Payments In £2,000.00" - kept to check against at the end, never counted.
         let found = false;
         const alone = parseAmount(line.text.replace(/^[=+]\s*/, ""));
         if (pendingSummary && alone) {
-          if (summary[pendingSummary] == null) summary[pendingSummary] = signedForCheck(alone);
+          if (summary[pendingSummary] == null) summary[pendingSummary] = signedForCheck(alone, isCard);
           pendingSummary = null;
           tag("summary");
           continue;
         }
         pendingSummary = null;
-        for (const k of CHECK_LINES.filter((c) => c.kind === "opening" || c.kind === "closing")) {
-          const m = new RegExp("(?:" + k.re.source + ")[^£\\d(\\-]{0,25}(\\(?-?£?\\s?[\\d,]+\\.\\d{2}\\)?(?:\\s?(?:CR|DR|-(?!\\d)))?)", "i").exec(line.text);
+        for (const k of [...CHECK_LINES.filter((c) => c.kind === "opening" || c.kind === "closing"), ...SUMMARY_TOTALS]) {
+          const m = new RegExp("(?:" + k.re.source + ")[^£\\d(\\-]{0,25}(\\(?-?£?\\s?[\\d,]+\\.\\d{2}\\)?(?:\\s?(?:CR|DR|C|D|-(?!\\d)))?)", "i").exec(line.text);
           const a = m && parseAmount(m[m.length - 1]);
-          if (!a) { if (k.re.test(line.text)) pendingSummary = k.kind; continue; }
+          if (!a) { if (k.re.test(line.text) && !SUMMARY_TOTALS.includes(k)) pendingSummary = k.kind; continue; }
           found = true;
-          if (summary[k.kind] == null) summary[k.kind] = signedForCheck(a);
+          if (summary[k.kind] == null) summary[k.kind] = SUMMARY_TOTALS.includes(k) ? a.pence : signedForCheck(a, isCard);
         }
         tag(found ? "summary" : "ignored");
         continue;
       }
 
       if (check && amounts.length) {
+        flush();
         const a = amounts[amounts.length - 1];
-        const value = signedForCheck(a);
-        if (check.kind === "opening") {
-          opening = opening ?? value; section += value; running = value; total += value;
+        const value = signedForCheck(a, isCard);
+        const counted = isCard ? total : (running ?? total);
+        if (check.kind === "opening" && opening == null) {
+          opening = value; section += value; running = value; total += value;
           tag("check", { check: "opening", value });
+        } else if (check.kind === "opening") {
+          // Brought forward again at the top of a page: it should be where the last page ended.
+          const ok = Math.abs(counted - value) < 1;
+          checks.push({ what: "Brought forward", printed: value, counted, ok, page: p + 1 });
+          tag("check", { check: "opening", value, ok });
+          if (!ok) { running = value; }
         } else if (check.kind === "subtotal" || check.kind === "total") {
           const ok = Math.abs(section - value) < 1;
           checks.push({ what: check.kind === "subtotal" ? "Sub-total" : "Total", printed: value, counted: section, ok, page: p + 1 });
@@ -326,9 +376,8 @@ function readStatement(pages) {
           if (check.kind === "subtotal") { section = 0; sectionRows = 0; }
         } else {
           // A card adds up what's owed; an account follows its balance.
-          const counted = isCard ? total : (running ?? total);
           const ok = Math.abs(counted - value) < 1;
-          checks.push({ what: "Closing balance", printed: value, counted, ok, page: p + 1 });
+          checks.push({ what: /carried/i.test(line.text) ? "Carried forward" : "Closing balance", printed: value, counted, ok, page: p + 1 });
           tag("check", { check: "closing", value, ok });
           // Whatever follows - interest rates, a summary of fees - isn't the statement's list.
           closed = true;
@@ -337,66 +386,84 @@ function readStatement(pages) {
         continue;
       }
 
-      // A transaction: money in a money column, and a date - its own, or the day's above it.
+      // A transaction: money in a money column, and a date - its own, the day's above it, or the
+      // one its details started under.
       const money = amounts.filter((a) => a.col && a.col.kind !== "balance");
       const balance = amounts.find((a) => a.col && a.col.kind === "balance");
       const inDescColumn = descX == null || (line.cells[0] && line.cells[0].x >= descX - 8);
-      const carried = !dates.length && lastDate && inDescColumn;
-      if (money.length && (dates.length || carried) && !/\d%/.test(line.text)) {
-        if (dates.length) lastDate = dates;
-        const ds = dates.length ? dates : lastDate;
-        let descCells = textCells.filter((c) => !LEAD_DATE.test(c.text) || c.x > (descX ?? 0) - 5);
-        let description = descCells.map((c) => c.text).join("  ");
-        // Dates already taken off the front; the rest of the first cell may still start with them.
-        description = leadingDates(description).rest;
-        let reference = null;
-        const r = /^(\d{6,12})\s+(.*)$/.exec(description);
-        if (r) { reference = r[1]; description = r[2]; }
-        const a = money[0];
-        // Signs: by the column where there's one for each way, else by the statement's marks.
-        let pence;
-        if (a.col.kind === "out") pence = -a.pence;
-        else if (a.col.kind === "in") pence = a.pence;
-        else if (isCard) pence = ["minus", "trail-minus", "cr"].includes(a.mark) ? a.pence : -a.pence; // a card: plain figures are spending
-        else pence = ["minus", "trail-minus", "dr"].includes(a.mark) ? -a.pence : a.pence;
-        if (ds.some((d) => d.y == null)) undated = true;
-        const tx = {
-          date: resolve(ds[0], period),
-          postDate: ds[1] ? resolve(ds[1], period) : null,
-          description: description.replace(/\s{2,}/g, "  ").trim(),
-          reference,
-          pence,
-          page: p + 1,
-        };
-        transactions.push(tx);
-        // What the statement adds up: owed, for a card; the balance, for an account.
-        section += isCard ? -pence : pence; sectionRows++;
-        total += isCard ? -pence : pence;
-        if (running != null) running += pence;
-        if (balance) {
-          const printed = signedForCheck(balance);
-          if (running == null) running = printed; // the first balance shown starts the count
-          tx.balanceOk = Math.abs(running - printed) < 1;
-          if (!tx.balanceOk) { checks.push({ what: `Balance after ${tx.description.slice(0, 24)}`, printed, counted: running, ok: false, page: p + 1 }); running = printed; }
-          else tx.balanceChecked = true;
+      const near = (y) => line.y - y < line.h * 4.5;
+      if (money.length && !/\d%/.test(line.text)) {
+        let ds = null, prefix = [];
+        if (dates.length) { flush(); ds = dates; }
+        else if (amountLast && pending && near(pending.y)) { ds = pending.dates || lastDate; prefix = pending.parts; pending = null; }
+        else { flush(); if (lastDate && (inDescColumn || amountLast)) ds = lastDate; }
+        if (ds) {
+          lastDate = ds;
+          let description = textCells.map((c) => c.text).join("  ");
+          description = leadingDates(description).rest;
+          let reference = null;
+          const r = /^(\d{6,12})\s+(.*)$/.exec(description);
+          if (r) { reference = r[1]; description = r[2]; }
+          description = tidy([...prefix, description].filter(Boolean).join("  "));
+          const a = money[0];
+          // Signs: by the column where there's one for each way, else by the statement's marks.
+          let pence;
+          if (a.col.kind === "out") pence = -a.pence;
+          else if (a.col.kind === "in") pence = a.pence;
+          else if (isCard) pence = ["minus", "trail-minus", "cr"].includes(a.mark) ? a.pence : -a.pence; // a card: plain figures are spending
+          else pence = ["minus", "trail-minus", "dr"].includes(a.mark) ? -a.pence : a.pence;
+          if (ds.some((d) => d.y == null)) undated = true;
+          const tx = {
+            date: resolve(ds[0], period),
+            postDate: ds[1] ? resolve(ds[1], period) : null,
+            description,
+            reference,
+            pence,
+            page: p + 1,
+          };
+          transactions.push(tx);
+          // What the statement adds up: owed, for a card; the balance, for an account.
+          section += isCard ? -pence : pence; sectionRows++;
+          total += isCard ? -pence : pence;
+          if (running != null) running += pence;
+          if (balance) {
+            const printed = signedForCheck(balance, isCard);
+            if (running == null) running = printed; // the first balance shown starts the count
+            tx.balanceOk = Math.abs(running - printed) < 1;
+            if (!tx.balanceOk) { checks.push({ what: `Balance after ${tx.description.slice(0, 24)}`, printed, counted: running, ok: false, page: p + 1 }); running = printed; }
+            else tx.balanceChecked = true;
+          }
+          tag("transaction", { pence, date: tx.date });
+          prevTx = tx; prevY = line.y;
+          continue;
         }
-        tag("transaction", { pence, date: tx.date });
-        prevTx = tx; prevY = line.y;
-        continue;
       }
 
-      // A description run on to a second line, under the one above it.
-      if (prevTx && !amounts.length && !dates.length && !FOOTER.test(line.text.trim()) &&
-          line.y - prevY < line.h * 2.2 && line.text.length < 70 &&
-          (descX == null || line.cells[0].x >= descX - 8)) {
-        prevTx.description += " " + line.text;
-        prevY = line.y;
-        tag("continued");
+      if (FOOTER.test(line.text.trim())) { tag("footer"); continue; }
+      // A dated line with no money: where a transaction's details begin, on a statement that puts
+      // the amount last.
+      if (dates.length && !amounts.length && amountLast) {
+        flush();
+        lastDate = dates;
+        pending = { dates, parts: [rest], y: line.y };
+        tag("details");
         continue;
       }
-      tag(FOOTER.test(line.text.trim()) ? "footer" : "ignored");
+      // Details without a date or money: more of the transaction above, or the start of the next.
+      if (!amounts.length && !dates.length && line.text.length < 80 &&
+          ((pending && near(pending.y)) || (prevTx && near(prevY))) &&
+          (descX == null || line.cells[0].x >= descX - 8 || amountLast)) {
+        if (!pending) pending = { dates: null, parts: [], y: line.y };
+        pending.parts.push(line.text);
+        pending.y = line.y;
+        tag(amountLast ? "details" : "continued");
+        continue;
+      }
+      flush();
+      tag("ignored");
       if (line.y - (prevY ?? 0) > line.h * 2.2) prevTx = null;
     }
+    flush();
     report.push(seen);
   });
 
@@ -405,6 +472,14 @@ function readStatement(pages) {
     const start = summary.opening ?? opening ?? 0;
     const counted = isCard ? start + transactions.reduce((s, t) => s - t.pence, 0) : (running ?? start + transactions.reduce((s, t) => s + t.pence, 0));
     checks.push({ what: "Statement summary", printed: summary.closing, counted, ok: Math.abs(counted - summary.closing) < 1, page: 1 });
+  }
+  if (summary.totalIn != null && !isCard) {
+    const counted = transactions.filter((t) => t.pence > 0).reduce((s, t) => s + t.pence, 0);
+    checks.push({ what: "Money in", printed: summary.totalIn, counted, ok: Math.abs(counted - summary.totalIn) < 1, page: 1 });
+  }
+  if (summary.totalOut != null && !isCard) {
+    const counted = transactions.filter((t) => t.pence < 0).reduce((s, t) => s - t.pence, 0);
+    checks.push({ what: "Money out", printed: summary.totalOut, counted, ok: Math.abs(counted - summary.totalOut) < 1, page: 1 });
   }
   const balanceRows = transactions.filter((t) => t.balanceChecked).length;
   if (balanceRows) checks.push({ what: `Running balance on ${balanceRows} rows`, ok: true });
