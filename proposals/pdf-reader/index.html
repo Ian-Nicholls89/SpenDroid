@@ -55,7 +55,7 @@ const TRAILING_AMOUNT = /(?:^|\s)((?:\()?[-+]?\s?£?\s?(?:\d{1,3}(?:,\d{3})*|\d+
 // Lines that are the statement checking itself, never transactions.
 const CHECK_LINES = [
   { kind: "opening", re: /balance (brought|carried) forward from|balance brought|brought forward|balance from previous statement|previous (statement )?balance|opening balance|start balance/i },
-  { kind: "closing", re: /balance carried|carried forward|closing balance|new balance|statement balance|end balance/i },
+  { kind: "closing", re: /balance carried|carried forward|closing balance|new balance|statement balance|end balance|current balance/i },
   { kind: "subtotal", re: /sub[- ]?total/i },
   { kind: "total", re: /^\s*total\b/i },
 ];
@@ -141,6 +141,8 @@ function toLines(page) {
       // Lloyds writes "01 Feb 24." and "186.57."; and its screen-reader labels - "Column",
       // "Money In (£)blank." - are in the text too, though nothing shows on the page.
       c.text = c.text.replace(/\s+/g, " ").trim().replace(/\.$/, "").trim();
+      // Print-room marks a statement carries invisibly - "%%eyeball2" - even run on to a date.
+      c.text = c.text.replace(/%%[a-z]+?\d(?=\d{2}[-\/.]\d{2}[-\/.]\d{2,4})/i, "").replace(/%%[a-z]+\d*/gi, "").trim();
       if (SCREEN_READER.test(c.text)) c.text = "";
       c.right = c.x + c.w;
     });
@@ -336,6 +338,8 @@ function readStatement(pages) {
   let descStart = null;
   let closed = false; // after the closing balance: the table is over until a heading starts another
   let closedForPage = false; // after "carried forward": over for this page, on again at the next
+  let openAtPageEnd = false; // the list ran to the foot of the last page without a closing line
+  let dateX = null; // where dates sit, for a year printed on the line below one
   let pendingSummary = null; // "Balance brought forward from" / "£1,234.56" / "previous statement"
   let lastDate = null; // for statements that print the date once per day
   // Running sums, the way the statement keeps them.
@@ -402,7 +406,7 @@ function readStatement(pages) {
       // Headings alone - "Description", "Money In (£)" - are labels, not details.
       if (line.cells.length && line.cells.every((c) => HEADING_WORD.test(c.text))) { tag("ignored"); continue; }
       // Before any table on this page - a cover page, the top of a page - only checks are read.
-      const tableOpen = sawHeader && !closed && (headerHere || tableRows >= 3);
+      const tableOpen = sawHeader && !closed && (headerHere || tableRows >= 3 || (openAtPageEnd && tableRows >= 1));
       const { dates, rest } = leadingDates(line.text);
       const { amounts, textCells } = amountsOf(line, tableOpen ? columns : null, whole);
       // A check line names itself before its figure: "Closing balance 1,234.56", never a note
@@ -436,7 +440,16 @@ function readStatement(pages) {
           const a = m && parseAmount(m[m.length - 1]);
           if (!a) { if (k.re.test(line.text) && !SUMMARY_TOTALS.includes(k)) pendingSummary = k.kind; continue; }
           found = true;
-          if (summary[k.kind] == null) summary[k.kind] = SUMMARY_TOTALS.includes(k) ? a.pence : signedForCheck(a, isCard);
+          const value = SUMMARY_TOTALS.includes(k) ? a.pence : signedForCheck(a, isCard);
+          const weak = k.kind === "closing" && /carried/i.test(m[0]);
+          if (k.kind === "closing" && summary.closing != null && summary.closingWeak && !weak) {
+            // "Balance carried forward £0.00 ... Statement balance £877.97": the first was last time's.
+            if (summary.opening == null) summary.opening = summary.closing;
+            summary.closing = value; summary.closingWeak = false;
+          } else if (summary[k.kind] == null) {
+            summary[k.kind] = value;
+            if (k.kind === "closing") summary.closingWeak = weak;
+          }
         }
         tag(found ? "summary" : "ignored");
         continue;
@@ -488,7 +501,7 @@ function readStatement(pages) {
         let ds = null, prefix = [];
         if (dates.length) {
           if (pending && pending.before && !pending.dates && near(pending.y)) { prefix = pending.parts; pending = null; }
-          flush(); ds = dates;
+          flush(); ds = dates; dateX = line.cells[0].x;
           const first = line.cells.find((c) => !LEAD_DATE.test(c.text) && !parseAmount(c.text, whole));
           if (first && first.x > line.cells[0].x) descStart = descStart == null ? first.x : Math.min(descStart, first.x);
         }
@@ -499,14 +512,15 @@ function readStatement(pages) {
           let description = textCells.filter((c) => !TYPE_CELL.test(c.text)).map((c) => c.text).join("  ");
           description = leadingDates(description).rest;
           let reference = null;
-          const r = /^(\d{6,12})\s+(.*)$/.exec(description);
+          // A reference before the details: 8 digits on a consumer card, 23 on a commercial one.
+          const r = /^(\d{6,24})\s+(.*)$/.exec(description);
           if (r) { reference = r[1]; description = r[2]; }
           description = tidy([...prefix, description].filter(Boolean).join("  "));
-          const a = money[0];
+          const a = money.find((m) => m.pence !== 0) ?? money[0];
           // Signs: by the column where there's one for each way, else by the statement's marks.
+          // Some banks fill both - "Payments Out £0.00  Payments In £30.00" - so they're netted.
           let pence;
-          if (a.col.kind === "out") pence = -a.pence;
-          else if (a.col.kind === "in") pence = a.pence;
+          if (money.every((m) => m.col.kind === "out" || m.col.kind === "in")) pence = money.reduce((t, m) => t + (m.col.kind === "in" ? m.pence : -m.pence), 0);
           else if (isCard) pence = ["minus", "trail-minus", "cr"].includes(a.mark) ? a.pence : -a.pence; // a card: plain figures are spending
           else pence = ["minus", "trail-minus", "dr"].includes(a.mark) ? -a.pence : a.pence;
           if (ds.some((d) => d.y == null)) undated = true;
@@ -518,6 +532,7 @@ function readStatement(pages) {
             pence,
             page: p + 1,
           };
+          Object.defineProperty(tx, "ds", { value: ds, enumerable: false });
           transactions.push(tx);
           // What the statement adds up: owed, for a card; the balance, for an account.
           section += isCard ? -pence : pence; sectionRows++;
@@ -525,6 +540,7 @@ function readStatement(pages) {
           if (running != null) running += pence;
           if (balance) {
             const printed = signedForCheck(balance, isCard);
+            Object.defineProperty(tx, "printed", { value: printed, enumerable: false });
             if (running == null) running = printed; // the first balance shown starts the count
             tx.balanceOk = Math.abs(running - printed) < 1;
             if (!tx.balanceOk) { checks.push({ what: `Balance after ${tx.description.slice(0, 24)}`, printed, counted: running, ok: false, page: p + 1 }); running = printed; }
@@ -537,6 +553,19 @@ function readStatement(pages) {
       }
 
       if (FOOTER.test(line.text.trim())) { tag("footer"); continue; }
+      // "03 Nov" with "25" printed under it: that row's year.
+      const yy = /^(\d{2})$/.exec(line.cells[0].text);
+      const above = prevTx && near(prevY) ? prevTx
+        : !prevTx && !transactions.some((t) => t.page === p + 1) ? transactions[transactions.length - 1] : null; // over the page
+      if (yy && above && dateX != null && Math.abs(line.cells[0].x - dateX) < 8 && above.ds.every((d) => d.y == null)) {
+        const year = 2000 + +yy[1];
+        above.ds.forEach((d) => { d.y = year; });
+        above.date = resolve(above.ds[0], period);
+        if (above.ds[1]) above.postDate = resolve(above.ds[1], period);
+        tag("year");
+        continue;
+      }
+      if (dates.length && !amounts.length && !amountLast && tableOpen) { flush(); lastDate = dates; dateX = line.cells[0].x; tag("date"); continue; }
       // A dated line with no money: where a transaction's details begin, on a statement that puts
       // the amount last.
       if (dates.length && !amounts.length && amountLast) {
@@ -561,6 +590,7 @@ function readStatement(pages) {
       if (line.y - (prevY ?? 0) > line.h * 2.2) prevTx = null;
     }
     flush();
+    openAtPageEnd = sawHeader && !closed && transactions.some((t) => t.page === p + 1);
     report.push(seen);
   });
 
@@ -577,6 +607,23 @@ function readStatement(pages) {
   if (summary.totalOut != null && !isCard) {
     const counted = transactions.filter((t) => t.pence < 0).reduce((s, t) => s - t.pence, 0);
     checks.push({ what: "Money out", printed: summary.totalOut, counted, ok: Math.abs(counted - summary.totalOut) < 1, page: 1 });
+  }
+  // Newest first - as an online-banking printout lists them - each balance follows from the row
+  // below it, not above: checked again oldest first, in place of the checks made on the way down.
+  const newestFirst = transactions.length > 2 && transactions[0].date > transactions[transactions.length - 1].date;
+  if (newestFirst) {
+    for (let i = checks.length - 1; i >= 0; i--) if (checks[i].what.startsWith("Balance after")) checks.splice(i, 1);
+    let run = null;
+    for (const t of [...transactions].reverse()) {
+      delete t.balanceOk; delete t.balanceChecked;
+      if (run != null) run += t.pence;
+      if (t.printed == null) continue;
+      if (run == null) { run = t.printed; continue; }
+      t.balanceOk = Math.abs(run - t.printed) < 1;
+      if (t.balanceOk) t.balanceChecked = true;
+      else { checks.push({ what: `Balance after ${t.description.slice(0, 24)}`, printed: t.printed, counted: run, ok: false, page: t.page }); run = t.printed; }
+    }
+    notes.push("Listed newest first - read and checked oldest first.");
   }
   const balanceRows = transactions.filter((t) => t.balanceChecked).length;
   if (balanceRows) checks.push({ what: `Running balance on ${balanceRows} rows`, ok: true });
