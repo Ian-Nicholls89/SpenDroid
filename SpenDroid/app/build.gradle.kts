@@ -63,8 +63,8 @@ android {
         applicationId = "com.spendroid"
         minSdk = 26
         targetSdk = 35
-        versionCode = 149
-        versionName = "5.2"
+        versionCode = 150
+        versionName = "5.2.1"
 
         // Where the update checker looks for releases.
         buildConfigField("String", "GITHUB_OWNER", "\"Ian-Nicholls89\"")

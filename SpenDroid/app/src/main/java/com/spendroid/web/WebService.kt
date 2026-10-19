@@ -123,7 +123,7 @@ class WebService : Service() {
         val running = WebAccess.running.value
         val stop = PendingIntent.getBroadcast(this, 0, Intent(this, WebStopReceiver::class.java), PendingIntent.FLAG_IMMUTABLE)
         return NotificationCompat.Builder(this, CHANNEL)
-            .setSmallIcon(android.R.drawable.ic_menu_share)
+            .setSmallIcon(com.spendroid.R.drawable.ic_stat_droid)
             .setContentTitle("SpenDroid is open for your computer")
             .setContentText(running?.let { r -> r.addresses.joinToString(" or ") { "http://${it.address}" } + " · code ${r.code.chunked(3).joinToString(" ")}" } ?: "Starting")
             .setOngoing(true)

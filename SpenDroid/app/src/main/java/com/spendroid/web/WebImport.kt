@@ -172,7 +172,7 @@ object WebImport {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
         val n = NotificationCompat.Builder(context, CHANNEL)
-            .setSmallIcon(android.R.drawable.stat_sys_download_done)
+            .setSmallIcon(com.spendroid.R.drawable.ic_stat_droid)
             .setContentTitle("Add ${c.toAdd.size} transactions to $label?")
             .setContentText("From $fileName - nothing already in SpenDroid is changed")
             .setStyle(

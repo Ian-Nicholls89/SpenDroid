@@ -136,6 +136,27 @@ class NotificationSpendTest {
     }
 
     @Test
+    fun `a claim from weeks before does not hold a row - a bank reusing ids on pending rows`() {
+        val old = seen("old", 6350, at(1), matched = "p1")
+        val now = seen("now", 6350, at(26, 16))
+        val m = NotificationSpend.matches(listOf(old, now), listOf(bank("p1", 6350, "2026-09-26")), zone)
+        assertEquals("p1", m["now"]!!.transactionId)
+        // A claim the same week still holds: two shops at one price stay two.
+        val twin = seen("twin", 6350, at(25), matched = "p1")
+        assertEquals(emptyMap<String, TransactionEntity>(), NotificationSpend.matches(listOf(twin, now), listOf(bank("p1", 6350, "2026-09-26")), zone))
+    }
+
+    @Test
+    fun `counted on an account the bank does not list it under, the shop's name pairs them`() {
+        val wallet = seen("w", 6350, at(26, 16)).copy(merchant = "WAITROSE STORES", accountGuessed = true)
+        val row = bank("x", 6350, "2026-09-26").copy(accountId = "card", payee = "WAITROSE STORES 4168", isPending = true)
+        assertEquals("x", NotificationSpend.matches(listOf(wallet), listOf(row), zone)["w"]!!.transactionId)
+        // Another shop at the same price on another account is not it.
+        val other = row.copy(payee = "TESCO STORES 2231")
+        assertEquals(emptyMap<String, TransactionEntity>(), NotificationSpend.matches(listOf(wallet), listOf(other), zone))
+    }
+
+    @Test
     fun `a bank row too late or for another amount does not`() {
         val m = NotificationSpend.matches(
             listOf(seen("a", 320, at(20))),

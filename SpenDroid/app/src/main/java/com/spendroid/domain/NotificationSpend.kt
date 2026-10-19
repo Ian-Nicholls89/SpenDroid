@@ -449,29 +449,41 @@ object NotificationSpend {
         /** The other accounts a spend may turn out to be on: those its app covers. */
         alternatives: (SeenSpendEntity) -> Set<String> = { emptySet() },
     ): Map<String, TransactionEntity> {
-        val claimed = seen.mapNotNullTo(HashSet()) { it.matchedTransactionId }
+        // A row is taken by a spend matched to it - one seen about the same time. A claim from
+        // weeks before is to a row long gone; a bank that reuses ids on pending rows would
+        // otherwise leave every later purchase there unmatched, and counted twice.
+        val claims = seen.filter { it.matchedTransactionId != null }
+        val taken = HashSet<String>()
+        fun claimed(tx: TransactionEntity, spend: SeenSpendEntity) = tx.transactionId in taken ||
+            claims.any { it.matchedTransactionId == tx.transactionId && abs(it.seenAt - spend.seenAt) <= CLAIM_WINDOW_MS }
         val result = linkedMapOf<String, TransactionEntity>()
         seen.filter { it.matchedTransactionId == null && !it.dismissed && it.countedOn != null }
             .sortedBy { it.seenAt }
             .forEach { spend ->
                 val day = dateOf(spend.seenAt, zone)
+                fun fits(tx: TransactionEntity) =
+                    tx.amountMinor == spend.amountMinor &&
+                        !tx.transactionId.startsWith(SEEN_PREFIX) && !claimed(tx, spend) &&
+                        RecurringAnalyzer.parseBookingDate(tx.bookingDate)?.let {
+                            !it.isBefore(day.minusDays(1)) && !it.isAfter(day.plusDays(HANDOVER_DAYS))
+                        } == true
                 // The bank's word wins: a payment guessed, waiting on an answer, or even answered
                 // wrongly goes to whichever account the bank reports it on - unless the card's own
                 // digits said where it was. The account it's counted on is looked at first, so two
                 // same-priced payments pair up right.
-                val elsewhere = if (spend.cardDigits != null && !spend.accountGuessed && spend.accountId != null) emptySet() else alternatives(spend)
+                val certain = spend.cardDigits != null && !spend.accountGuessed && spend.accountId != null
+                val elsewhere = if (certain) emptySet() else alternatives(spend)
                 val row = bank
-                    .filter { tx ->
-                        (tx.accountId == spend.countedOn || tx.accountId in elsewhere) &&
-                            tx.amountMinor == spend.amountMinor &&
-                            tx.transactionId !in claimed && !tx.transactionId.startsWith(SEEN_PREFIX) &&
-                            RecurringAnalyzer.parseBookingDate(tx.bookingDate)?.let {
-                                !it.isBefore(day.minusDays(1)) && !it.isAfter(day.plusDays(HANDOVER_DAYS))
-                            } == true
-                    }
+                    .filter { tx -> (tx.accountId == spend.countedOn || tx.accountId in elsewhere) && fits(tx) }
                     .minWithOrNull(compareBy({ it.accountId != spend.countedOn }, { it.bookingDate }))
+                    // Else the shop's own name: the same amount, in the window, on any account,
+                    // with a word of the name in common - "WAITROSE STORES" and "WAITROSE STORES
+                    // 4168". Counted on an account the bank doesn't list it under, the purchase was
+                    // otherwise counted twice: once seen, once from the bank. Not where the card's
+                    // digits said for certain where it was.
+                    ?: bank.takeUnless { certain }?.filter { tx -> fits(tx) && sharesWord(tx.payee, spend.merchant) }?.singleOrNull()
                     ?: return@forEach
-                claimed += row.transactionId
+                taken += row.transactionId
                 result[spend.id] = row
             }
         return result
@@ -532,7 +544,16 @@ object NotificationSpend {
     fun dateOf(millis: Long, zone: ZoneId = ZoneId.systemDefault()): LocalDate =
         Instant.ofEpochMilli(millis).atZone(zone).toLocalDate()
 
+    /** A word of four letters or more in both names, other than the ones every shop has. */
+    internal fun sharesWord(a: String, b: String): Boolean {
+        fun words(x: String) = x.lowercase().split(Regex("[^a-z]+")).filter { it.length >= 4 && it !in COMMON_WORDS }.toSet()
+        return (words(a) intersect words(b)).isNotEmpty()
+    }
+
+    private val COMMON_WORDS = setOf("store", "stores", "shop", "shops", "limited", "payment", "card", "online", "superstore", "express", "local", "group", "services")
+
     const val SEEN_PREFIX = "seen:"
+    private const val CLAIM_WINDOW_MS = 10 * 24 * 60 * 60_000L
     private const val CROSS_APP_WINDOW_MS = 30 * 60_000L
     private const val PARTNER_WINDOW_MS = 24 * 60 * 60_000L
     private const val REPOST_WINDOW_MS = 60_000L
