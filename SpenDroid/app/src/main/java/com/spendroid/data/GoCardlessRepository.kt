@@ -345,6 +345,11 @@ class GoCardlessRepository private constructor(
                 dao.setCategoryOverride(row.accountId, row.transactionId, spend.categoryOverride)
             }
         }
+        // Announced twice, listed once by the bank: the second announcement was a repeat.
+        val synced = dao.accounts().filter { !it.manual && it.lastSynced > 0L }.associate { it.id to it.lastSynced }
+        NotificationSpend.repeatsRuledOut(dao.seenSpends(), synced).forEach { (spend, twin) ->
+            dao.upsertSeenSpend(spend.copy(dismissed = true, pairedWithId = twin))
+        }
     }
 
     val spendPlaces: Flow<Map<String, String>> = secrets.spendPlaces

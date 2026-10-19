@@ -490,6 +490,36 @@ object NotificationSpend {
     }
 
     /**
+     * Repeats the bank has ruled out: one app announcing the same payment twice minutes apart -
+     * Google Wallet did, at 15:47 and 15:57, for one £63.50 shop - reads as two purchases until
+     * the bank lists only one. Once the account has synced [SETTLE_AFTER_MS] after the later
+     * one, a seen spend the bank hasn't reported, whose twin (same app, amount and card, within
+     * [TWIN_WINDOW_MS]) the bank has, is a repeat. Wrong, it costs nothing: a real second
+     * purchase arrives as the bank's own row and is counted from that.
+     *
+     * [lastSynced] by account; an account missing from it (a manual one) has no bank to ask.
+     */
+    fun repeatsRuledOut(seen: List<SeenSpendEntity>, lastSynced: Map<String, Long>): List<Pair<SeenSpendEntity, String>> {
+        val matched = seen.filter { it.matchedTransactionId != null && !it.dismissed }
+        val used = HashSet<String>()
+        return seen
+            .filter { it.matchedTransactionId == null && !it.dismissed && !it.keptByUser }
+            .sortedBy { it.seenAt }
+            .mapNotNull { spend ->
+                val account = spend.countedOn ?: return@mapNotNull null
+                val synced = lastSynced[account] ?: return@mapNotNull null
+                if (synced < spend.seenAt + SETTLE_AFTER_MS) return@mapNotNull null
+                val twin = matched.firstOrNull { other ->
+                    other.id !in used && other.source == spend.source && other.amountMinor == spend.amountMinor &&
+                        abs(other.seenAt - spend.seenAt) <= TWIN_WINDOW_MS &&
+                        (other.cardDigits == null || spend.cardDigits == null || other.cardDigits == spend.cardDigits)
+                } ?: return@mapNotNull null
+                used += twin.id
+                spend to twin.id
+            }
+    }
+
+    /**
      * Why a seen spend has or hasn't been handed to a bank row, line by line, for the detail
      * sheet: how it's held, what [matches] would do with it now, and every bank row for the
      * same amount within ten days with the first reason it doesn't fit. Built on the same rules
@@ -618,6 +648,8 @@ object NotificationSpend {
 
     const val SEEN_PREFIX = "seen:"
     private const val CLAIM_WINDOW_MS = 10 * 24 * 60 * 60_000L
+    private const val TWIN_WINDOW_MS = 30 * 60_000L
+    private const val SETTLE_AFTER_MS = 3 * 60 * 60_000L
     private const val CROSS_APP_WINDOW_MS = 30 * 60_000L
     private const val PARTNER_WINDOW_MS = 24 * 60 * 60_000L
     private const val REPOST_WINDOW_MS = 60_000L

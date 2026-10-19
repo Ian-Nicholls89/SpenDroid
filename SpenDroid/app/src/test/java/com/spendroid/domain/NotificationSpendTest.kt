@@ -172,6 +172,22 @@ class NotificationSpendTest {
     }
 
     @Test
+    fun `wallet announcing one shop twice, the bank listing it once - the second is a repeat`() {
+        val first = seen("a", 6350, at(26, 15, 47), matched = "row").copy(cardDigits = "4168")
+        val second = seen("b", 6350, at(26, 15, 57)).copy(cardDigits = "4168")
+        val evening = mapOf("current" to at(26, 20, 0))
+        assertEquals(listOf(second to "a"), NotificationSpend.repeatsRuledOut(listOf(first, second), evening))
+        // Before the bank has had time to list a second purchase, both stand.
+        assertEquals(emptyList<Any>(), NotificationSpend.repeatsRuledOut(listOf(first, second), mapOf("current" to at(26, 16, 30))))
+        // No bank to ask - a manual account - both stand.
+        assertEquals(emptyList<Any>(), NotificationSpend.repeatsRuledOut(listOf(first, second), emptyMap()))
+        // An hour apart is two visits; another card is another purchase.
+        val later = seen("c", 6350, at(26, 17, 0)).copy(cardDigits = "4168")
+        assertEquals(emptyList<Any>(), NotificationSpend.repeatsRuledOut(listOf(first, later), evening))
+        assertEquals(emptyList<Any>(), NotificationSpend.repeatsRuledOut(listOf(first, second.copy(cardDigits = "6627")), evening))
+    }
+
+    @Test
     fun `a bank row too late or for another amount does not`() {
         val m = NotificationSpend.matches(
             listOf(seen("a", 320, at(20))),
