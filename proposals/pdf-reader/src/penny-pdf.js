@@ -24,7 +24,8 @@ const CHECK_LINES = [
   { kind: "total", re: /^\s*total\b/i },
 ];
 
-const heading = (words) => new RegExp("^(?:\\(?£\\)?\\s*)?(?:" + words + ")(?:\\s*\\(?£\\)?)?$", "i");
+// "£ Paid out", "Balance(£)", "(GBP) Amount", "Amount GBP": the currency before or after.
+const heading = (words) => new RegExp("^(?:\\(?(?:£|GBP)\\)?\\s*)?(?:" + words + ")(?:\\s*\\(?(?:£|GBP)\\)?)?$", "i");
 const HEADER_AMOUNT_WORDS = [
   { kind: "out", re: heading("paid out|money out|out|debits?|withdrawals?|withdrawn|payments? out|payments|spent") },
   { kind: "in", re: heading("paid in|money in|in|credits?|deposits?|receipts?|payments? in") },
@@ -194,7 +195,7 @@ function stacked(line, above, below) {
   return groups.map((g) => ({ x: g.x, right: g.right, w: g.right - g.x, text: g.parts.sort((a, b) => a.order - b.order).map((q) => q.text).join(" ") }));
 }
 
-const ANY_HEADING = /(paid out|paid in|money out|money in|withdrawn|withdrawals?|deposits?|debits?|credits?|(?:total |running )?balance|amount)(\s*\(?£\)?)?/gi;
+const ANY_HEADING = /(paid out|paid in|money out|money in|withdrawn|withdrawals?|deposits?|debits?|credits?|(?:total |running )?balance|amount)(\s*\(?(?:£|GBP)\)?)?/gi;
 
 /** "Paid In(£) Withdrawn(£)" run together in one cell: two headings, each where it sits. */
 function splitHeadings(cells) {
@@ -352,7 +353,7 @@ export function readStatement(pages) {
       }
       pendingSummary = null;
       // "Balance on 01 February 2024. £4,978.68." - the first such is the opening, the next the closing.
-      const on = /balance on \d{1,2} [a-z]+ \d{4}[^£\d]{0,6}(£?[\d,]+\.\d{2})/i.exec(text);
+      const on = /balance on (?:\d{1,2} [a-z]+ \d{4}|\d{1,2}\/\d{1,2}\/\d{2,4})[^£\d]{0,6}(£?[\d,]+\.\d{2})/i.exec(text);
       if (on) {
         const a = parseAmount(on[1]);
         if (a) { found = true; if (summary.opening == null) summary.opening = signedForCheck(a, isCard); else if (summary.closing == null) summary.closing = signedForCheck(a, isCard); }

@@ -298,3 +298,57 @@ def barclays_g():
     c.drawString(60, 40, "Barclays-style example. Page 2"); c.showPage(); c.save()
 
 barclays_g()
+
+# --- H: TSB-style, made up from the shape of a real TSB statement: Account Summary with
+# "Balance on <date>", Total Paid In/Out; Date | Payment Type | Details | Paid out(£) | Paid in(£)
+# | Balance(£); the payment type wrapping onto a second line; a balance on every row.
+def tsb_h():
+    c = canvas.Canvas("/tmp/pdfimp/samples/h-tsb-payment-type.pdf", pagesize=A4)
+    c.setFont("Helvetica", 9)
+    c.drawString(60, H - 50, "Your account statement"); c.drawString(60, H - 62, "Statement sheet number: 00044"); c.drawString(60, H - 74, "Issue date: 27 May 2026")
+    c.drawString(60, H - 110, "Club, Charity and Trust"); c.drawString(330, H - 110, "Sort code: 00-00-00")
+    c.setFont("Helvetica-Bold", 10); c.drawString(60, H - 140, "Account Summary"); c.setFont("Helvetica", 9)
+    for i, (k, v) in enumerate([("Balance on 10 May 2026", "£7,916.46"), ("Total Paid In", "£50.00"), ("Total Paid Out", "£652.63"), ("Balance on 27 May 2026", "£7,313.83")]):
+        c.drawString(60, H - 156 - i * 14, k); c.drawRightString(300, H - 156 - i * 14, v)
+    c.setFont("Helvetica-Bold", 10); c.drawString(60, H - 225, "Account Activity")
+    y = H - 245
+    c.setFont("Helvetica-Bold", 8)
+    c.drawString(60, y, "Date"); c.drawString(120, y, "Payment Type"); c.drawString(210, y, "Details")
+    c.drawRightString(400, y, "Paid out(£)"); c.drawRightString(470, y, "Paid in(£)"); c.drawRightString(540, y, "Balance(£)")
+    c.setFont("Helvetica", 9); y -= 16
+    def row(d, type1, type2, det, out=None, inn=None, bal=None):
+        nonlocal y
+        c.drawString(60, y, d); c.drawString(120, y, type1); c.drawString(210, y, det)
+        if out: c.drawRightString(400, y, out)
+        if inn: c.drawRightString(470, y, inn)
+        if bal: c.drawRightString(540, y, bal)
+        y -= 12
+        if type2: c.drawString(120, y, type2); y -= 12
+        y -= 4
+    row("10 May 26", "BALANCE BROUGHT FORWARD", None, "", bal="7,916.46")
+    row("14 May 26", "ICS CHEQUE", "PAYMENT", "000544", out="110.00", bal="7,806.46")
+    row("18 May 26", "ICS CHEQUE", "PAYMENT", "000545", out="238.63", bal="7,567.83")
+    row("19 May 26", "FASTER", "PAYMENT", "VILLAGE FETE REFUND", inn="50.00", bal="7,617.83")
+    row("20 May 26", "DIRECT DEBIT", None, "EXAMPLE ENERGY LTD", out="304.00", bal="7,313.83")
+    row("27 May 26", "BALANCE CARRIED FORWARD", None, "", bal="7,313.83")
+    c.drawString(60, 40, "Page 1/1"); c.showPage(); c.save()
+
+tsb_h()
+
+# --- I: Monzo-style, made up and unconfirmed against a real one: (GBP) Amount and (GBP) Balance
+# headings, full dates, signed amounts, a balance on every row.
+def monzo_i():
+    c = canvas.Canvas("/tmp/pdfimp/samples/i-monzo-signed.pdf", pagesize=A4)
+    c.setFont("Helvetica", 9)
+    c.drawString(60, H - 60, "Personal Account statement"); c.drawString(60, H - 74, "01/10/2026 - 31/10/2026")
+    c.drawString(330, H - 60, "Balance on 01/10/2026"); c.drawRightString(540, H - 60, "£812.40")
+    c.drawString(330, H - 74, "Balance on 31/10/2026"); c.drawRightString(540, H - 74, "£2,101.55")
+    y = H - 110
+    c.setFont("Helvetica-Bold", 9); c.drawString(60, y, "Date"); c.drawString(140, y, "Description"); c.drawRightString(470, y, "(GBP) Amount"); c.drawRightString(540, y, "(GBP) Balance")
+    c.setFont("Helvetica", 9); y -= 16
+    for d, desc, a, b in [("02/10/2026", "Coffee Corner", "-3.20", "809.20"), ("05/10/2026", "EXAMPLE EMPLOYER LTD Salary", "1,500.00", "2,309.20"),
+                          ("07/10/2026", "Transfer to Holiday pot", "-150.00", "2,159.20"), ("19/10/2026", "Supermarket", "-57.65", "2,101.55")]:
+        c.drawString(60, y, d); c.drawString(140, y, desc); c.drawRightString(470, y, a); c.drawRightString(540, y, b); y -= 15
+    c.showPage(); c.save()
+
+monzo_i()
