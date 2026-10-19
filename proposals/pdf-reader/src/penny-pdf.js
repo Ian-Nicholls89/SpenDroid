@@ -24,12 +24,12 @@ const CHECK_LINES = [
   { kind: "total", re: /^\s*total\b/i },
 ];
 
-const money = (words) => new RegExp("^(?:\\(?£\\)?\\s*)?(?:" + words + ")(?:\\s*\\(?£\\)?)?$", "i");
+const heading = (words) => new RegExp("^(?:\\(?£\\)?\\s*)?(?:" + words + ")(?:\\s*\\(?£\\)?)?$", "i");
 const HEADER_AMOUNT_WORDS = [
-  { kind: "out", re: money("paid out|money out|out|debits?|withdrawals?|payments? out|spent") },
-  { kind: "in", re: money("paid in|money in|in|credits?|deposits?|receipts?|payments? in") },
-  { kind: "balance", re: money("balance") },
-  { kind: "amount", re: money("amount|value|sum|how much") },
+  { kind: "out", re: heading("paid out|money out|out|debits?|withdrawals?|payments? out|spent") },
+  { kind: "in", re: heading("paid in|money in|in|credits?|deposits?|receipts?|payments? in") },
+  { kind: "balance", re: heading("balance") },
+  { kind: "amount", re: heading("amount|value|sum|how much") },
 ];
 // A bank's code for the kind of payment, at the start of its details: dropped from the description.
 const TYPE_CODE = /^(\)\)\)|VIS|DD|BP|SO|STO|CR|DR|TFR|CHQ|ATM|CPT|FPI|FPO|BGC|POS|DEB|FEE|INT|OBP|PAY|BAC|COR|CSH|MPI|MPO|SBT|TLR|CHG|ADV)\s+/;
