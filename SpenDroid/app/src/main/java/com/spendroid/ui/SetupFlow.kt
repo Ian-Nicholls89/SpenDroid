@@ -269,7 +269,12 @@ private fun Primary(text: String, enabled: Boolean = true, onClick: () -> Unit) 
 
 @Composable
 private fun Welcome(onStatements: () -> Unit, onFresh: () -> Unit, onGoCardless: () -> Unit) {
-    Spacer(Modifier.height(36.dp))
+    Spacer(Modifier.height(20.dp))
+    // "Meet Penny": there she is, in her payday best - a smile, a full visor and confetti.
+    androidx.compose.foundation.layout.Box(Modifier.fillMaxWidth(), contentAlignment = androidx.compose.ui.Alignment.Center) {
+        Droid(DroidFace(DroidMood.PAYDAY, used = 1f, elapsed = 0f), 120.dp)
+    }
+    Spacer(Modifier.height(12.dp))
     Title("Know what you can spend, every day")
     Lead("Meet Penny. She works out what's left until payday, after your bills and card statements. Your personal and private assistant: no account, no company cloud.")
     Choice(
