@@ -1,0 +1,657 @@
+<!doctype html><html lang="en-GB"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Your Penny</title><style>
+@font-face{font-family:'Space Grotesk';src:url(https://cdn.jsdelivr.net/fontsource/fonts/space-grotesk@latest/latin-700-normal.woff2) format('woff2');font-weight:700}
+*{box-sizing:border-box}body{margin:0;background:#101114;color:#fff;font:15px/1.5 system-ui,sans-serif}
+header{padding:30px 32px 10px;background:linear-gradient(180deg,#1f4d32,#101114)}h1{margin:0;font:700 30px 'Space Grotesk',system-ui}header p{color:#cfd3da;max-width:900px;margin:8px 0 0}
+section{padding:10px 32px 24px}h2{font:700 20px 'Space Grotesk',system-ui;margin:22px 0 4px}section>p{color:#9aa0aa;margin:0 0 14px;max-width:900px}
+.row{display:flex;gap:18px;flex-wrap:wrap}.card{background:#1b1c21;border:1px solid #2a2b30;border-radius:18px;padding:14px 16px 12px;width:420px}
+.pair{display:flex;justify-content:space-around;align-items:center}.opt{text-align:center}.opt b{display:block;font-size:12px;color:#9aa0aa;letter-spacing:.06em;text-transform:uppercase;margin-top:2px}
+.card h3{margin:0 0 2px;font-size:16px}.card p{margin:6px 0 0;color:#b8bcc5;font-size:13px}.where{color:#7cc4ff;font-size:12px;margin-top:6px}
+.penny{overflow:visible}.penny *{transform-box:fill-box}
+.penny .antenna{transform-box:view-box;transform-origin:62px 25px}.penny .head{transform-box:view-box;transform-origin:54px 79px}.body{transform-origin:54px 79px;transform-box:view-box}
+.fill{transform-origin:0 50%}
+@media (prefers-reduced-motion: reduce){*{animation:none!important}}
+
+/* ---- idle ---- */
+.idleA .visor{animation:blink 5s infinite}.idleA .bulb{animation:pulse 3s ease-in-out infinite}
+.idleB .visor{animation:blink 4.2s infinite}.idleB .bulb{animation:pulse 2.4s ease-in-out infinite}.idleB .antenna{animation:bob 2.4s ease-in-out infinite}.idleB .body{animation:float 3.6s ease-in-out infinite}
+@keyframes blink{0%,46%,54%,100%{opacity:1}50%{opacity:.15}}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.45}}
+@keyframes bob{0%,100%{transform:rotate(0)}50%{transform:rotate(-14deg)}}
+@keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-3px)}}
+
+/* ---- visor fill on open ---- */
+.fillA .fill{animation:grow 4s cubic-bezier(.2,.8,.2,1) infinite}.fillA .tick{animation:slide 4s cubic-bezier(.2,.8,.2,1) infinite}
+.fillB .fill{animation:growB 4s cubic-bezier(.3,1.5,.5,1) infinite}.fillB .tick{animation:slideB 4s cubic-bezier(.3,1.5,.5,1) infinite}.fillB .shine{animation:shine 4s ease-in-out infinite}
+@keyframes grow{0%{transform:scaleX(0)}35%,100%{transform:scaleX(1)}}
+@keyframes slide{0%{transform:translateX(-23px);opacity:0}10%{opacity:1}35%,100%{transform:translateX(0)}}
+@keyframes growB{0%,8%{transform:scaleX(0)}40%,100%{transform:scaleX(1)}}
+@keyframes slideB{0%,20%{transform:translateY(-12px);opacity:0}45%,100%{transform:translateY(0);opacity:1}}
+@keyframes shine{0%,40%{opacity:0;transform:translateX(0)}50%{opacity:.5}70%,100%{opacity:0;transform:translateX(36px)}}
+
+/* ---- moods ---- */
+.aheadA .mouth{animation:smile 3s ease-in-out infinite;transform-origin:50% 50%}
+@keyframes smile{0%,70%,100%{transform:scaleX(1)}80%{transform:scaleX(1.15)}}
+.aheadB .body{animation:hop 2s cubic-bezier(.3,.7,.4,1) infinite}
+@keyframes hop{0%,60%,100%{transform:translateY(0) scale(1,1)}65%{transform:translateY(0) scale(1.06,.94)}75%{transform:translateY(-8px) scale(.97,1.03)}85%{transform:translateY(0) scale(1.04,.96)}92%{transform:scale(1)}}
+.tightA .tick{animation:wobble 2.5s ease-in-out infinite}
+@keyframes wobble{0%,60%,100%{transform:translateX(0)}70%{transform:translateX(-2px)}80%{transform:translateX(2px)}90%{transform:translateX(-1px)}}
+.tightB .visor,.tightB .tick{animation:glance 3s ease-in-out infinite}.tightB .sweat{animation:drip 3s ease-in infinite}
+@keyframes glance{0%,20%,60%,100%{transform:translateX(0)}30%,45%{transform:translateX(-3px)}}
+@keyframes drip{0%,40%{opacity:0;transform:translateY(-3px)}55%{opacity:1}100%{opacity:0;transform:translateY(10px)}}
+.overA .head{animation:droop 4s ease-in-out infinite}
+@keyframes droop{0%,100%{transform:rotate(0)}40%,70%{transform:rotate(-4deg) translateY(2px)}}
+.overB .head{animation:droopB 3s ease-in-out infinite}.overB .fill{animation:flicker 3s infinite}.overB .antenna{animation:sag 3s ease-in-out infinite}
+@keyframes droopB{0%,100%{transform:translateY(0)}40%,75%{transform:translateY(4px) scale(1.02,.97)}}
+@keyframes flicker{0%,100%{opacity:1}45%{opacity:.55}50%{opacity:1}55%{opacity:.55}}
+@keyframes sag{0%,100%{transform:rotate(0)}40%,75%{transform:rotate(28deg)}}
+.paydayA .conf{animation:fall 3s linear infinite}.paydayA .c1,.paydayA .c4{animation-delay:-1s}.paydayA .c2,.paydayA .c5{animation-delay:-2s}
+@keyframes fall{0%{transform:translateY(-12px) rotate(0);opacity:0}15%{opacity:1}100%{transform:translateY(26px) rotate(200deg);opacity:0}}
+.paydayB .body{animation:jump 2.4s cubic-bezier(.3,.7,.4,1) infinite}.paydayB .conf{animation:burst 2.4s ease-out infinite}
+.paydayB .c0{--dx:-18px;--dy:-22px}.paydayB .c1{--dx:16px;--dy:-26px}.paydayB .c2{--dx:-22px;--dy:6px}.paydayB .c3{--dx:20px;--dy:8px}.paydayB .c4{--dx:-6px;--dy:-30px}.paydayB .c5{--dx:10px;--dy:-14px}.paydayB .c6{--dx:-24px;--dy:-10px}
+@keyframes jump{0%,100%{transform:translateY(0) scale(1)}10%{transform:translateY(0) scale(1.08,.9)}25%{transform:translateY(-14px) scale(.95,1.06)}40%{transform:translateY(0) scale(1.06,.94)}50%{transform:scale(1)}}
+@keyframes burst{0%,15%{transform:translate(0,0) rotate(0);opacity:0}25%{opacity:1}70%{transform:translate(var(--dx),var(--dy)) rotate(260deg);opacity:1}100%{transform:translate(var(--dx),calc(var(--dy) + 14px)) rotate(320deg);opacity:0}}
+.syncA .shine{animation:scan 1.6s ease-in-out infinite}
+@keyframes scan{0%{opacity:.6;transform:translateX(0)}50%{opacity:.6;transform:translateX(34px)}100%{opacity:.6;transform:translateX(0)}}
+.syncB .shine{animation:scan 1.1s ease-in-out infinite}.syncB .spin{animation:rot 1s linear infinite;transform-origin:50% 50%}.syncB .antenna{animation:bob 1s ease-in-out infinite}
+@keyframes rot{to{transform:rotate(360deg)}}
+.syncA .spin{animation:rot 2.2s linear infinite;transform-origin:50% 50%}
+.sleepA .body{animation:breathe 4.5s ease-in-out infinite}.sleepA .z1{animation:zfade 4.5s infinite}.sleepA .z2{animation:zfade 4.5s infinite 1s}
+@keyframes breathe{0%,100%{transform:scale(1)}50%{transform:scale(1.025,1.04)}}
+@keyframes zfade{0%,100%{opacity:.2}50%{opacity:1}}
+.sleepB .head{animation:nodoff 5s ease-in-out infinite}.sleepB .z{animation:zrise 3s ease-out infinite}.sleepB .z2{animation-delay:1.5s}
+@keyframes nodoff{0%,100%{transform:rotate(0)}30%,60%{transform:rotate(6deg) translateY(2px)}65%{transform:rotate(-1deg)}}
+@keyframes zrise{0%{opacity:0;transform:translate(0,6px) scale(.6)}30%{opacity:1}100%{opacity:0;transform:translate(10px,-14px) scale(1.2)}}
+
+/* ---- moments ---- */
+.helloA .body{animation:rise 4s cubic-bezier(.2,.8,.2,1) infinite}
+@keyframes rise{0%{transform:translateY(24px);opacity:0}25%,100%{transform:translateY(0);opacity:1}}
+.helloA .visor{animation:blinkOnce 4s infinite}
+@keyframes blinkOnce{0%,40%,48%,100%{opacity:1}44%{opacity:.1}}
+.helloB .body{animation:pop 4s cubic-bezier(.3,1.6,.5,1) infinite}.helloB .antenna{animation:wave 4s ease-in-out infinite}.helloB .bulb{animation:flash3 4s infinite}
+@keyframes pop{0%{transform:scale(0)}18%,100%{transform:scale(1)}}
+@keyframes wave{0%,25%,70%,100%{transform:rotate(0)}32%{transform:rotate(-24deg)}40%{transform:rotate(14deg)}48%{transform:rotate(-24deg)}56%{transform:rotate(14deg)}62%{transform:rotate(0)}}
+@keyframes flash3{0%,30%,100%{opacity:1}35%,45%,55%{opacity:.2}40%,50%{opacity:1}}
+.askA .qbubble{animation:qpop 3.5s ease-out infinite;transform-origin:50% 100%}.askA .head{animation:tilt 3.5s ease-in-out infinite}
+@keyframes qpop{0%,10%{transform:scale(0);opacity:0}22%,85%{transform:scale(1);opacity:1}100%{transform:scale(1);opacity:0}}
+@keyframes tilt{0%,15%,90%,100%{transform:rotate(0)}25%,80%{transform:rotate(-7deg)}}
+.askB .qbubble{animation:qbounce 3s cubic-bezier(.3,1.6,.5,1) infinite;transform-origin:50% 100%}.askB .head{animation:tiltB 3s ease-in-out infinite}.askB .bulb{animation:pulse .6s ease-in-out infinite}
+@keyframes qbounce{0%,8%{transform:scale(0) translateY(6px)}20%,85%{transform:scale(1) translateY(0)}100%{transform:scale(0)}}
+@keyframes tiltB{0%,10%,90%,100%{transform:rotate(0)}20%,50%{transform:rotate(-10deg)}35%{transform:rotate(-6deg)}60%,80%{transform:rotate(-10deg)}}
+.noticeA .bulb{animation:flash3 3s infinite}.noticeA .spark{animation:sparkle 3s infinite}
+@keyframes sparkle{0%,30%,60%,100%{opacity:0}38%,52%{opacity:1}}
+.noticeB .body{animation:perk 3s cubic-bezier(.3,1.6,.5,1) infinite}.noticeB .spark{animation:sparkle 3s infinite}.noticeB .antenna{animation:stand 3s cubic-bezier(.3,1.6,.5,1) infinite}
+@keyframes perk{0%,25%,100%{transform:translateY(0)}35%{transform:translateY(-6px) scale(1.04)}50%,90%{transform:translateY(-2px)}}
+@keyframes stand{0%,25%,100%{transform:rotate(0)}35%,90%{transform:rotate(-22deg)}}
+.notedA .head{animation:nod 3s ease-in-out infinite}.notedA .check{animation:checkin 3s infinite;stroke-dasharray:22;stroke-dashoffset:22}
+@keyframes nod{0%,20%,60%,100%{transform:translateY(0)}30%,50%{transform:translateY(3px)}40%{transform:translateY(-1px)}}
+@keyframes checkin{0%,25%{stroke-dashoffset:22;opacity:1}45%,85%{stroke-dashoffset:0;opacity:1}100%{stroke-dashoffset:0;opacity:0}}
+.notedB .head{animation:nod2 3s ease-in-out infinite}.notedB .check{animation:checkin 3s infinite;stroke-dasharray:22;stroke-dashoffset:22}.notedB .fill{animation:greenflash 3s infinite}
+@keyframes nod2{0%,15%,65%,100%{transform:translateY(0)}22%,42%{transform:translateY(4px)}32%,52%{transform:translateY(-2px)}}
+@keyframes greenflash{0%,20%,60%,100%{filter:none}35%{filter:brightness(1.6)}}
+
+/* in place: a header with Penny idling */
+.mock{background:#17181c;border-radius:22px;padding:16px;width:330px}
+.mock .bar{display:flex;align-items:center;gap:8px;font:700 22px 'Space Grotesk',system-ui}.mock .bar span{color:#3ddc84}
+.mock .read{display:flex;gap:10px;align-items:center;margin-top:14px;background:#23252b;border-radius:14px;padding:10px 12px;font-size:14px;color:#dfe3ea}
+
+.rowcard{background:#1b1c21;border:1px solid #2a2b30;border-radius:18px;padding:14px 16px 14px;margin-bottom:16px;max-width:1240px}
+.rowcard h3{margin:0 0 4px;font-size:17px}.rowcard .where{margin:0 0 8px}
+.quad{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.cell{text-align:center;background:#16171b;border-radius:14px;padding:6px 8px 10px}.cell.def{outline:2px solid #3ddc84}
+.cell b{display:block;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:#9aa0aa}.cell.def b{color:#3ddc84}
+.cell span{display:block;font-size:12.5px;color:#b8bcc5;margin-top:4px;line-height:1.4}
+.legend{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;max-width:1240px;margin:6px 0 4px}
+.legend div{background:#1b1c21;border-radius:14px;padding:10px 12px;font-size:13px;color:#b8bcc5}.legend b{color:#fff;display:block;font-size:14px}
+
+/* ===== C · Mechanical: stepped, crisp, no squash ===== */
+.idleC .visor{animation:blinkC 4s steps(1) infinite}.idleC .bulb{animation:ledC 1.6s steps(1) infinite}.idleC .antenna{animation:twitchC 4s steps(1) infinite}
+@keyframes blinkC{0%,47%,53%,100%{opacity:1}48%{opacity:.25}50%{opacity:1}51%{opacity:.25}}
+@keyframes ledC{0%,49%{opacity:1}50%,100%{opacity:.25}}
+@keyframes twitchC{0%,70%{transform:rotate(0)}71%,80%{transform:rotate(-12deg)}81%,100%{transform:rotate(0)}}
+.fillC .fill{animation:growC 4s steps(7,end) infinite}.fillC .tick{animation:snapC 4s steps(1) infinite}
+@keyframes growC{0%{transform:scaleX(0)}40%,100%{transform:scaleX(1)}}
+@keyframes snapC{0%,39%{opacity:0}40%,44%{opacity:1;transform:translateY(-4px)}45%,100%{opacity:1;transform:translateY(0)}}
+.aheadC .body{animation:stepC 2s steps(1) infinite}
+@keyframes stepC{0%,60%{transform:translateY(0)}61%,70%{transform:translateY(-4px)}71%,80%{transform:translateY(0)}81%,90%{transform:translateY(-4px)}91%,100%{transform:translateY(0)}}
+.tightC .tick{animation:jitterC 1.2s steps(1) infinite}.tightC .bulb{animation:ledC .5s steps(1) infinite}
+@keyframes jitterC{0%{transform:translateX(0)}25%{transform:translateX(-2px)}50%{transform:translateX(1px)}75%{transform:translateX(-1px)}}
+.overC .head{animation:dropC 3s steps(1) infinite}.overC .bulb{animation:dimC 3s steps(1) infinite}
+@keyframes dropC{0%,20%{transform:translateY(0)}21%,30%{transform:translateY(1px)}31%,40%{transform:translateY(2px)}41%,85%{transform:translateY(3px)}86%,100%{transform:translateY(0)}}
+@keyframes dimC{0%,40%{opacity:1}41%,85%{opacity:.25}86%,100%{opacity:1}}
+.paydayC .body{animation:stepC 1.6s steps(1) infinite}.paydayC .conf{animation:pixC 1.6s steps(4) infinite}.paydayC .c1,.paydayC .c3,.paydayC .c5{animation-delay:-.8s}
+@keyframes pixC{0%{transform:translateY(8px);opacity:0}25%{opacity:1}100%{transform:translateY(-16px);opacity:0}}
+.syncC .shine{animation:scanC 1.4s steps(6) infinite alternate}.syncC .spin{animation:rot 1.2s steps(8) infinite;transform-origin:50% 50%}
+@keyframes scanC{0%{opacity:.7;transform:translateX(0)}100%{opacity:.7;transform:translateX(34px)}}
+.sleepC .fill,.sleepC .tick{animation:powerC 4s steps(1) infinite}.sleepC .z{animation:ledC 2s steps(1) infinite}.sleepC .z2{animation-delay:-1s}
+@keyframes powerC{0%,30%{opacity:1}31%,45%{opacity:.5}46%,90%{opacity:.15}91%,100%{opacity:1}}
+.helloC .fill,.helloC .tick,.helloC .mouth{animation:bootC 4s steps(1) infinite}.helloC .antenna{animation:extendC 4s steps(4) infinite}.helloC .bulb{animation:bootBulbC 4s steps(1) infinite}
+@keyframes bootC{0%,20%{opacity:0}21%,24%{opacity:1}25%,28%{opacity:0}29%,100%{opacity:1}}
+@keyframes extendC{0%{transform:scale(0)}15%,100%{transform:scale(1)}}
+@keyframes bootBulbC{0%,32%{opacity:.2}33%,100%{opacity:1}}
+.askC .qbubble{animation:typeC 3s steps(1) infinite}.askC .bulb{animation:morseC 1.5s steps(1) infinite}
+@keyframes typeC{0%,15%{opacity:0}16%,90%{opacity:1}91%,100%{opacity:0}}
+@keyframes morseC{0%,10%{opacity:1}11%,20%{opacity:.2}21%,30%{opacity:1}31%,40%{opacity:.2}41%,70%{opacity:1}71%,100%{opacity:.2}}
+.noticeC .antenna{animation:snapUpC 3s steps(1) infinite}.noticeC .spark{animation:sparkC 3s steps(1) infinite}
+@keyframes snapUpC{0%,25%{transform:rotate(0)}26%,85%{transform:rotate(-26deg)}86%,100%{transform:rotate(0)}}
+@keyframes sparkC{0%,30%,40%,50%,60%,100%{opacity:0}31%,39%,51%,59%{opacity:1}}
+.notedC .visor{animation:flashC 3s steps(1) infinite}.notedC .check{animation:checkC 3s steps(3) infinite;stroke-dasharray:22;stroke-dashoffset:22}
+@keyframes flashC{0%,20%,26%,32%,100%{filter:none}21%,25%,27%,31%{filter:brightness(1.8)}}
+@keyframes checkC{0%,30%{stroke-dashoffset:22}45%,90%{stroke-dashoffset:0}100%{stroke-dashoffset:0;opacity:0}}
+
+/* ===== D · Elastic: jelly squash and stretch, springy overshoot ===== */
+.idleD .body{animation:jellyD 3s ease-in-out infinite}.idleD .antenna{animation:springD 3s ease-in-out infinite}.idleD .visor{animation:squintD 5s infinite}
+@keyframes jellyD{0%,100%{transform:scale(1,1)}25%{transform:scale(1.03,.97)}50%{transform:scale(.98,1.03)}75%{transform:scale(1.02,.98)}}
+@keyframes springD{0%,100%{transform:rotate(0)}20%{transform:rotate(-18deg)}35%{transform:rotate(10deg)}50%{transform:rotate(-6deg)}62%{transform:rotate(3deg)}75%{transform:rotate(0)}}
+@keyframes squintD{0%,46%,56%,100%{transform:scaleY(1)}50%{transform:scaleY(.15)}}
+.idleD .visor{transform-box:fill-box;transform-origin:50% 50%}
+.fillD .fill{animation:growD 4s linear infinite}.fillD .tick{animation:boingD 4s linear infinite}
+@keyframes growD{0%{transform:scaleX(0)}20%{transform:scaleX(1.25)}26%{transform:scaleX(.88)}32%{transform:scaleX(1.08)}38%{transform:scaleX(.97)}44%,100%{transform:scaleX(1)}}
+@keyframes boingD{0%,30%{transform:translateY(-14px) scaleY(1);opacity:0}38%{transform:translateY(2px) scaleY(.7);opacity:1}44%{transform:translateY(-3px) scaleY(1.1)}50%,100%{transform:translateY(0) scaleY(1)}}
+.aheadD .body{animation:bounceD 1.6s ease-in-out infinite}.aheadD .antenna{animation:whipD 1.6s ease-in-out infinite}
+@keyframes bounceD{0%,100%{transform:translateY(0) scale(1.12,.86)}35%{transform:translateY(-14px) scale(.9,1.12)}55%{transform:translateY(-16px) scale(1,1)}80%{transform:translateY(0) scale(1.15,.84)}}
+@keyframes whipD{0%,100%{transform:rotate(10deg)}35%{transform:rotate(-20deg)}55%{transform:rotate(-8deg)}80%{transform:rotate(18deg)}}
+.tightD .body{animation:shiverD .25s linear infinite}.tightD .visor{animation:squishD 2s ease-in-out infinite;transform-box:fill-box;transform-origin:50% 50%}.tightD .sweat{animation:drip 2s ease-in infinite}
+@keyframes shiverD{0%,100%{transform:rotate(0)}25%{transform:rotate(1.5deg)}75%{transform:rotate(-1.5deg)}}
+@keyframes squishD{0%,100%{transform:scaleY(1)}40%,70%{transform:scaleY(.55)}}
+.overD .body{animation:meltD 3.5s ease-in-out infinite}.overD .antenna{animation:flopD 3.5s ease-in-out infinite}
+@keyframes meltD{0%,100%{transform:scale(1,1)}40%,75%{transform:scale(1.14,.82)}}
+@keyframes flopD{0%,100%{transform:rotate(0)}40%{transform:rotate(55deg)}48%{transform:rotate(40deg)}56%,75%{transform:rotate(48deg)}}
+.paydayD .body{animation:spinjumpD 2.4s ease-in-out infinite}.paydayD .conf{animation:burst 2.4s ease-out infinite}
+.paydayD .c0{--dx:-18px;--dy:-22px}.paydayD .c1{--dx:16px;--dy:-26px}.paydayD .c2{--dx:-22px;--dy:6px}.paydayD .c3{--dx:20px;--dy:8px}.paydayD .c4{--dx:-6px;--dy:-30px}.paydayD .c5{--dx:10px;--dy:-14px}.paydayD .c6{--dx:-24px;--dy:-10px}
+@keyframes spinjumpD{0%,100%{transform:translateY(0) rotate(0) scale(1)}10%{transform:translateY(0) scale(1.15,.85)}35%{transform:translateY(-18px) rotate(180deg) scale(.95,1.08)}55%{transform:translateY(0) rotate(360deg) scale(1.15,.85)}65%{transform:rotate(360deg) scale(1)}}
+.syncD .antenna{animation:propD .5s ease-in-out infinite}.syncD .head{animation:thinkD 2s ease-in-out infinite}.syncD .spin{animation:rot 1s linear infinite;transform-origin:50% 50%}
+@keyframes propD{0%,100%{transform:rotate(-55deg)}50%{transform:rotate(45deg)}}
+@keyframes thinkD{0%,100%{transform:rotate(-4deg)}50%{transform:rotate(4deg)}}
+.sleepD .body{animation:bigbreathD 4s ease-in-out infinite}.sleepD .head{animation:lollD 8s ease-in-out infinite}.sleepD .z{animation:zrise 3s ease-out infinite}.sleepD .z2{animation-delay:1.5s}
+@keyframes bigbreathD{0%,100%{transform:scale(1,1)}50%{transform:scale(1.06,1.08)}}
+@keyframes lollD{0%,100%{transform:rotate(0)}25%,45%{transform:rotate(12deg)}70%,90%{transform:rotate(-8deg)}}
+.helloD .body{animation:dropinD 4s linear infinite}
+@keyframes dropinD{0%{transform:translateY(-60px) scale(.9,1.1);opacity:0}10%{opacity:1}18%{transform:translateY(0) scale(1.25,.75)}24%{transform:translateY(-10px) scale(.92,1.08)}30%{transform:translateY(0) scale(1.08,.94)}35%,100%{transform:translateY(0) scale(1)}}
+.helloD .antenna{animation:wave 4s ease-in-out infinite}
+.askD .head{animation:tiltD 3s linear infinite}.askD .qbubble{animation:qboingD 3s linear infinite;transform-origin:50% 100%}
+@keyframes tiltD{0%,8%{transform:rotate(0)}18%{transform:rotate(-16deg)}24%{transform:rotate(-8deg)}30%,85%{transform:rotate(-11deg)}95%,100%{transform:rotate(0)}}
+@keyframes qboingD{0%,12%{transform:scale(0)}20%{transform:scale(1.4)}26%{transform:scale(.85)}32%,85%{transform:scale(1)}95%,100%{transform:scale(0)}}
+.noticeD .body{animation:surpriseD 3s linear infinite}.noticeD .antenna{animation:boingAntD 3s linear infinite}.noticeD .spark{animation:sparkle 3s infinite}
+@keyframes surpriseD{0%,25%,100%{transform:scale(1)}30%{transform:translateY(-8px) scale(.88,1.2)}38%{transform:translateY(0) scale(1.1,.92)}45%,90%{transform:scale(1)}}
+@keyframes boingAntD{0%,28%,100%{transform:rotate(0)}34%{transform:rotate(-40deg)}40%{transform:rotate(-15deg)}46%,90%{transform:rotate(-26deg)}}
+.notedD .head{animation:nodsD 3s ease-in-out infinite}.notedD .check{animation:checkin 3s infinite;stroke-dasharray:22;stroke-dashoffset:22}
+@keyframes nodsD{0%,15%,75%,100%{transform:translateY(0) scale(1)}22%,40%,58%{transform:translateY(5px) scale(1.08,.9)}31%,49%,67%{transform:translateY(-3px) scale(.96,1.05)}}
+
+/* ===== E · Glow: Penny keeps still, light does the talking ===== */
+.penny .glowable{transition:none}
+.idleE .fill{animation:glowE 4s ease-in-out infinite}.idleE .bulb{animation:haloE 3s ease-in-out infinite}
+@keyframes glowE{0%,100%{filter:drop-shadow(0 0 0 var(--c,#3ddc84))}50%{filter:drop-shadow(0 0 5px var(--c,#3ddc84))}}
+@keyframes haloE{0%,100%{filter:drop-shadow(0 0 1px #3ddc84)}50%{filter:drop-shadow(0 0 7px #3ddc84)}}
+.fillE .fill{animation:fadeE 4s ease-out infinite}
+@keyframes fadeE{0%{opacity:0;filter:none}30%{opacity:1;filter:drop-shadow(0 0 8px #3ddc84)}60%,100%{opacity:1;filter:drop-shadow(0 0 0 #3ddc84)}}
+.fillE .tick{animation:tickglowE 4s ease-out infinite}
+@keyframes tickglowE{0%,25%{opacity:0}40%{opacity:1;filter:drop-shadow(0 0 6px #fff)}70%,100%{opacity:1;filter:none}}
+.aheadE .fill{animation:glowE 2.6s ease-in-out infinite}.aheadE .mouth{animation:warmE 2.6s ease-in-out infinite}
+@keyframes warmE{0%,100%{filter:none}50%{filter:drop-shadow(0 0 4px #3ddc84)}}
+.tightE .fill{--c:#f5a623;animation:glowE 1.4s ease-in-out infinite}.tightE .bulb{animation:haloAmberE 1.4s ease-in-out infinite}
+@keyframes haloAmberE{0%,100%{filter:drop-shadow(0 0 1px #f5a623)}50%{filter:drop-shadow(0 0 7px #f5a623)}}
+.overE .fill{--c:#e5534b;animation:glowE 3.2s ease-in-out infinite}.overE .head{animation:dimHeadE 3.2s ease-in-out infinite}
+@keyframes dimHeadE{0%,100%{opacity:1}50%{opacity:.75}}
+.paydayE .fill{animation:rainbowE 2.4s linear infinite}.paydayE .conf{animation:twinkleE 1.2s ease-in-out infinite}.paydayE .c1,.paydayE .c3,.paydayE .c5{animation-delay:-.6s}
+@keyframes rainbowE{0%{filter:hue-rotate(0) drop-shadow(0 0 6px #3ddc84)}100%{filter:hue-rotate(360deg) drop-shadow(0 0 6px #3ddc84)}}
+@keyframes twinkleE{0%,100%{opacity:.2}50%{opacity:1}}
+.syncE .shine{animation:scan 1.6s ease-in-out infinite;filter:drop-shadow(0 0 4px #fff)}.syncE .bulb{animation:haloE 1s ease-in-out infinite}
+.sleepE .head{animation:dimE 5s ease-in-out infinite}.sleepE .z{animation:twinkleE 2.5s ease-in-out infinite}.sleepE .z2{animation-delay:-1.2s}
+@keyframes dimE{0%,100%{opacity:.95}50%{opacity:.5}}
+.helloE .head>rect:first-of-type{animation:outlineE 4s ease-out infinite}.helloE .visor{animation:visorOnE 4s ease-out infinite}.helloE .bulb,.helloE .antenna line{animation:bulbOnE 4s ease-out infinite}.helloE .mouth{animation:mouthOnE 4s ease-out infinite}.helloE .tick{animation:visorOnE 4s ease-out infinite}
+@keyframes outlineE{0%{opacity:0}15%,100%{opacity:1}}
+@keyframes visorOnE{0%,15%{opacity:0}30%{opacity:1;filter:drop-shadow(0 0 8px #3ddc84)}55%,100%{opacity:1;filter:none}}
+@keyframes bulbOnE{0%,30%{opacity:0}42%{opacity:1;filter:drop-shadow(0 0 8px #3ddc84)}65%,100%{opacity:1;filter:none}}
+@keyframes mouthOnE{0%,40%{opacity:0}55%,100%{opacity:1}}
+.askE .bulb{animation:askBulbE 3s ease-in-out infinite}.askE .qbubble{animation:qfadeE 3s ease-in-out infinite}
+@keyframes askBulbE{0%,100%{fill:#3ddc84;filter:none}20%,85%{fill:#f5a623;filter:drop-shadow(0 0 6px #f5a623)}}
+@keyframes qfadeE{0%,15%{opacity:0}30%,85%{opacity:1}100%{opacity:0}}
+.noticeE .bulb{animation:flareE 3s ease-out infinite}.noticeE .spark{animation:sparkle 3s infinite}
+@keyframes flareE{0%,25%,100%{filter:none}32%{filter:drop-shadow(0 0 12px #f5a623) brightness(1.6)}60%{filter:drop-shadow(0 0 3px #f5a623)}}
+.notedE .fill{animation:greenGlowE 3s ease-out infinite}.notedE .check{animation:checkin 3s infinite;stroke-dasharray:22;stroke-dashoffset:22}
+@keyframes greenGlowE{0%,20%,100%{filter:none}35%{filter:drop-shadow(0 0 9px #3ddc84) brightness(1.4)}70%{filter:drop-shadow(0 0 2px #3ddc84)}}
+
+.final{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;max-width:1240px}
+.fcard{background:#1b1c21;border:1px solid #2a2b30;border-radius:18px;padding:12px 12px 14px;text-align:center}
+.fcard h3{margin:0;font-size:16px}.fcard .style{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:#3ddc84;margin:2px 0 4px}
+.fcard .plain{display:flex;align-items:center;justify-content:center;gap:6px;color:#6b707a;font-size:11.5px;margin-top:2px}
+.fcard p{margin:4px 0 0;color:#b8bcc5;font-size:12.5px;line-height:1.4}
+/* glow-only keyframes that touch filter alone, so they layer over motion */
+@keyframes fillGlow{0%,30%{filter:none}45%{filter:drop-shadow(0 0 8px #3ddc84)}75%,100%{filter:drop-shadow(0 0 1px #3ddc84)}}
+@keyframes tickGlow{0%,35%{filter:none}48%{filter:drop-shadow(0 0 6px #fff)}75%,100%{filter:none}}
+
+/* Idle: Elastic + glow */
+.fIdle .body{animation:jellyD 3s ease-in-out infinite}.fIdle .antenna{animation:springD 3s ease-in-out infinite}
+.fIdle .visor{animation:squintD 5s infinite;transform-box:fill-box;transform-origin:50% 50%}
+.gl.fIdle .fill{animation:glowE 4s ease-in-out infinite}.gl.fIdle .bulb{animation:haloE 3s ease-in-out infinite}
+/* Visor fill: Expressive + glow */
+.fFill .fill{animation:growB 4s cubic-bezier(.3,1.5,.5,1) infinite}.fFill .tick{animation:slideB 4s cubic-bezier(.3,1.5,.5,1) infinite}.fFill .shine{animation:shine 4s ease-in-out infinite}
+.gl.fFill .fill{animation:growB 4s cubic-bezier(.3,1.5,.5,1) infinite,fillGlow 4s ease-out infinite}.gl.fFill .tick{animation:slideB 4s cubic-bezier(.3,1.5,.5,1) infinite,tickGlow 4s ease-out infinite}
+/* Ahead: Expressive + glow */
+.fAhead .body{animation:hop 2s cubic-bezier(.3,.7,.4,1) infinite}
+.gl.fAhead .fill{animation:glowE 2.6s ease-in-out infinite}.gl.fAhead .mouth{animation:warmE 2.6s ease-in-out infinite}
+/* Tight: Elastic + amber glow */
+.fTight .body{animation:shiverD .25s linear infinite}.fTight .visor{animation:squishD 2s ease-in-out infinite;transform-box:fill-box;transform-origin:50% 50%}.fTight .sweat{animation:drip 2s ease-in infinite}
+.gl.fTight .fill{--c:#f5a623;animation:glowE 1.4s ease-in-out infinite}.gl.fTight .bulb{animation:haloAmberE 1.4s ease-in-out infinite}
+/* Over: Expressive + red glow */
+.fOver .head{animation:droopB 3s ease-in-out infinite}.fOver .antenna{animation:sag 3s ease-in-out infinite}.fOver .fill{animation:flicker 3s infinite}
+.gl.fOver .fill{--c:#e5534b;animation:flicker 3s infinite,glowE 3s ease-in-out infinite}
+/* Payday: Expressive + colour glow */
+.fPay .body{animation:jump 2.4s cubic-bezier(.3,.7,.4,1) infinite}.fPay .conf{animation:burst 2.4s ease-out infinite}
+.fPay .c0{--dx:-18px;--dy:-22px}.fPay .c1{--dx:16px;--dy:-26px}.fPay .c2{--dx:-22px;--dy:6px}.fPay .c3{--dx:20px;--dy:8px}.fPay .c4{--dx:-6px;--dy:-30px}.fPay .c5{--dx:10px;--dy:-14px}.fPay .c6{--dx:-24px;--dy:-10px}
+.gl.fPay .fill{animation:rainbowE 2.4s linear infinite}
+/* Syncing: Expressive + glowing scan */
+.fSync .shine{animation:scan 1.1s ease-in-out infinite}.fSync .spin{animation:rot 1s linear infinite;transform-origin:50% 50%}.fSync .antenna{animation:bob 1s ease-in-out infinite}
+.gl.fSync .shine{filter:drop-shadow(0 0 4px #fff)}.gl.fSync .bulb{animation:haloE 1s ease-in-out infinite}
+/* Asleep: Expressive + slow dimming */
+.fSleep .head{animation:nodoff 5s ease-in-out infinite}.fSleep .z{animation:zrise 3s ease-out infinite}.fSleep .z2{animation-delay:1.5s}
+.gl.fSleep .body{animation:dimE 5s ease-in-out infinite}
+/* Meet Penny: Elastic + lights up as she lands */
+.fHello .body{animation:dropinD 4s linear infinite}.fHello .antenna{animation:wave 4s ease-in-out infinite}
+.gl.fHello .visor,.gl.fHello .tick{animation:visorOnE 4s ease-out infinite}.gl.fHello .bulb{animation:bulbOnE 4s ease-out infinite}.gl.fHello .mouth{animation:mouthOnE 4s ease-out infinite}
+/* Question: Expressive + amber bulb */
+.fAsk .qbubble{animation:qbounce 3s cubic-bezier(.3,1.6,.5,1) infinite;transform-origin:50% 100%}.fAsk .head{animation:tiltB 3s ease-in-out infinite}.fAsk .bulb{animation:pulse .6s ease-in-out infinite}
+.gl.fAsk .bulb{animation:askBulbE 3s ease-in-out infinite,pulse .6s ease-in-out infinite}
+/* Noticed: Elastic + bulb flare */
+.fNotice .body{animation:surpriseD 3s linear infinite}.fNotice .antenna{animation:boingAntD 3s linear infinite}.fNotice .spark{animation:sparkle 3s infinite}
+.gl.fNotice .bulb{animation:flareE 3s ease-out infinite}
+/* Noted: Elastic + green glow */
+.fNoted .head{animation:nodsD 3s ease-in-out infinite}.fNoted .check{animation:checkin 3s infinite;stroke-dasharray:22;stroke-dashoffset:22}
+.gl.fNoted .fill{animation:greenGlowE 3s ease-out infinite}
+</style></head><body>
+<header><h1>Your Penny</h1><p>Your picks for each moment, with the glow layered on top. Each also shown small without the glow, to compare. Made-up figures.</p></header>
+<section><h2>At real size</h2><p>In the header, on Home, and on the welcome screen.</p><div class="row"><div class="mock"><div class="bar"><svg class="penny gl fIdle" width="34" height="34" viewBox="-8 -18 124 124">
+<g class="body">
+  <g class="head">
+    <g class="antenna"><line x1="62" y1="25" x2="67" y2="15" stroke="#fff" stroke-width="4" stroke-linecap="round"/><circle class="bulb" cx="68" cy="13" r="4.5" fill="#3ddc84"/></g>
+    <rect x="26" y="27" width="56" height="52" rx="16" fill="#17181c" stroke="#fff" stroke-width="5"/>
+    <g class="visor"><rect x="33" y="40" width="42" height="14" rx="4.2" fill="#3a3d45"/>
+      <rect class="fill " x="33" y="40" width="17.6" height="14" rx="4.2" fill="#3ddc84"/>
+      <rect class="shine" x="33" y="40" width="8" height="14" rx="3" fill="#fff" opacity="0"/></g>
+    <rect class="tick " x="54.1" y="36" width="4" height="22" rx="2" fill="#fff"/>
+    <path class="mouth" d="M45,66 Q54,72 63,66" stroke="#fff" stroke-width="4.5" fill="none" stroke-linecap="round"/>
+    
+  </g>
+  
+</g></svg><span style="color:#fff">spen</span><span style="margin-left:-8px">droid</span></div>
+<div class="read"><svg class="penny gl fAhead" width="40" height="40" viewBox="-8 -18 124 124">
+<g class="body">
+  <g class="head">
+    <g class="antenna"><line x1="62" y1="25" x2="67" y2="15" stroke="#fff" stroke-width="4" stroke-linecap="round"/><circle class="bulb" cx="68" cy="13" r="4.5" fill="#3ddc84"/></g>
+    <rect x="26" y="27" width="56" height="52" rx="16" fill="#17181c" stroke="#fff" stroke-width="5"/>
+    <g class="visor"><rect x="33" y="40" width="42" height="14" rx="4.2" fill="#3a3d45"/>
+      <rect class="fill " x="33" y="40" width="17.6" height="14" rx="4.2" fill="#3ddc84"/>
+      <rect class="shine" x="33" y="40" width="8" height="14" rx="3" fill="#fff" opacity="0"/></g>
+    <rect class="tick " x="54.1" y="36" width="4" height="22" rx="2" fill="#fff"/>
+    <path class="mouth" d="M45,66 Q54,72 63,66" stroke="#fff" stroke-width="4.5" fill="none" stroke-linecap="round"/>
+    
+  </g>
+  
+</g></svg><div>£280.86 ahead of the days. A normal day keeps you there.</div></div></div>
+<div class="mock"><div class="bar"><svg class="penny gl fIdle" width="34" height="34" viewBox="-8 -18 124 124">
+<g class="body">
+  <g class="head">
+    <g class="antenna"><line x1="62" y1="25" x2="67" y2="15" stroke="#fff" stroke-width="4" stroke-linecap="round"/><circle class="bulb" cx="68" cy="13" r="4.5" fill="#3ddc84"/></g>
+    <rect x="26" y="27" width="56" height="52" rx="16" fill="#17181c" stroke="#fff" stroke-width="5"/>
+    <g class="visor"><rect x="33" y="40" width="42" height="14" rx="4.2" fill="#3a3d45"/>
+      <rect class="fill " x="33" y="40" width="17.6" height="14" rx="4.2" fill="#3ddc84"/>
+      <rect class="shine" x="33" y="40" width="8" height="14" rx="3" fill="#fff" opacity="0"/></g>
+    <rect class="tick " x="54.1" y="36" width="4" height="22" rx="2" fill="#fff"/>
+    <path class="mouth" d="M45,66 Q54,72 63,66" stroke="#fff" stroke-width="4.5" fill="none" stroke-linecap="round"/>
+    
+  </g>
+  
+</g></svg><span style="color:#fff">spen</span><span style="margin-left:-8px">droid</span></div>
+<div class="read"><svg class="penny gl fTight" width="40" height="40" viewBox="-8 -18 124 124">
+<g class="body">
+  <g class="head">
+    <g class="antenna"><line x1="62" y1="25" x2="67" y2="15" stroke="#fff" stroke-width="4" stroke-linecap="round"/><circle class="bulb" cx="68" cy="13" r="4.5" fill="#f5a623"/></g>
+    <rect x="26" y="27" width="56" height="52" rx="16" fill="#17181c" stroke="#fff" stroke-width="5"/>
+    <g class="visor"><rect x="33" y="40" width="42" height="14" rx="4.2" fill="#3a3d45"/>
+      <rect class="fill " x="33" y="40" width="26.0" height="14" rx="4.2" fill="#f5a623"/>
+      <rect class="shine" x="33" y="40" width="8" height="14" rx="3" fill="#fff" opacity="0"/></g>
+    <rect class="tick " x="52.0" y="36" width="4" height="22" rx="2" fill="#fff"/>
+    <path class="mouth" d="M46,68 L62,68" stroke="#fff" stroke-width="4.5" fill="none" stroke-linecap="round"/>
+    
+  </g>
+  
+</g></svg><div>Just behind the days. A light day gets you back.</div></div></div>
+<div class="mock" style="text-align:center"><div style="font:700 26px 'Space Grotesk',system-ui;text-align:left">Meet Penny</div><svg class="penny gl fHello" width="150" height="150" viewBox="-8 -18 124 124">
+<g class="body">
+  <g class="head">
+    <g class="antenna"><line x1="62" y1="25" x2="67" y2="15" stroke="#fff" stroke-width="4" stroke-linecap="round"/><circle class="bulb" cx="68" cy="13" r="4.5" fill="#3ddc84"/></g>
+    <rect x="26" y="27" width="56" height="52" rx="16" fill="#17181c" stroke="#fff" stroke-width="5"/>
+    <g class="visor"><rect x="33" y="40" width="42" height="14" rx="4.2" fill="#3a3d45"/>
+      <rect class="fill " x="33" y="40" width="17.6" height="14" rx="4.2" fill="#3ddc84"/>
+      <rect class="shine" x="33" y="40" width="8" height="14" rx="3" fill="#fff" opacity="0"/></g>
+    <rect class="tick " x="54.1" y="36" width="4" height="22" rx="2" fill="#fff"/>
+    <path class="mouth" d="M45,66 Q54,72 63,66" stroke="#fff" stroke-width="4.5" fill="none" stroke-linecap="round"/>
+    
+  </g>
+  
+</g></svg></div></div></section>
+<section><h2>Every moment</h2><div class="final"><div class="fcard"><h3>Idle</h3><div class="style">Elastic + glow</div><svg class="penny gl fIdle" width="200" height="200" viewBox="-8 -18 124 124">
+<g class="body">
+  <g class="head">
+    <g class="antenna"><line x1="62" y1="25" x2="67" y2="15" stroke="#fff" stroke-width="4" stroke-linecap="round"/><circle class="bulb" cx="68" cy="13" r="4.5" fill="#3ddc84"/></g>
+    <rect x="26" y="27" width="56" height="52" rx="16" fill="#17181c" stroke="#fff" stroke-width="5"/>
+    <g class="visor"><rect x="33" y="40" width="42" height="14" rx="4.2" fill="#3a3d45"/>
+      <rect class="fill " x="33" y="40" width="17.6" height="14" rx="4.2" fill="#3ddc84"/>
+      <rect class="shine" x="33" y="40" width="8" height="14" rx="3" fill="#fff" opacity="0"/></g>
+    <rect class="tick " x="54.1" y="36" width="4" height="22" rx="2" fill="#fff"/>
+    <path class="mouth" d="M45,66 Q54,72 63,66" stroke="#fff" stroke-width="4.5" fill="none" stroke-linecap="round"/>
+    
+  </g>
+  
+</g></svg>
+<div class="plain"><svg class="penny fIdle" width="56" height="56" viewBox="-8 -18 124 124">
+<g class="body">
+  <g class="head">
+    <g class="antenna"><line x1="62" y1="25" x2="67" y2="15" stroke="#fff" stroke-width="4" stroke-linecap="round"/><circle class="bulb" cx="68" cy="13" r="4.5" fill="#3ddc84"/></g>
+    <rect x="26" y="27" width="56" height="52" rx="16" fill="#17181c" stroke="#fff" stroke-width="5"/>
+    <g class="visor"><rect x="33" y="40" width="42" height="14" rx="4.2" fill="#3a3d45"/>
+      <rect class="fill " x="33" y="40" width="17.6" height="14" rx="4.2" fill="#3ddc84"/>
+      <rect class="shine" x="33" y="40" width="8" height="14" rx="3" fill="#fff" opacity="0"/></g>
+    <rect class="tick " x="54.1" y="36" width="4" height="22" rx="2" fill="#fff"/>
+    <path class="mouth" d="M45,66 Q54,72 63,66" stroke="#fff" stroke-width="4.5" fill="none" stroke-linecap="round"/>
+    
+  </g>
+  
+</g></svg><span>without glow</span></div><p>Jelly wobble, springy antenna, a cartoon blink; the visor and bulb glow softly.</p></div><div class="fcard"><h3>Visor fills on open</h3><div class="style">Expressive + glow</div><svg class="penny gl fFill" width="200" height="200" viewBox="-8 -18 124 124">
+<g class="body">
+  <g class="head">
+    <g class="antenna"><line x1="62" y1="25" x2="67" y2="15" stroke="#fff" stroke-width="4" stroke-linecap="round"/><circle class="bulb" cx="68" cy="13" r="4.5" fill="#3ddc84"/></g>
+    <rect x="26" y="27" width="56" height="52" rx="16" fill="#17181c" stroke="#fff" stroke-width="5"/>
+    <g class="visor"><rect x="33" y="40" width="42" height="14" rx="4.2" fill="#3a3d45"/>
+      <rect class="fill " x="33" y="40" width="17.6" height="14" rx="4.2" fill="#3ddc84"/>
+      <rect class="shine" x="33" y="40" width="8" height="14" rx="3" fill="#fff" opacity="0"/></g>
+    <rect class="tick " x="54.1" y="36" width="4" height="22" rx="2" fill="#fff"/>
+    <path class="mouth" d="M45,66 Q54,72 63,66" stroke="#fff" stroke-width="4.5" fill="none" stroke-linecap="round"/>
+    
+  </g>
+  
+</g></svg>
+<div class="plain"><svg class="penny fFill" width="56" height="56" viewBox="-8 -18 124 124">
+<g class="body">
+  <g class="head">
+    <g class="antenna"><line x1="62" y1="25" x2="67" y2="15" stroke="#fff" stroke-width="4" stroke-linecap="round"/><circle class="bulb" cx="68" cy="13" r="4.5" fill="#3ddc84"/></g>
+    <rect x="26" y="27" width="56" height="52" rx="16" fill="#17181c" stroke="#fff" stroke-width="5"/>
+    <g class="visor"><rect x="33" y="40" width="42" height="14" rx="4.2" fill="#3a3d45"/>
+      <rect class="fill " x="33" y="40" width="17.6" height="14" rx="4.2" fill="#3ddc84"/>
+      <rect class="shine" x="33" y="40" width="8" height="14" rx="3" fill="#fff" opacity="0"/></g>
+    <rect class="tick " x="54.1" y="36" width="4" height="22" rx="2" fill="#fff"/>
+    <path class="mouth" d="M45,66 Q54,72 63,66" stroke="#fff" stroke-width="4.5" fill="none" stroke-linecap="round"/>
+    
+  </g>
+  
+</g></svg><span>without glow</span></div><p>Springs past and settles; the bar glows as it lands, then a shine runs along it.</p></div><div class="fcard"><h3>Ahead</h3><div class="style">Expressive + glow</div><svg class="penny gl fAhead" width="200" height="200" viewBox="-8 -18 124 124">
+<g class="body">
+  <g class="head">
+    <g class="antenna"><line x1="62" y1="25" x2="67" y2="15" stroke="#fff" stroke-width="4" stroke-linecap="round"/><circle class="bulb" cx="68" cy="13" r="4.5" fill="#3ddc84"/></g>
+    <rect x="26" y="27" width="56" height="52" rx="16" fill="#17181c" stroke="#fff" stroke-width="5"/>
+    <g class="visor"><rect x="33" y="40" width="42" height="14" rx="4.2" fill="#3a3d45"/>
+      <rect class="fill " x="33" y="40" width="17.6" height="14" rx="4.2" fill="#3ddc84"/>
+      <rect class="shine" x="33" y="40" width="8" height="14" rx="3" fill="#fff" opacity="0"/></g>
+    <rect class="tick " x="54.1" y="36" width="4" height="22" rx="2" fill="#fff"/>
+    <path class="mouth" d="M45,66 Q54,72 63,66" stroke="#fff" stroke-width="4.5" fill="none" stroke-linecap="round"/>
+    
+  </g>
+  
+</g></svg>
+<div class="plain"><svg class="penny fAhead" width="56" height="56" viewBox="-8 -18 124 124">
+<g class="body">
+  <g class="head">
+    <g class="antenna"><line x1="62" y1="25" x2="67" y2="15" stroke="#fff" stroke-width="4" stroke-linecap="round"/><circle class="bulb" cx="68" cy="13" r="4.5" fill="#3ddc84"/></g>
+    <rect x="26" y="27" width="56" height="52" rx="16" fill="#17181c" stroke="#fff" stroke-width="5"/>
+    <g class="visor"><rect x="33" y="40" width="42" height="14" rx="4.2" fill="#3a3d45"/>
+      <rect class="fill " x="33" y="40" width="17.6" height="14" rx="4.2" fill="#3ddc84"/>
+      <rect class="shine" x="33" y="40" width="8" height="14" rx="3" fill="#fff" opacity="0"/></g>
+    <rect class="tick " x="54.1" y="36" width="4" height="22" rx="2" fill="#fff"/>
+    <path class="mouth" d="M45,66 Q54,72 63,66" stroke="#fff" stroke-width="4.5" fill="none" stroke-linecap="round"/>
+    
+  </g>
+  
+</g></svg><span>without glow</span></div><p>A small happy hop, with a warm green glow.</p></div><div class="fcard"><h3>Tight</h3><div class="style">Elastic + glow</div><svg class="penny gl fTight" width="200" height="200" viewBox="-8 -18 124 124">
+<g class="body">
+  <g class="head">
+    <g class="antenna"><line x1="62" y1="25" x2="67" y2="15" stroke="#fff" stroke-width="4" stroke-linecap="round"/><circle class="bulb" cx="68" cy="13" r="4.5" fill="#f5a623"/></g>
+    <rect x="26" y="27" width="56" height="52" rx="16" fill="#17181c" stroke="#fff" stroke-width="5"/>
+    <g class="visor"><rect x="33" y="40" width="42" height="14" rx="4.2" fill="#3a3d45"/>
+      <rect class="fill " x="33" y="40" width="26.0" height="14" rx="4.2" fill="#f5a623"/>
+      <rect class="shine" x="33" y="40" width="8" height="14" rx="3" fill="#fff" opacity="0"/></g>
+    <rect class="tick " x="52.0" y="36" width="4" height="22" rx="2" fill="#fff"/>
+    <path class="mouth" d="M46,68 L62,68" stroke="#fff" stroke-width="4.5" fill="none" stroke-linecap="round"/>
+    
+  </g>
+  <path class="sweat" d="M84,34 q3,5 0,7 q-3,-2 0,-7 Z" fill="#7cc4ff"/>
+</g></svg>
+<div class="plain"><svg class="penny fTight" width="56" height="56" viewBox="-8 -18 124 124">
+<g class="body">
+  <g class="head">
+    <g class="antenna"><line x1="62" y1="25" x2="67" y2="15" stroke="#fff" stroke-width="4" stroke-linecap="round"/><circle class="bulb" cx="68" cy="13" r="4.5" fill="#f5a623"/></g>
+    <rect x="26" y="27" width="56" height="52" rx="16" fill="#17181c" stroke="#fff" stroke-width="5"/>
+    <g class="visor"><rect x="33" y="40" width="42" height="14" rx="4.2" fill="#3a3d45"/>
+      <rect class="fill " x="33" y="40" width="26.0" height="14" rx="4.2" fill="#f5a623"/>
+      <rect class="shine" x="33" y="40" width="8" height="14" rx="3" fill="#fff" opacity="0"/></g>
+    <rect class="tick " x="52.0" y="36" width="4" height="22" rx="2" fill="#fff"/>
+    <path class="mouth" d="M46,68 L62,68" stroke="#fff" stroke-width="4.5" fill="none" stroke-linecap="round"/>
+    
+  </g>
+  <path class="sweat" d="M84,34 q3,5 0,7 q-3,-2 0,-7 Z" fill="#7cc4ff"/>
+</g></svg><span>without glow</span></div><p>Shivers and squints, a bead of sweat, an amber glow breathing fast.</p></div><div class="fcard"><h3>Over</h3><div class="style">Expressive + glow</div><svg class="penny gl fOver" width="200" height="200" viewBox="-8 -18 124 124">
+<g class="body">
+  <g class="head">
+    <g class="antenna"><line x1="62" y1="25" x2="67" y2="15" stroke="#fff" stroke-width="4" stroke-linecap="round"/><circle class="bulb" cx="68" cy="13" r="4.5" fill="#e5534b"/></g>
+    <rect x="26" y="27" width="56" height="52" rx="16" fill="#17181c" stroke="#fff" stroke-width="5"/>
+    <g class="visor"><rect x="33" y="40" width="42" height="14" rx="4.2" fill="#3a3d45"/>
+      <rect class="fill " x="33" y="40" width="34.4" height="14" rx="4.2" fill="#e5534b"/>
+      <rect class="shine" x="33" y="40" width="8" height="14" rx="3" fill="#fff" opacity="0"/></g>
+    <rect class="tick " x="52.0" y="36" width="4" height="22" rx="2" fill="#fff"/>
+    <path class="mouth" d="M45,70 Q54,64 63,70" stroke="#fff" stroke-width="4.5" fill="none" stroke-linecap="round"/>
+    
+  </g>
+  
+</g></svg>
+<div class="plain"><svg class="penny fOver" width="56" height="56" viewBox="-8 -18 124 124">
+<g class="body">
+  <g class="head">
+    <g class="antenna"><line x1="62" y1="25" x2="67" y2="15" stroke="#fff" stroke-width="4" stroke-linecap="round"/><circle class="bulb" cx="68" cy="13" r="4.5" fill="#e5534b"/></g>
+    <rect x="26" y="27" width="56" height="52" rx="16" fill="#17181c" stroke="#fff" stroke-width="5"/>
+    <g class="visor"><rect x="33" y="40" width="42" height="14" rx="4.2" fill="#3a3d45"/>
+      <rect class="fill " x="33" y="40" width="34.4" height="14" rx="4.2" fill="#e5534b"/>
+      <rect class="shine" x="33" y="40" width="8" height="14" rx="3" fill="#fff" opacity="0"/></g>
+    <rect class="tick " x="52.0" y="36" width="4" height="22" rx="2" fill="#fff"/>
+    <path class="mouth" d="M45,70 Q54,64 63,70" stroke="#fff" stroke-width="4.5" fill="none" stroke-linecap="round"/>
+    
+  </g>
+  
+</g></svg><span>without glow</span></div><p>Sags, the antenna wilts, the visor flickers under a heavy red glow.</p></div><div class="fcard"><h3>Payday</h3><div class="style">Expressive + glow</div><svg class="penny gl fPay" width="200" height="200" viewBox="-8 -18 124 124">
+<g class="body">
+  <g class="head">
+    <g class="antenna"><line x1="62" y1="25" x2="67" y2="15" stroke="#fff" stroke-width="4" stroke-linecap="round"/><circle class="bulb" cx="68" cy="13" r="4.5" fill="#3ddc84"/></g>
+    <rect x="26" y="27" width="56" height="52" rx="16" fill="#17181c" stroke="#fff" stroke-width="5"/>
+    <g class="visor"><rect x="33" y="40" width="42" height="14" rx="4.2" fill="#3a3d45"/>
+      <rect class="fill " x="33" y="40" width="42.0" height="14" rx="4.2" fill="#3ddc84"/>
+      <rect class="shine" x="33" y="40" width="8" height="14" rx="3" fill="#fff" opacity="0"/></g>
+    
+    <path class="mouth" d="M43,64 Q54,78 65,64 Z" fill="#fff"/>
+    
+  </g>
+  <rect class="conf c0" x="12" y="32" width="5" height="5" rx="1" fill="#f5a623"/><rect class="conf c1" x="92" y="36" width="5" height="5" rx="1" fill="#ffffff"/><rect class="conf c2" x="14" y="76" width="5" height="5" rx="1" fill="#ffffff"/><rect class="conf c3" x="92" y="80" width="5" height="5" rx="1" fill="#f5a623"/><rect class="conf c4" x="22" y="14" width="5" height="5" rx="1" fill="#3ddc84"/><rect class="conf c5" x="100" y="10" width="5" height="5" rx="1" fill="#3ddc84"/><rect class="conf c6" x="4" y="52" width="5" height="5" rx="1" fill="#f5a623"/>
+</g></svg>
+<div class="plain"><svg class="penny fPay" width="56" height="56" viewBox="-8 -18 124 124">
+<g class="body">
+  <g class="head">
+    <g class="antenna"><line x1="62" y1="25" x2="67" y2="15" stroke="#fff" stroke-width="4" stroke-linecap="round"/><circle class="bulb" cx="68" cy="13" r="4.5" fill="#3ddc84"/></g>
+    <rect x="26" y="27" width="56" height="52" rx="16" fill="#17181c" stroke="#fff" stroke-width="5"/>
+    <g class="visor"><rect x="33" y="40" width="42" height="14" rx="4.2" fill="#3a3d45"/>
+      <rect class="fill " x="33" y="40" width="42.0" height="14" rx="4.2" fill="#3ddc84"/>
+      <rect class="shine" x="33" y="40" width="8" height="14" rx="3" fill="#fff" opacity="0"/></g>
+    
+    <path class="mouth" d="M43,64 Q54,78 65,64 Z" fill="#fff"/>
+    
+  </g>
+  <rect class="conf c0" x="12" y="32" width="5" height="5" rx="1" fill="#f5a623"/><rect class="conf c1" x="92" y="36" width="5" height="5" rx="1" fill="#ffffff"/><rect class="conf c2" x="14" y="76" width="5" height="5" rx="1" fill="#ffffff"/><rect class="conf c3" x="92" y="80" width="5" height="5" rx="1" fill="#f5a623"/><rect class="conf c4" x="22" y="14" width="5" height="5" rx="1" fill="#3ddc84"/><rect class="conf c5" x="100" y="10" width="5" height="5" rx="1" fill="#3ddc84"/><rect class="conf c6" x="4" y="52" width="5" height="5" rx="1" fill="#f5a623"/>
+</g></svg><span>without glow</span></div><p>Jumps, confetti bursts, and the visor glows through the colours.</p></div><div class="fcard"><h3>Syncing</h3><div class="style">Expressive + glow</div><svg class="penny gl fSync" width="200" height="200" viewBox="-8 -18 124 124">
+<g class="body">
+  <g class="head">
+    <g class="antenna"><line x1="62" y1="25" x2="67" y2="15" stroke="#fff" stroke-width="4" stroke-linecap="round"/><circle class="bulb" cx="68" cy="13" r="4.5" fill="#3ddc84"/></g>
+    <rect x="26" y="27" width="56" height="52" rx="16" fill="#17181c" stroke="#fff" stroke-width="5"/>
+    <g class="visor"><rect x="33" y="40" width="42" height="14" rx="4.2" fill="#3a3d45"/>
+      <rect class="fill " x="33" y="40" width="17.6" height="14" rx="4.2" fill="#3ddc84"/>
+      <rect class="shine" x="33" y="40" width="8" height="14" rx="3" fill="#fff" opacity="0"/></g>
+    <rect class="tick " x="54.1" y="36" width="4" height="22" rx="2" fill="#fff"/>
+    <circle class="mouth" cx="54" cy="68" r="3.5" fill="#fff"/>
+    
+  </g>
+  <path class="spin" d="M88,24 a8,8 0 1 1 -6,-5" stroke="#fff" stroke-width="3" fill="none" stroke-linecap="round"/>
+</g></svg>
+<div class="plain"><svg class="penny fSync" width="56" height="56" viewBox="-8 -18 124 124">
+<g class="body">
+  <g class="head">
+    <g class="antenna"><line x1="62" y1="25" x2="67" y2="15" stroke="#fff" stroke-width="4" stroke-linecap="round"/><circle class="bulb" cx="68" cy="13" r="4.5" fill="#3ddc84"/></g>
+    <rect x="26" y="27" width="56" height="52" rx="16" fill="#17181c" stroke="#fff" stroke-width="5"/>
+    <g class="visor"><rect x="33" y="40" width="42" height="14" rx="4.2" fill="#3a3d45"/>
+      <rect class="fill " x="33" y="40" width="17.6" height="14" rx="4.2" fill="#3ddc84"/>
+      <rect class="shine" x="33" y="40" width="8" height="14" rx="3" fill="#fff" opacity="0"/></g>
+    <rect class="tick " x="54.1" y="36" width="4" height="22" rx="2" fill="#fff"/>
+    <circle class="mouth" cx="54" cy="68" r="3.5" fill="#fff"/>
+    
+  </g>
+  <path class="spin" d="M88,24 a8,8 0 1 1 -6,-5" stroke="#fff" stroke-width="3" fill="none" stroke-linecap="round"/>
+</g></svg><span>without glow</span></div><p>A glowing light scans the visor; the antenna twitches, the bulb pulses.</p></div><div class="fcard"><h3>Asleep</h3><div class="style">Expressive + glow</div><svg class="penny gl fSleep" width="200" height="200" viewBox="-8 -18 124 124">
+<g class="body">
+  <g class="head">
+    <g class="antenna"><line x1="62" y1="25" x2="67" y2="15" stroke="#fff" stroke-width="4" stroke-linecap="round"/><circle class="bulb" cx="68" cy="13" r="4.5" fill="#3ddc84"/></g>
+    <rect x="26" y="27" width="56" height="52" rx="16" fill="#17181c" stroke="#fff" stroke-width="5"/>
+    <g class="visor"><rect x="33" y="40" width="42" height="14" rx="4.2" fill="#3a3d45"/>
+      <rect class="fill " x="33" y="40" width="17.6" height="14" rx="4.2" fill="#3ddc84" opacity="0.45"/>
+      <rect class="shine" x="33" y="40" width="8" height="14" rx="3" fill="#fff" opacity="0"/></g>
+    <rect class="tick " x="54.1" y="36" width="4" height="22" rx="2" fill="#fff"/>
+    <path class="mouth" d="M48,68 Q54,70 60,68" stroke="#fff" stroke-width="4.5" fill="none" stroke-linecap="round"/>
+    
+  </g>
+  <g class="zzz"><text class="z z1" x="84" y="22" font-family="Space Grotesk, sans-serif" font-weight="700" font-size="13" fill="#fff">z</text><text class="z z2" x="92" y="10" font-family="Space Grotesk, sans-serif" font-weight="700" font-size="10" fill="#fff">z</text></g>
+</g></svg>
+<div class="plain"><svg class="penny fSleep" width="56" height="56" viewBox="-8 -18 124 124">
+<g class="body">
+  <g class="head">
+    <g class="antenna"><line x1="62" y1="25" x2="67" y2="15" stroke="#fff" stroke-width="4" stroke-linecap="round"/><circle class="bulb" cx="68" cy="13" r="4.5" fill="#3ddc84"/></g>
+    <rect x="26" y="27" width="56" height="52" rx="16" fill="#17181c" stroke="#fff" stroke-width="5"/>
+    <g class="visor"><rect x="33" y="40" width="42" height="14" rx="4.2" fill="#3a3d45"/>
+      <rect class="fill " x="33" y="40" width="17.6" height="14" rx="4.2" fill="#3ddc84" opacity="0.45"/>
+      <rect class="shine" x="33" y="40" width="8" height="14" rx="3" fill="#fff" opacity="0"/></g>
+    <rect class="tick " x="54.1" y="36" width="4" height="22" rx="2" fill="#fff"/>
+    <path class="mouth" d="M48,68 Q54,70 60,68" stroke="#fff" stroke-width="4.5" fill="none" stroke-linecap="round"/>
+    
+  </g>
+  <g class="zzz"><text class="z z1" x="84" y="22" font-family="Space Grotesk, sans-serif" font-weight="700" font-size="13" fill="#fff">z</text><text class="z z2" x="92" y="10" font-family="Space Grotesk, sans-serif" font-weight="700" font-size="10" fill="#fff">z</text></g>
+</g></svg><span>without glow</span></div><p>Nods off, z's float up, and she slowly dims and brightens.</p></div><div class="fcard"><h3>Meet Penny</h3><div class="style">Elastic + glow</div><svg class="penny gl fHello" width="200" height="200" viewBox="-8 -18 124 124">
+<g class="body">
+  <g class="head">
+    <g class="antenna"><line x1="62" y1="25" x2="67" y2="15" stroke="#fff" stroke-width="4" stroke-linecap="round"/><circle class="bulb" cx="68" cy="13" r="4.5" fill="#3ddc84"/></g>
+    <rect x="26" y="27" width="56" height="52" rx="16" fill="#17181c" stroke="#fff" stroke-width="5"/>
+    <g class="visor"><rect x="33" y="40" width="42" height="14" rx="4.2" fill="#3a3d45"/>
+      <rect class="fill " x="33" y="40" width="17.6" height="14" rx="4.2" fill="#3ddc84"/>
+      <rect class="shine" x="33" y="40" width="8" height="14" rx="3" fill="#fff" opacity="0"/></g>
+    <rect class="tick " x="54.1" y="36" width="4" height="22" rx="2" fill="#fff"/>
+    <path class="mouth" d="M45,66 Q54,72 63,66" stroke="#fff" stroke-width="4.5" fill="none" stroke-linecap="round"/>
+    
+  </g>
+  
+</g></svg>
+<div class="plain"><svg class="penny fHello" width="56" height="56" viewBox="-8 -18 124 124">
+<g class="body">
+  <g class="head">
+    <g class="antenna"><line x1="62" y1="25" x2="67" y2="15" stroke="#fff" stroke-width="4" stroke-linecap="round"/><circle class="bulb" cx="68" cy="13" r="4.5" fill="#3ddc84"/></g>
+    <rect x="26" y="27" width="56" height="52" rx="16" fill="#17181c" stroke="#fff" stroke-width="5"/>
+    <g class="visor"><rect x="33" y="40" width="42" height="14" rx="4.2" fill="#3a3d45"/>
+      <rect class="fill " x="33" y="40" width="17.6" height="14" rx="4.2" fill="#3ddc84"/>
+      <rect class="shine" x="33" y="40" width="8" height="14" rx="3" fill="#fff" opacity="0"/></g>
+    <rect class="tick " x="54.1" y="36" width="4" height="22" rx="2" fill="#fff"/>
+    <path class="mouth" d="M45,66 Q54,72 63,66" stroke="#fff" stroke-width="4.5" fill="none" stroke-linecap="round"/>
+    
+  </g>
+  
+</g></svg><span>without glow</span></div><p>Drops in from above, lands with a squash, lights up and waves.</p></div><div class="fcard"><h3>Penny has a question</h3><div class="style">Expressive + glow</div><svg class="penny gl fAsk" width="200" height="200" viewBox="-8 -18 124 124">
+<g class="body">
+  <g class="head">
+    <g class="antenna"><line x1="62" y1="25" x2="67" y2="15" stroke="#fff" stroke-width="4" stroke-linecap="round"/><circle class="bulb" cx="68" cy="13" r="4.5" fill="#3ddc84"/></g>
+    <rect x="26" y="27" width="56" height="52" rx="16" fill="#17181c" stroke="#fff" stroke-width="5"/>
+    <g class="visor"><rect x="33" y="40" width="42" height="14" rx="4.2" fill="#3a3d45"/>
+      <rect class="fill " x="33" y="40" width="17.6" height="14" rx="4.2" fill="#3ddc84"/>
+      <rect class="shine" x="33" y="40" width="8" height="14" rx="3" fill="#fff" opacity="0"/></g>
+    <rect class="tick " x="54.1" y="36" width="4" height="22" rx="2" fill="#fff"/>
+    <path class="mouth" d="M45,66 Q54,72 63,66" stroke="#fff" stroke-width="4.5" fill="none" stroke-linecap="round"/>
+    <g class="qbubble"><circle cx="90" cy="2" r="11" fill="#f5a623"/><text x="90" y="7.5" text-anchor="middle" font-family="Space Grotesk, sans-serif" font-weight="700" font-size="15" fill="#111">?</text></g>
+  </g>
+  
+</g></svg>
+<div class="plain"><svg class="penny fAsk" width="56" height="56" viewBox="-8 -18 124 124">
+<g class="body">
+  <g class="head">
+    <g class="antenna"><line x1="62" y1="25" x2="67" y2="15" stroke="#fff" stroke-width="4" stroke-linecap="round"/><circle class="bulb" cx="68" cy="13" r="4.5" fill="#3ddc84"/></g>
+    <rect x="26" y="27" width="56" height="52" rx="16" fill="#17181c" stroke="#fff" stroke-width="5"/>
+    <g class="visor"><rect x="33" y="40" width="42" height="14" rx="4.2" fill="#3a3d45"/>
+      <rect class="fill " x="33" y="40" width="17.6" height="14" rx="4.2" fill="#3ddc84"/>
+      <rect class="shine" x="33" y="40" width="8" height="14" rx="3" fill="#fff" opacity="0"/></g>
+    <rect class="tick " x="54.1" y="36" width="4" height="22" rx="2" fill="#fff"/>
+    <path class="mouth" d="M45,66 Q54,72 63,66" stroke="#fff" stroke-width="4.5" fill="none" stroke-linecap="round"/>
+    <g class="qbubble"><circle cx="90" cy="2" r="11" fill="#f5a623"/><text x="90" y="7.5" text-anchor="middle" font-family="Space Grotesk, sans-serif" font-weight="700" font-size="15" fill="#111">?</text></g>
+  </g>
+  
+</g></svg><span>without glow</span></div><p>Tilts her head, the '?' bounces in, her bulb glows amber.</p></div><div class="fcard"><h3>Penny noticed something</h3><div class="style">Elastic + glow</div><svg class="penny gl fNotice" width="200" height="200" viewBox="-8 -18 124 124">
+<g class="body">
+  <g class="head">
+    <g class="antenna"><line x1="62" y1="25" x2="67" y2="15" stroke="#fff" stroke-width="4" stroke-linecap="round"/><circle class="bulb" cx="68" cy="13" r="4.5" fill="#3ddc84"/><g class="spark"><line x1="68" y1="4" x2="68" y2="-2" stroke="#f5a623" stroke-width="2.5" stroke-linecap="round"/><line x1="75.5" y1="7" x2="80" y2="3" stroke="#f5a623" stroke-width="2.5" stroke-linecap="round"/><line x1="60.5" y1="7" x2="56" y2="3" stroke="#f5a623" stroke-width="2.5" stroke-linecap="round"/><line x1="77" y1="14" x2="83" y2="14" stroke="#f5a623" stroke-width="2.5" stroke-linecap="round"/></g></g>
+    <rect x="26" y="27" width="56" height="52" rx="16" fill="#17181c" stroke="#fff" stroke-width="5"/>
+    <g class="visor"><rect x="33" y="40" width="42" height="14" rx="4.2" fill="#3a3d45"/>
+      <rect class="fill " x="33" y="40" width="17.6" height="14" rx="4.2" fill="#3ddc84"/>
+      <rect class="shine" x="33" y="40" width="8" height="14" rx="3" fill="#fff" opacity="0"/></g>
+    <rect class="tick " x="54.1" y="36" width="4" height="22" rx="2" fill="#fff"/>
+    <path class="mouth" d="M45,66 Q54,72 63,66" stroke="#fff" stroke-width="4.5" fill="none" stroke-linecap="round"/>
+    
+  </g>
+  
+</g></svg>
+<div class="plain"><svg class="penny fNotice" width="56" height="56" viewBox="-8 -18 124 124">
+<g class="body">
+  <g class="head">
+    <g class="antenna"><line x1="62" y1="25" x2="67" y2="15" stroke="#fff" stroke-width="4" stroke-linecap="round"/><circle class="bulb" cx="68" cy="13" r="4.5" fill="#3ddc84"/><g class="spark"><line x1="68" y1="4" x2="68" y2="-2" stroke="#f5a623" stroke-width="2.5" stroke-linecap="round"/><line x1="75.5" y1="7" x2="80" y2="3" stroke="#f5a623" stroke-width="2.5" stroke-linecap="round"/><line x1="60.5" y1="7" x2="56" y2="3" stroke="#f5a623" stroke-width="2.5" stroke-linecap="round"/><line x1="77" y1="14" x2="83" y2="14" stroke="#f5a623" stroke-width="2.5" stroke-linecap="round"/></g></g>
+    <rect x="26" y="27" width="56" height="52" rx="16" fill="#17181c" stroke="#fff" stroke-width="5"/>
+    <g class="visor"><rect x="33" y="40" width="42" height="14" rx="4.2" fill="#3a3d45"/>
+      <rect class="fill " x="33" y="40" width="17.6" height="14" rx="4.2" fill="#3ddc84"/>
+      <rect class="shine" x="33" y="40" width="8" height="14" rx="3" fill="#fff" opacity="0"/></g>
+    <rect class="tick " x="54.1" y="36" width="4" height="22" rx="2" fill="#fff"/>
+    <path class="mouth" d="M45,66 Q54,72 63,66" stroke="#fff" stroke-width="4.5" fill="none" stroke-linecap="round"/>
+    
+  </g>
+  
+</g></svg><span>without glow</span></div><p>Jumps in surprise, the antenna boings, the bulb flares.</p></div><div class="fcard"><h3>Penny's noted it</h3><div class="style">Elastic + glow</div><svg class="penny gl fNoted" width="200" height="200" viewBox="-8 -18 124 124">
+<g class="body">
+  <g class="head">
+    <g class="antenna"><line x1="62" y1="25" x2="67" y2="15" stroke="#fff" stroke-width="4" stroke-linecap="round"/><circle class="bulb" cx="68" cy="13" r="4.5" fill="#3ddc84"/></g>
+    <rect x="26" y="27" width="56" height="52" rx="16" fill="#17181c" stroke="#fff" stroke-width="5"/>
+    <g class="visor"><rect x="33" y="40" width="42" height="14" rx="4.2" fill="#3a3d45"/>
+      <rect class="fill " x="33" y="40" width="17.6" height="14" rx="4.2" fill="#3ddc84"/>
+      <rect class="shine" x="33" y="40" width="8" height="14" rx="3" fill="#fff" opacity="0"/></g>
+    <rect class="tick " x="54.1" y="36" width="4" height="22" rx="2" fill="#fff"/>
+    <path class="mouth" d="M45,66 Q54,72 63,66" stroke="#fff" stroke-width="4.5" fill="none" stroke-linecap="round"/>
+    
+  </g>
+  <path class="check" d="M86,8 l4,4 l8,-9" stroke="#3ddc84" stroke-width="3.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+</g></svg>
+<div class="plain"><svg class="penny fNoted" width="56" height="56" viewBox="-8 -18 124 124">
+<g class="body">
+  <g class="head">
+    <g class="antenna"><line x1="62" y1="25" x2="67" y2="15" stroke="#fff" stroke-width="4" stroke-linecap="round"/><circle class="bulb" cx="68" cy="13" r="4.5" fill="#3ddc84"/></g>
+    <rect x="26" y="27" width="56" height="52" rx="16" fill="#17181c" stroke="#fff" stroke-width="5"/>
+    <g class="visor"><rect x="33" y="40" width="42" height="14" rx="4.2" fill="#3a3d45"/>
+      <rect class="fill " x="33" y="40" width="17.6" height="14" rx="4.2" fill="#3ddc84"/>
+      <rect class="shine" x="33" y="40" width="8" height="14" rx="3" fill="#fff" opacity="0"/></g>
+    <rect class="tick " x="54.1" y="36" width="4" height="22" rx="2" fill="#fff"/>
+    <path class="mouth" d="M45,66 Q54,72 63,66" stroke="#fff" stroke-width="4.5" fill="none" stroke-linecap="round"/>
+    
+  </g>
+  <path class="check" d="M86,8 l4,4 l8,-9" stroke="#3ddc84" stroke-width="3.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+</g></svg><span>without glow</span></div><p>Squashy nods, a green glow, and the tick.</p></div></div></section></body></html>
