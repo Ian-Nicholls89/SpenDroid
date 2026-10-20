@@ -55,6 +55,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.spendroid.data.db.AccountEntity
 import com.spendroid.data.db.AccountType
+import com.spendroid.importer.PdfStatement
+import com.spendroid.importer.PdfText
 import com.spendroid.importer.StatementFile
 import com.spendroid.importer.StatementFile.AMOUNT
 import com.spendroid.importer.StatementFile.DATE
@@ -77,16 +79,19 @@ data class ImportRequest(val accountId: String? = null, val uri: Uri? = null)
 private val FILE_TYPES = arrayOf(
     "text/csv", "text/comma-separated-values", "application/csv", "text/plain", "application/vnd.ms-excel",
     "application/x-ofx", "application/ofx", "application/vnd.intu.qfx", "application/qif", "application/x-qif",
-    "application/octet-stream",
+    "application/pdf", "application/octet-stream",
 )
 
-private const val MAX_BYTES = 5_000_000
+private const val MAX_BYTES = 20_000_000
 private const val MAX_ROWS = 20_000
 
 private enum class Step { FILE, MATCH, CHECK, DONE }
 
 /** A loaded file: its name, and what it holds. */
 internal class Loaded(val name: String, val parsed: StatementFile.Parsed)
+
+/** A PDF that needs its password: [wrong] when the last one tried didn't open it. */
+private class LockedPdf(val name: String, val bytes: ByteArray, val wrong: Boolean)
 
 /**
  * Older history from a bank's own file, imported on the phone: choose the file and the account,
@@ -116,6 +121,9 @@ fun ImportScreen(
     var added by remember { mutableStateOf(0) }
     // A manual account's balance, typed when the file doesn't give one.
     var typedBalance by remember { mutableStateOf("") }
+    var locked by remember { mutableStateOf<LockedPdf?>(null) }
+    // A PDF Penny couldn't find a table in: its layout, masked, to copy and share.
+    var unknownLayout by remember { mutableStateOf<String?>(null) }
 
     val account = accounts.firstOrNull { it.id == accountId }
     val layouts = remember { WebImport.layouts(context) }
@@ -125,21 +133,52 @@ fun ImportScreen(
         else if (layout == null) layout = StatementFile.Layout(emptyList(), emptyList())
     }
 
+    fun use(name: String, parsed: StatementFile.Parsed) {
+        loaded = Loaded(name, parsed)
+        edited = false; layout = null; check = null
+        if (accountId == null) accountId = likelyAccount(parsed, accounts)
+        reguess()
+    }
+
+    fun openPdf(name: String, bytes: ByteArray, password: String?) {
+        scope.launch {
+            problem = null; unknownLayout = null; locked = null
+            val outcome = withContext(Dispatchers.Default) {
+                runCatching {
+                    when (val o = PdfText.read(bytes, password)) {
+                        is PdfText.Outcome.Pages -> PdfStatement.read(o.pages)
+                        else -> o
+                    }
+                }.getOrElse { PdfText.Outcome.Unreadable(it.message ?: "") }
+            }
+            when (outcome) {
+                is PdfText.Outcome.NeedsPassword -> locked = LockedPdf(name, bytes, outcome.wrong)
+                is PdfText.Outcome.Scanned -> problem = "$name is a picture of a statement - a scan - so there are no words in it for Penny to read. " +
+                    "Your bank's website or app can usually give you a CSV instead."
+                is PdfText.Outcome.Unreadable -> problem = "Penny couldn't open $name. It may be damaged - try downloading it again."
+                is PdfStatement.Result -> if (!outcome.recognised || outcome.transactions.isEmpty()) {
+                    problem = "Penny doesn't know this layout yet - she couldn't find a table of transactions in $name."
+                    unknownLayout = PdfStatement.anonymise(outcome)
+                } else {
+                    use(name, StatementFile.fromPdf(outcome))
+                }
+            }
+        }
+    }
+
     fun load(uri: Uri) {
         scope.launch {
-            problem = null
+            problem = null; unknownLayout = null
             val result = withContext(Dispatchers.IO) { readFile(context, uri) }
             result.onFailure { problem = it.message ?: "Couldn't read that file." }
-            result.onSuccess { (name, text) ->
-                val parsed = StatementFile.parse(text)
+            result.onSuccess { (name, bytes) ->
+                if (PdfText.isPdf(bytes)) return@onSuccess openPdf(name, bytes, null)
+                val parsed = StatementFile.parse(asText(bytes))
                 if (parsed.kind == StatementFile.Kind.CSV && parsed.grid.size < 2 || parsed.kind != StatementFile.Kind.CSV && parsed.fromFile.isEmpty()) {
-                    problem = "$name doesn't look like a bank statement - a CSV, OFX or QIF with transactions in it."
+                    problem = "$name doesn't look like a bank statement - a CSV, OFX, QIF or PDF with transactions in it."
                     return@onSuccess
                 }
-                loaded = Loaded(name, parsed)
-                edited = false; layout = null; check = null
-                if (accountId == null) accountId = likelyAccount(parsed, accounts)
-                reguess()
+                use(name, parsed)
             }
         }
     }
@@ -172,6 +211,7 @@ fun ImportScreen(
         }
     }
     BackHandler(onBack = back)
+    locked?.let { pdf -> PasswordDialog(pdf, onOpen = { openPdf(pdf.name, pdf.bytes, it) }, onCancel = { locked = null }) }
 
     // Drawn over the app rather than inside its frame, so the frame's white text has to be set here.
     androidx.compose.runtime.CompositionLocalProvider(androidx.compose.material3.LocalContentColor provides Charcoal.Text) {
@@ -191,7 +231,7 @@ fun ImportScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 when (step) {
-                    Step.FILE -> FileStep(loaded, problem, accounts, accountId, { picker.launch(FILE_TYPES) }, { accountId = it })
+                    Step.FILE -> FileStep(loaded, problem, accounts, accountId, { picker.launch(FILE_TYPES) }, { accountId = it }, unknownLayout)
                     Step.MATCH -> MatchStep(loaded!!.parsed, layout!!, rows, onChange = { layout = it; edited = true })
                     Step.CHECK -> CheckStep(
                         loaded!!, layout!!, rows, check, account, onFlip = { layout = layout!!.copy(flip = it); edited = true },
@@ -279,8 +319,8 @@ private fun likelyAccount(parsed: StatementFile.Parsed, accounts: List<AccountEn
     return accounts.singleOrNull { it.institutionName.lowercase().contains(known) }?.id
 }
 
-/** The file's name and text: UTF-8, or Windows' own encoding where it isn't. */
-private fun readFile(context: Context, uri: Uri): Result<Pair<String, String>> = runCatching {
+/** The file's name and bytes. */
+private fun readFile(context: Context, uri: Uri): Result<Pair<String, ByteArray>> = runCatching {
     val resolver = context.contentResolver
     val name = resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
         if (c.moveToFirst()) c.getString(0) else null
@@ -292,12 +332,17 @@ private fun readFile(context: Context, uri: Uri): Result<Pair<String, String>> =
             val n = input.read(buffer)
             if (n < 0) break
             out.write(buffer, 0, n)
-            if (out.size() > MAX_BYTES) error("That file is over 5 MB - export a shorter period.")
+            if (out.size() > MAX_BYTES) error("That file is over 20 MB - export a shorter period.")
         }
         out.toByteArray()
     } ?: error("Couldn't open that file.")
+    name to bytes
+}
+
+/** A text file's words: UTF-8, or Windows' own encoding where it isn't. */
+private fun asText(bytes: ByteArray): String {
     val utf8 = String(bytes, Charsets.UTF_8)
-    name to if ('�' in utf8) String(bytes, charset("windows-1252")) else utf8
+    return if ('�' in utf8) String(bytes, charset("windows-1252")) else utf8
 }
 
 @Composable
@@ -319,6 +364,7 @@ internal fun FileStep(
     accountId: String?,
     onChoose: () -> Unit,
     onAccount: (String) -> Unit,
+    unknownLayout: String? = null,
 ) {
     Panel {
         SectionHeading("The file")
@@ -335,7 +381,7 @@ internal fun FileStep(
                 Text(loaded?.name ?: "Choose a file", style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(
                     loaded?.parsed?.let { p -> if (p.kind == StatementFile.Kind.CSV) "${p.grid.size} lines" else "${p.fromFile.size} transactions" }
-                        ?: "From your bank's website or app · CSV, OFX or QIF",
+                        ?: "From your bank's website or app · CSV, OFX, QIF or PDF",
                     style = MaterialTheme.typography.labelSmall, color = Charcoal.Muted,
                 )
             }
@@ -343,11 +389,16 @@ internal fun FileStep(
             Text(if (loaded == null) "Choose" else "Change", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelLarge)
         }
         problem?.let { Text(it, color = Charcoal.Bad, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp)) }
+        unknownLayout?.let { UnknownLayout(it) }
         loaded?.parsed?.let { p ->
-            val known = if (p.kind == StatementFile.Kind.CSV) StatementFile.guess(p, null, false).known.ifEmpty { if (StatementFile.isPayPal(p)) "PayPal" else "" } else p.kind.name
+            val known = when {
+                p.pdf != null -> if (p.pdf.kind == PdfStatement.Kind.CARD) "a card statement" else "an account statement"
+                p.kind == StatementFile.Kind.CSV -> StatementFile.guess(p, null, false).known.ifEmpty { if (StatementFile.isPayPal(p)) "PayPal" else "" }
+                else -> p.kind.name
+            }
             Spacer(Modifier.height(10.dp))
             if (known.isNotEmpty()) {
-                Chip("✓ Recognised: $known", colour = Color(0xFF1F3A2A), textColour = Charcoal.In)
+                Chip(if (p.pdf != null) "✓ Read as $known" else "✓ Recognised: $known", colour = Color(0xFF1F3A2A), textColour = Charcoal.In)
             } else {
                 Text("An unfamiliar layout: you'll check how it reads next.", style = MaterialTheme.typography.labelSmall, color = Charcoal.Warn)
             }
@@ -596,6 +647,7 @@ internal fun CheckStep(
     val good = rows.filter { it.ok }
     val bad = rows.filter { !it.ok && !it.left }
     val left = rows.count { it.left }
+    loaded.parsed.pdf?.let { Verdict(it) }
     Panel {
         SectionHeading("Before you add it")
         Spacer(Modifier.height(6.dp))
@@ -658,7 +710,8 @@ internal fun CheckStep(
         bad.take(2).forEach { ReadRow(it) }
         // A single signed amount can be the wrong way round on a card's file; two columns can't.
         val signed = loaded.parsed.kind != StatementFile.Kind.CSV || (layout.col(AMOUNT) >= 0 && layout.col(StatementFile.FLAG) < 0 && layout.col(OUT) < 0)
-        if (signed && !StatementFile.isPayPal(loaded.parsed)) {
+        // A PDF whose totals add up has its signs proved, so there's nothing to flip.
+        if (signed && !StatementFile.isPayPal(loaded.parsed) && loaded.parsed.pdf?.allChecksOk != true) {
             Row(
                 Modifier.fillMaxWidth().padding(top = 10.dp).clickable { onFlip(!layout.flip) },
                 verticalAlignment = Alignment.CenterVertically,
@@ -700,4 +753,97 @@ internal fun closingFor(parsed: StatementFile.Parsed, layout: StatementFile.Layo
     val (day, minor) = StatementFile.closingBalance(parsed, layout) ?: return null
     val owed = account?.accountType == AccountType.CREDIT_CARD && minor > 0
     return day to if (owed) -minor else minor
+}
+
+/**
+ * Penny's verdict on a PDF: whether the statement's own totals - brought forward, money in and
+ * out, the balance after each line, the closing balance - match what she read. Adding is still
+ * allowed when they don't, with why shown.
+ */
+@Composable
+internal fun Verdict(r: PdfStatement.Result) {
+    val ok = r.allChecksOk
+    val none = r.checks.isEmpty()
+    val colour = when { none -> Charcoal.Muted; ok -> Charcoal.In; else -> Charcoal.Warn }
+    Panel {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Droid(DroidNow.face.copy(mood = if (ok || none) DroidMood.AHEAD else DroidMood.TIGHT), 44.dp, moment = if (ok || none) DroidMoment.NOTED else DroidMoment.QUESTION)
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    when { none -> "Nothing on it to check against"; ok -> "Everything adds up"; else -> "Something doesn't add up" },
+                    style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black, color = colour,
+                )
+                Text(
+                    when {
+                        none -> "The statement prints no totals or balances, so Penny can't prove she read every line. Look over it below."
+                        ok -> "Penny checked what she read against the statement's own totals${if (r.checks.size > 1) " - all ${r.checks.size} match" else ""}."
+                        else -> "Penny may have misread a line, or missed one. You can still add it - check the lines below first."
+                    },
+                    style = MaterialTheme.typography.bodySmall, color = Charcoal.Muted,
+                )
+            }
+        }
+        r.checks.filter { !it.ok }.take(5).forEach { c ->
+            val said = listOfNotNull(
+                c.printed?.let { "statement says ${formatMoney(it, "GBP")}" },
+                c.counted?.let { "Penny counted ${formatMoney(it, "GBP")}" },
+                c.page?.let { "page $it" },
+            ).joinToString(" · ")
+            Column(Modifier.padding(top = 10.dp)) {
+                Text(c.what, style = MaterialTheme.typography.titleSmall)
+                if (said.isNotEmpty()) Text(said, style = MaterialTheme.typography.labelSmall, color = Charcoal.Warn)
+            }
+        }
+        r.notes.forEach { Text(it, style = MaterialTheme.typography.labelSmall, color = Charcoal.Muted, modifier = Modifier.padding(top = 8.dp)) }
+    }
+}
+
+/** A PDF Penny can't read yet: the way round it, and its layout - masked - to share. */
+@Composable
+private fun UnknownLayout(layout: String) {
+    val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
+    var copied by remember { mutableStateOf(false) }
+    Column(Modifier.padding(top = 8.dp)) {
+        Text(
+            "Your bank's website or app can usually give you a CSV of the same months, which Penny can read. " +
+                "To help her learn this layout, copy it below: every name, number and amount in it is masked.",
+            style = MaterialTheme.typography.bodySmall, color = Charcoal.Muted,
+        )
+        androidx.compose.material3.TextButton(onClick = { clipboard.setText(androidx.compose.ui.text.AnnotatedString(layout)); copied = true }) {
+            Text(if (copied) "Copied" else "Copy the layout")
+        }
+    }
+}
+
+/** A locked PDF: its password, used once to open it and never kept. */
+@Composable
+private fun PasswordDialog(pdf: LockedPdf, onOpen: (String) -> Unit, onCancel: () -> Unit) {
+    var password by remember(pdf) { mutableStateOf("") }
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onCancel,
+        title = { Text("${pdf.name} is locked") },
+        text = {
+            Column {
+                Text(
+                    "Banks sometimes lock statements with a password - often part of your date of birth or account number. " +
+                        "Penny uses it to open this file and doesn't keep it.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                androidx.compose.material3.OutlinedTextField(
+                    value = password,
+                    onValueChange = { password = it },
+                    label = { Text("Password") },
+                    singleLine = true,
+                    isError = pdf.wrong,
+                    supportingText = if (pdf.wrong) ({ Text("That didn't open it - try again.") }) else null,
+                    visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Password),
+                    modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+                )
+            }
+        },
+        confirmButton = { androidx.compose.material3.TextButton(onClick = { onOpen(password) }, enabled = password.isNotEmpty()) { Text("Open") } },
+        dismissButton = { androidx.compose.material3.TextButton(onClick = onCancel) { Text("Cancel") } },
+    )
 }

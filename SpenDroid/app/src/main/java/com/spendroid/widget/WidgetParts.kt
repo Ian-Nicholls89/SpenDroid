@@ -353,18 +353,11 @@ fun droidBitmap(pace: com.spendroid.domain.BudgetPace.Pace, used: Float?, elapse
     return bitmap
 }
 
-/** The droid as the budget has it now, for a widget's header: its face from the shared budget. */
-suspend fun widgetDroid(context: Context, sizePx: Int = 72): Bitmap {
+/** Penny as the budget has her now, for a widget's header: her mood's pose, from the shared budget. */
+suspend fun widgetDroid(context: Context, sizePx: Int = 144): Bitmap {
     val accent = widgetAccent(context)
     val snapshot = runCatching { SharedSnapshot.get(context) }.getOrNull()
-    val pace = snapshot?.let { com.spendroid.domain.BudgetPace.of(it) } ?: com.spendroid.domain.BudgetPace.Pace.ON_TRACK
-    return droidBitmap(
-        pace,
-        snapshot?.let { com.spendroid.domain.BudgetPace.usedFraction(it) },
-        snapshot?.let { com.spendroid.domain.BudgetPace.elapsedFraction(it) },
-        accent,
-        sizePx,
-    )
+    return com.spendroid.ui.pennyStill(com.spendroid.ui.droidFaceOf(snapshot), androidx.compose.ui.graphics.Color(accent), sizePx)
 }
 
 /** The droid every widget header shows, provided once at the top of each widget. */

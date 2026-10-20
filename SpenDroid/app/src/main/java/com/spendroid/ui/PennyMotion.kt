@@ -14,6 +14,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -434,4 +435,31 @@ internal fun DroidAt(face: DroidFace, size: Dp, colour: Color, ms: Long, moment:
         val pose = poseAt(face.mood, moment, ms, sinceMoment, ms, fillOnOpen)
         scale(this.size.minDimension / 108f, pivot = Offset.Zero) { drawPose(face, pose, droidColour(face.mood, colour), line) }
     }
+}
+
+/**
+ * Penny as a picture, for a widget: home-screen widgets can't move, so each redraw shows her
+ * mood's most telling moment instead - the shiver when tight, the droop when over, the jump and
+ * confetti on payday.
+ */
+fun pennyStill(face: DroidFace, accent: Color, sizePx: Int): android.graphics.Bitmap {
+    val ms = when (face.mood) {
+        DroidMood.AHEAD -> 0L
+        DroidMood.TIGHT -> 600L
+        DroidMood.OVER -> 1_200L
+        DroidMood.PAYDAY -> 900L
+        DroidMood.SYNCING -> 600L
+        DroidMood.ASLEEP -> 1_500L
+    }
+    val image = androidx.compose.ui.graphics.ImageBitmap(sizePx, sizePx)
+    androidx.compose.ui.graphics.drawscope.CanvasDrawScope().draw(
+        androidx.compose.ui.unit.Density(1f),
+        androidx.compose.ui.unit.LayoutDirection.Ltr,
+        androidx.compose.ui.graphics.Canvas(image),
+        Size(sizePx.toFloat(), sizePx.toFloat()),
+    ) {
+        val pose = poseAt(face.mood, DroidMoment.NONE, ms, ms, null, false)
+        scale(sizePx / 108f, pivot = Offset.Zero) { drawPose(face, pose, droidColour(face.mood, accent), Color.White) }
+    }
+    return image.asAndroidBitmap()
 }

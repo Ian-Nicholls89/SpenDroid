@@ -32,3 +32,11 @@
 # Keep enough of a stack trace to read a crash report against the mapping file.
 -keepattributes SourceFile,LineNumberTable
 -renamesourcefileattribute SourceFile
+
+# PDFBox reads fonts and glyph lists by name from its own resources, and JPEG 2000 support it
+# never loads is an optional dependency we don't ship.
+-keep class com.tom_roush.pdfbox.** { *; }
+-keep class com.tom_roush.fontbox.** { *; }
+-keep class com.tom_roush.harmony.** { *; }
+-dontwarn com.gemalto.jp2.JP2Decoder
+-dontwarn com.gemalto.jp2.JP2Encoder

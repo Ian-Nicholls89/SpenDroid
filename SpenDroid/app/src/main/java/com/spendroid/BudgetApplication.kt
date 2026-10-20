@@ -18,6 +18,8 @@ class BudgetApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         com.spendroid.data.PayeeNames.load(this)
+        // PDF statements: the reader finds its fonts and glyph lists through the app.
+        com.tom_roush.pdfbox.android.PDFBoxResourceLoader.init(this)
         val db = Room.databaseBuilder(this, BudgetDb::class.java, "budget.db")
             .addMigrations(
                 BudgetDb.MIGRATION_1_2,

@@ -6,7 +6,7 @@ import java.time.LocalDate
 import org.json.JSONObject
 
 /**
- * Reading a bank's own file - CSV, OFX or QIF - into transactions, on the phone. The same rules as
+ * Reading a bank's own file - CSV, OFX, QIF or a PDF statement - into transactions, on the phone. The same rules as
  * the computer page's reader (assets/web/import.js), so a file reads the same in either place;
  * StatementFileTest holds the two to the same files.
  *
@@ -25,26 +25,28 @@ object StatementFile {
     const val BALANCE = "balance"
     const val NONE = ""
 
-    enum class Kind { CSV, OFX, QIF }
+    enum class Kind { CSV, OFX, QIF, PDF }
 
     /** The byte-order mark some exports start with, which isn't part of the first heading. */
     private const val BOM = "\uFEFF"
 
-    /** A whole file as read: a CSV's grid and where its headings are, or an OFX or QIF's rows. */
+    /** A whole file as read: a CSV's grid and where its headings are, or an OFX, QIF or PDF's rows. */
     data class Parsed(
         val kind: Kind,
         val grid: List<List<String>> = emptyList(),
         val start: Int = 0,
         val fromFile: List<FileRow> = emptyList(),
-        /** An OFX's own closing balance and the day it's for, when it gives one. */
+        /** An OFX's or PDF's own closing balance and the day it's for, when it gives one. */
         val ledger: Pair<LocalDate?, Long>? = null,
+        /** A PDF as Penny read it: what it is, and whether its own totals add up. */
+        val pdf: PdfStatement.Result? = null,
     ) {
         val heads: List<String> get() = if (start >= 0) grid.getOrNull(start).orEmpty() else emptyList()
         val data: List<List<String>> get() = grid.drop(start + 1)
         val width: Int get() = grid.drop(maxOf(0, start)).take(40).maxOfOrNull { it.size } ?: 0
     }
 
-    /** An OFX or QIF entry, which says what each value is. */
+    /** An OFX, QIF or PDF entry, which says what each value is. */
     data class FileRow(val date: LocalDate?, val amount: Long?, val payee: String)
 
     /** What each column holds, and how to read it. [sure] per column: green, or amber "check". */
@@ -85,6 +87,18 @@ object StatementFile {
             else -> parseCsv(t).let { grid -> Parsed(Kind.CSV, grid, findStart(grid)) }
         }
     }
+
+    /**
+     * A PDF statement as rows. Dated by when the bank posted it where the statement prints both -
+     * what the bank feed and a card's statement maths go by. The closing balance as printed: a
+     * card's owed figure positive, as a card's CSV shows it.
+     */
+    fun fromPdf(r: PdfStatement.Result): Parsed = Parsed(
+        Kind.PDF,
+        fromFile = r.transactions.map { t -> FileRow(t.postDate ?: t.date, t.pence, t.description) },
+        ledger = r.closing?.let { (r.period?.end) to it },
+        pdf = r,
+    )
 
     fun parseCsv(text: String): List<List<String>> {
         val firstLines = text.split(Regex("\r?\n")).take(10).joinToString("\n")
@@ -140,7 +154,7 @@ object StatementFile {
      * manual account's balance starts from it.
      */
     fun closingBalance(p: Parsed, layout: Layout): Pair<LocalDate, Long>? {
-        if (p.kind == Kind.OFX) {
+        if (p.kind == Kind.OFX || p.kind == Kind.PDF) {
             val (day, amount) = p.ledger ?: return null
             val latest = p.fromFile.mapNotNull { it.date }.maxOrNull()
             return (day ?: latest ?: return null) to amount

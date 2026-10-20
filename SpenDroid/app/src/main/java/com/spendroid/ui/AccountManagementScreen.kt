@@ -163,7 +163,7 @@ fun AccountManagementScreen(
                     Spacer(Modifier.height(12.dp))
                     BigButton("Import a file", Icons.Filled.FileUpload, { onImport(null) }, Modifier.fillMaxWidth(), colour = MaterialTheme.colorScheme.primary, textColour = Color(0xFF111111))
                     Text(
-                        "From your bank's website or app · CSV, OFX or QIF. Or share the file to SpenDroid.",
+                        "From your bank's website or app · CSV, OFX, QIF or PDF. Or share the file to SpenDroid.",
                         style = MaterialTheme.typography.labelSmall,
                         color = Charcoal.Muted,
                         modifier = Modifier.padding(top = 8.dp),

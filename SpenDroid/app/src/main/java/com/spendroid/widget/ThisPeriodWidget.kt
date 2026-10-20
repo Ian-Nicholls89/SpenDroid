@@ -31,6 +31,7 @@ import androidx.glance.layout.Spacer
 import androidx.glance.layout.fillMaxSize
 import androidx.glance.layout.fillMaxWidth
 import androidx.glance.layout.height
+import androidx.glance.layout.size
 import androidx.glance.layout.width
 import androidx.glance.layout.padding
 import androidx.glance.text.FontWeight
@@ -137,12 +138,25 @@ class ThisPeriodWidget : GlanceAppWidget() {
         // Every account chosen is shown: short of room, the rows tighten rather than one going.
         val (density, room) = rowLayout(size.height.value, content.rows.size)
         Column(modifier = GlanceModifier.fillMaxSize()) {
+            // Penny says how the budget is going; that account's own caption then isn't repeated.
+            val said = content.rows.firstOrNull { it.kind != PeriodRows.Kind.STATEMENT }
             Row(modifier = GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.Vertical.CenterVertically) {
-                DroidTitle(
-                    "this period",
-                    modifier = GlanceModifier.defaultWeight(),
-                    style = TextStyle(color = GlanceTheme.colors.onSurface, fontSize = 11.sp, fontWeight = FontWeight.Bold),
-                )
+                LocalWidgetDroid.current?.let { droid ->
+                    Image(provider = ImageProvider(droid), contentDescription = null, modifier = GlanceModifier.size(if (density == RowDensity.LINE) 22.dp else 38.dp))
+                    Spacer(GlanceModifier.width(6.dp))
+                }
+                Box(GlanceModifier.defaultWeight()) {
+                    if (said != null) {
+                        Text(
+                            caption(said),
+                            maxLines = 1,
+                            modifier = GlanceModifier.background(GlanceTheme.colors.secondaryContainer).cornerRadius(10.dp).padding(horizontal = 8.dp, vertical = 4.dp),
+                            style = TextStyle(color = GlanceTheme.colors.onSurface, fontSize = 11.sp),
+                        )
+                    } else {
+                        Text("this period", style = TextStyle(color = GlanceTheme.colors.onSurface, fontSize = 11.sp, fontWeight = FontWeight.Bold))
+                    }
+                }
                 content.updated?.let { Text(it, style = TextStyle(color = GlanceTheme.colors.onSurfaceVariant, fontSize = 9.sp)) }
                 Text(
                     "↻",
@@ -155,7 +169,7 @@ class ThisPeriodWidget : GlanceAppWidget() {
                 if (density == RowDensity.LINE) {
                     LineView(row, content.drain, content.colours[row.accountId])
                 } else {
-                    RowView(row, content.drain, content.colours[row.accountId], full = density == RowDensity.FULL)
+                    RowView(row, content.drain, content.colours[row.accountId], full = density == RowDensity.FULL, captioned = row !== said)
                 }
             }
             // Only on a widget too small even for single lines: say what is not shown.
@@ -169,7 +183,7 @@ class ThisPeriodWidget : GlanceAppWidget() {
     }
 
     @Composable
-    private fun RowView(row: PeriodRows.Row, drain: Boolean, own: Int?, full: Boolean = true) {
+    private fun RowView(row: PeriodRows.Row, drain: Boolean, own: Int?, full: Boolean = true, captioned: Boolean = true) {
         val colour = paceColour(row.pace)
         // The bar in the account's own colour, as the app draws it; the caption keeps the pace's.
         val barColour = own ?: colour
@@ -214,10 +228,10 @@ class ThisPeriodWidget : GlanceAppWidget() {
             modifier = GlanceModifier.fillMaxWidth().height(12.dp),
             contentScale = ContentScale.FillBounds,
         )
-        if (full) {
+        if (full && (captioned || row.toComeMinor > 0L || row.pendingMinor > 0L)) {
             Row(modifier = GlanceModifier.fillMaxWidth()) {
                 Text(
-                    caption(row),
+                    if (captioned) caption(row) else "",
                     maxLines = 1,
                     modifier = GlanceModifier.defaultWeight(),
                     style = TextStyle(
@@ -348,10 +362,12 @@ internal enum class RowDensity { FULL, COMPACT, LINE }
  * heading takes about 46dp with the padding, a full row 58, a compact one 38, a line 24.
  */
 internal fun rowLayout(heightDp: Float, count: Int): Pair<RowDensity, Int> {
-    val room = heightDp - 46f
+    // The header is Penny and her bubble - 38dp, less in single lines - and the account she speaks
+    // for drops its own caption, so it costs a little more than a title did.
+    val room = heightDp - 50f
     return when {
         count * 58f <= room -> RowDensity.FULL to count
         count * 38f <= room -> RowDensity.COMPACT to count
-        else -> RowDensity.LINE to (room / 24f).toInt().coerceIn(1, count.coerceAtLeast(1))
+        else -> RowDensity.LINE to ((heightDp - 46f) / 24f).toInt().coerceIn(1, count.coerceAtLeast(1))
     }
 }

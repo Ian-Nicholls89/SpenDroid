@@ -1,0 +1,506 @@
+{
+ "a-card-subtotals.pdf": {
+  "kind": "card",
+  "transactions": [
+   [
+    "2026-04-17",
+    "2026-04-17",
+    41020,
+    "DIRECT DEBIT PAYMENT"
+   ],
+   [
+    "2026-03-27",
+    "2026-03-30",
+    -8545,
+    "GROCER ONLINE 0300 000 0000ENG"
+   ],
+   [
+    "2026-03-30",
+    "2026-03-31",
+    -1210,
+    "DELI KITCHEN LIMI SALISBURY ENG"
+   ],
+   [
+    "2026-03-31",
+    "2026-04-01",
+    -40,
+    "CAR PARK CA009 SALISBURY"
+   ],
+   [
+    "2026-03-31",
+    "2026-04-01",
+    -350,
+    "CAR PARK CA009 SALISBURY"
+   ],
+   [
+    "2026-04-02",
+    "2026-04-03",
+    -2050,
+    "SumUp *Animal Park Gillingham"
+   ],
+   [
+    "2026-04-03",
+    "2026-04-06",
+    -915,
+    "BAKERY Plc Amesbury"
+   ],
+   [
+    "2026-04-04",
+    "2026-04-06",
+    -4500,
+    "PHONE SHOP CO UK LONDON LND"
+   ],
+   [
+    "2026-04-08",
+    "2026-04-09",
+    -8768,
+    "GROCER ONLINE 0300 000 0000ENG"
+   ],
+   [
+    "2026-04-12",
+    "2026-04-13",
+    420,
+    "SHOP REFUND SALISBURY"
+   ],
+   [
+    "2026-04-15",
+    "2026-04-16",
+    -2150,
+    "Hardware 1021 SALISBURY"
+   ],
+   [
+    "2026-04-18",
+    "2026-04-20",
+    -150,
+    "Arcade **Leisure L Tylwch GBR"
+   ],
+   [
+    "2026-04-18",
+    "2026-04-20",
+    -150,
+    "Arcade **Leisure L Tylwch GBR"
+   ]
+  ],
+  "checks": [
+   [
+    "Sub-total",
+    true
+   ],
+   [
+    "Sub-total",
+    true
+   ],
+   [
+    "Statement summary",
+    true
+   ]
+  ]
+ },
+ "b-current-balance.pdf": {
+  "kind": "account",
+  "transactions": [
+   [
+    "2026-09-01",
+    "",
+    -425,
+    "CARD PAYMENT TO CAFE ONE"
+   ],
+   [
+    "2026-09-01",
+    "",
+    -9200,
+    "DIRECT DEBIT ENERGY CO"
+   ],
+   [
+    "2026-09-05",
+    "",
+    234000,
+    "SALARY EXAMPLE EMPLOYER"
+   ],
+   [
+    "2026-09-12",
+    "",
+    -20000,
+    "STANDING ORDER TO SAVINGS"
+   ],
+   [
+    "2026-09-12",
+    "",
+    -1899,
+    "CARD PAYMENT TO A VERY LONG MERCHANT NAME + CONTINUED REFERENCE 1234"
+   ],
+   [
+    "2026-09-28",
+    "",
+    1200,
+    "REFUND FROM SHOP"
+   ]
+  ],
+  "checks": [
+   [
+    "Carried forward",
+    true
+   ],
+   [
+    "Running balance on 4 rows",
+    true
+   ]
+  ]
+ },
+ "c-card-cr.pdf": {
+  "kind": "card",
+  "transactions": [
+   [
+    "2025-12-20",
+    "",
+    -4599,
+    "TOY SHOP LONDON"
+   ],
+   [
+    "2025-12-24",
+    "",
+    12000,
+    "PAYMENT RECEIVED - THANK YOU"
+   ],
+   [
+    "2026-01-02",
+    "",
+    -1750,
+    "BOOKSHOP"
+   ],
+   [
+    "2026-01-10",
+    "",
+    -10000,
+    "TRAIN TICKETS"
+   ]
+  ],
+  "checks": [
+   [
+    "Statement summary",
+    true
+   ]
+  ]
+ },
+ "d-odd-layout.pdf": {
+  "kind": "account",
+  "transactions": [
+   [
+    "2026-03-03",
+    "",
+    -320,
+    "Coffee place"
+   ],
+   [
+    "2026-03-04",
+    "",
+    180000,
+    "Wages"
+   ],
+   [
+    "2026-03-09",
+    "",
+    -5410,
+    "Supermarket"
+   ]
+  ],
+  "checks": []
+ },
+ "e-card-interest-table.pdf": {
+  "kind": "card",
+  "transactions": [
+   [
+    "2026-06-17",
+    "2026-06-17",
+    50000,
+    "DIRECT DEBIT PAYMENT"
+   ],
+   [
+    "2026-05-25",
+    "2026-05-26",
+    -1240,
+    "CORNER SHOP SALISBURY GBR"
+   ],
+   [
+    "2026-05-30",
+    "2026-06-02",
+    -835,
+    "Zettle_*Fish Van Fordingbridge"
+   ],
+   [
+    "2026-06-20",
+    "2026-06-22",
+    -4100,
+    "GARDEN CENTRE WILTON"
+   ]
+  ],
+  "checks": [
+   [
+    "Sub-total",
+    true
+   ],
+   [
+    "Sub-total",
+    true
+   ],
+   [
+    "Closing balance",
+    true
+   ],
+   [
+    "Statement summary",
+    true
+   ]
+  ]
+ },
+ "f-current-amount-last.pdf": {
+  "kind": "account",
+  "transactions": [
+   [
+    "2026-09-29",
+    "",
+    -9200,
+    "ENERGY COMPANY LTD GAS PAYMENT"
+   ],
+   [
+    "2026-09-29",
+    "",
+    -6004,
+    "NEXTCARD PLC Credit Card"
+   ],
+   [
+    "2026-09-30",
+    "",
+    -425,
+    "THE CORNER CAFE SALISBURY"
+   ],
+   [
+    "2026-10-01",
+    "",
+    234000,
+    "EXAMPLE EMPLOYER"
+   ],
+   [
+    "2026-10-01",
+    "",
+    -1899,
+    "GARDEN SHOP 123456789"
+   ],
+   [
+    "2026-10-01",
+    "",
+    -298,
+    "BAKERY Plc Amesbury"
+   ],
+   [
+    "2026-10-05",
+    "",
+    -20000,
+    "SAVINGS ACCOUNT TRANSFER"
+   ],
+   [
+    "2026-10-05",
+    "",
+    -300,
+    "CAR PARK CA009 SALISBURY"
+   ],
+   [
+    "2026-10-12",
+    "",
+    -3400,
+    "A FRIEND DINNER"
+   ]
+  ],
+  "checks": [
+   [
+    "Carried forward",
+    true
+   ],
+   [
+    "Brought forward",
+    true
+   ],
+   [
+    "Carried forward",
+    true
+   ],
+   [
+    "Statement summary",
+    true
+   ],
+   [
+    "Money in",
+    true
+   ],
+   [
+    "Money out",
+    true
+   ],
+   [
+    "Running balance on 5 rows",
+    true
+   ]
+  ]
+ },
+ "g-barclays-interim.pdf": {
+  "kind": "account",
+  "transactions": [
+   [
+    "2026-02-03",
+    "",
+    -1240,
+    "Card Payment to Corner Shop On 2 Feb"
+   ],
+   [
+    "2026-02-03",
+    "",
+    -3800,
+    "Direct debit to Water Co"
+   ],
+   [
+    "2026-02-10",
+    "",
+    50000,
+    "Direct credit from A Customer Ref: Inv 12"
+   ],
+   [
+    "2026-02-14",
+    "",
+    -6500,
+    "Card Payment to Garage On 13 Feb"
+   ],
+   [
+    "2026-02-14",
+    "",
+    -5000,
+    "Standing order to Landlord"
+   ],
+   [
+    "2026-02-20",
+    "",
+    -1500,
+    "Cash machine withdrawal at High St"
+   ]
+  ],
+  "checks": [
+   [
+    "Carried forward",
+    true
+   ],
+   [
+    "Brought forward",
+    true
+   ],
+   [
+    "Carried forward",
+    true
+   ],
+   [
+    "Statement summary",
+    true
+   ],
+   [
+    "Money in",
+    true
+   ],
+   [
+    "Money out",
+    true
+   ],
+   [
+    "Running balance on 4 rows",
+    true
+   ]
+  ]
+ },
+ "h-tsb-payment-type.pdf": {
+  "kind": "account",
+  "transactions": [
+   [
+    "2026-05-14",
+    "",
+    -11000,
+    "ICS CHEQUE 000544 PAYMENT"
+   ],
+   [
+    "2026-05-18",
+    "",
+    -23863,
+    "ICS CHEQUE 000545 PAYMENT"
+   ],
+   [
+    "2026-05-19",
+    "",
+    5000,
+    "FASTER VILLAGE FETE REFUND PAYMENT"
+   ],
+   [
+    "2026-05-20",
+    "",
+    -30400,
+    "DIRECT DEBIT EXAMPLE ENERGY LTD"
+   ]
+  ],
+  "checks": [
+   [
+    "Carried forward",
+    true
+   ],
+   [
+    "Statement summary",
+    true
+   ],
+   [
+    "Money in",
+    true
+   ],
+   [
+    "Money out",
+    true
+   ],
+   [
+    "Running balance on 4 rows",
+    true
+   ]
+  ]
+ },
+ "i-monzo-signed.pdf": {
+  "kind": "account",
+  "transactions": [
+   [
+    "2026-10-02",
+    "",
+    -320,
+    "Coffee Corner"
+   ],
+   [
+    "2026-10-05",
+    "",
+    150000,
+    "EXAMPLE EMPLOYER LTD Salary"
+   ],
+   [
+    "2026-10-07",
+    "",
+    -15000,
+    "Transfer to Holiday pot"
+   ],
+   [
+    "2026-10-19",
+    "",
+    -5765,
+    "Supermarket"
+   ]
+  ],
+  "checks": [
+   [
+    "Statement summary",
+    true
+   ],
+   [
+    "Running balance on 4 rows",
+    true
+   ]
+  ]
+ }
+}

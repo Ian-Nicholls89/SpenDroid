@@ -292,6 +292,51 @@ class ScreensTest {
         compose.onRoot().captureRoboImage("build/screenshots/import-check.png")
     }
 
+    /** 5.4: a PDF statement - the file as read, and Penny's verdict when it adds up, doesn't, or can't be checked. Made-up figures. */
+    @Test
+    @Config(qualifiers = "w411dp-h1700dp-xxhdpi")
+    fun pdfImport() {
+        val state = Sample.state()
+        val d = java.time.LocalDate.of(2026, 9, 1)
+        val tx = listOf(
+            com.spendroid.importer.PdfStatement.Transaction(d, d.plusDays(1), "GREEN GROCER", null, -2_345, 1),
+            com.spendroid.importer.PdfStatement.Transaction(d.plusDays(2), null, "SALARY", null, 185_000, 1),
+            com.spendroid.importer.PdfStatement.Transaction(d.plusDays(4), null, "CORNER CAFE", null, -640, 2),
+        )
+        fun result(checks: List<com.spendroid.importer.PdfStatement.Check>, notes: List<String> = emptyList()) =
+            com.spendroid.importer.PdfStatement.Result(com.spendroid.importer.PdfStatement.Kind.ACCOUNT, null, tx, checks, notes, listOf(listOf(com.spendroid.importer.PdfStatement.Seen("Date Description Out In Balance", "header"))), 312_015)
+        val good = result(
+            listOf(
+                com.spendroid.importer.PdfStatement.Check("Brought forward", true, 130_000, 130_000, 1),
+                com.spendroid.importer.PdfStatement.Check("Money in", true, 185_000, 185_000, 2),
+                com.spendroid.importer.PdfStatement.Check("Money out", true, 2_985, 2_985, 2),
+                com.spendroid.importer.PdfStatement.Check("Closing balance", true, 312_015, 312_015, 2),
+            ),
+        )
+        val bad = result(
+            listOf(
+                com.spendroid.importer.PdfStatement.Check("Balance after CORNER CAFE", false, 312_015, 312_655, 2),
+                com.spendroid.importer.PdfStatement.Check("Money out", false, 2_985, 2_345, 2),
+                com.spendroid.importer.PdfStatement.Check("Closing balance", true, 312_015, 312_015, 2),
+            ),
+        )
+        val none = result(emptyList(), listOf("Listed newest first - read and checked oldest first."))
+        val parsed = com.spendroid.importer.StatementFile.fromPdf(good)
+        val loaded = com.spendroid.ui.Loaded("statement-sep-2026.pdf", parsed)
+        compose.setContent {
+            Frame(AppScreen.Accounts) {
+                androidx.compose.foundation.layout.Column(androidx.compose.ui.Modifier.padding(8.dp), verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(12.dp)) {
+                    com.spendroid.ui.FileStep(loaded, null, state.accounts.take(2), state.accounts[1].id, {}, {})
+                    com.spendroid.ui.Verdict(good)
+                    com.spendroid.ui.Verdict(bad)
+                    com.spendroid.ui.Verdict(none)
+                    com.spendroid.ui.FileStep(null, "Penny doesn't know this layout yet - she couldn't find a table of transactions in letter.pdf.", emptyList(), null, {}, {}, unknownLayout = "--- page 1")
+                }
+            }
+        }
+        compose.onRoot().captureRoboImage("build/screenshots/import-pdf.png")
+    }
+
     /** The import as the app shows it - over everything, outside the frame - from a shared file. */
     @Test
     @Config(qualifiers = "w411dp-h900dp-xxhdpi")

@@ -49,7 +49,8 @@
             </intent-filter>
 
             <!-- A bank's own file, shared or opened from another app - email, Drive, Files, a
-                 bank's app that exports - to import. CSV goes by many names. -->
+                 bank's app that exports - to import. CSV goes by many names. A PDF only by sharing: opening
+                 one shouldn't offer SpenDroid as a viewer for every PDF on the phone. -->
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -62,6 +63,7 @@
                 <data android:mimeType="application/vnd.intu.qfx" />
                 <data android:mimeType="application/qif" />
                 <data android:mimeType="application/x-qif" />
+                <data android:mimeType="application/pdf" />
             </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />

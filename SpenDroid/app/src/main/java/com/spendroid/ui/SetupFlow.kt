@@ -362,7 +362,7 @@ private fun History(
 ) {
     var howFor by remember { mutableStateOf<String?>(null) }
     Title("Bring in your history")
-    Lead("Download a statement from each bank's app or website, as a CSV, OFX or QIF file. The more months, the better Penny knows your bills.")
+    Lead("Download a statement from each bank's app or website, as a CSV, OFX, QIF or PDF file. The more months, the better Penny knows your bills.")
     accounts.forEach { a ->
         val covered = state.manualCoverage[a.id]
         val imported = state.transactions.count { it.accountId == a.id && it.transactionId.startsWith(com.spendroid.domain.DuplicateCheck.IMPORTED_PREFIX) }
@@ -418,7 +418,7 @@ internal fun statementSteps(bank: String): List<String> {
         "first direct" in b || "hsbc" in b -> listOf("Log in on the $app website", "Open the account, then Download transactions", "Choose CSV (or OFX) and the dates", "Save it to your phone and come back")
         "barclays" in b || "natwest" in b || "lloyds" in b || "halifax" in b || "santander" in b || "nationwide" in b ->
             listOf("Open the $app app or website and tap the account", "Find Statements, then Export or Download", "Choose CSV (or OFX) and as many months as it allows", "Share it to SpenDroid, or save it and come back")
-        else -> listOf("Open $app's app or website and tap the account", "Look for Statements, Export or Download transactions", "Choose CSV, OFX or QIF, and as many months as it allows", "Share it to SpenDroid, or save it and come back")
+        else -> listOf("Open $app's app or website and tap the account", "Look for Statements, Export or Download transactions", "Choose CSV, OFX or QIF - or save the PDF statement - and as many months as it allows", "Share it to SpenDroid, or save it and come back")
     }
 }
 

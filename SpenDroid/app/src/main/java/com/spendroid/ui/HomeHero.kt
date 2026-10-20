@@ -223,7 +223,7 @@ private fun BudgetHero(budget: BudgetSnapshot, syncing: Boolean, onOpenToday: ()
     Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 6.dp)) {
         // The droid's read on the day, in a word bubble: the same pace as the bar, said plainly.
         Row(verticalAlignment = Alignment.Top, modifier = Modifier.padding(bottom = 12.dp)) {
-            Droid(droidFaceOf(budget, syncing), 34.dp, fillOnOpen = true)
+            Droid(droidFaceOf(budget, syncing), 64.dp, fillOnOpen = true)
             Spacer(Modifier.width(10.dp))
             Text(
                 com.spendroid.domain.TodaysRead.of(budget) { formatMoney(it, budget.baseCurrency) },
