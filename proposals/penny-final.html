@@ -245,12 +245,13 @@ section{padding:10px 32px 24px}h2{font:700 20px 'Space Grotesk',system-ui;margin
 .gl.fSync .shine{filter:drop-shadow(0 0 4px #fff)}.gl.fSync .bulb{animation:haloE 1s ease-in-out infinite}
 /* Asleep: Expressive + slow dimming */
 .fSleep .head{animation:nodoff 5s ease-in-out infinite}.fSleep .z{animation:zrise 3s ease-out infinite}.fSleep .z2{animation-delay:1.5s}
-.gl.fSleep .body{animation:dimE 5s ease-in-out infinite}
+
 /* Meet Penny: Elastic + lights up as she lands */
 .fHello .body{animation:dropinD 4s linear infinite}.fHello .antenna{animation:wave 4s ease-in-out infinite}
 .gl.fHello .visor,.gl.fHello .tick{animation:lightOn 4s ease-out infinite}.gl.fHello .fill{animation:fillOnGlow 4s ease-out infinite}
 @keyframes lightOn{0%,15%{opacity:0}30%,100%{opacity:1}}
-@keyframes fillOnGlow{0%,15%{filter:none}30%{filter:drop-shadow(0 0 8px var(--bulb,#3ddc84))}55%,100%{filter:none}}.gl.fHello .bulb{animation:bulbOnE 4s ease-out infinite}.gl.fHello .mouth{animation:mouthOnE 4s ease-out infinite}
+@keyframes fillOnGlow{0%,15%{filter:none}30%{filter:drop-shadow(0 0 8px var(--bulb,#3ddc84))}55%,100%{filter:none}}.gl.fHello .bulb{animation:bulbFlare 4s ease-out infinite}
+@keyframes bulbFlare{0%,30%{filter:none}42%{filter:drop-shadow(0 0 8px var(--bulb,#3ddc84))}65%,100%{filter:none}}.gl.fHello .mouth{animation:mouthOnE 4s ease-out infinite}
 /* Question: Expressive + amber bulb */
 .fAsk .qbubble{animation:qbounce 3s cubic-bezier(.3,1.6,.5,1) infinite;transform-origin:50% 100%}.fAsk .head{animation:tiltB 3s ease-in-out infinite}.fAsk .bulb{animation:pulse .6s ease-in-out infinite}
 .gl.fAsk .bulb{animation:askColour 3s linear infinite,askGlow .6s ease-in-out infinite}
@@ -523,7 +524,7 @@ section{padding:10px 32px 24px}h2{font:700 20px 'Space Grotesk',system-ui;margin
     
   </g>
   <path class="spin" d="M88,24 a8,8 0 1 1 -6,-5" stroke="#fff" stroke-width="3" fill="none" stroke-linecap="round"/>
-</g></svg><span>without glow</span></div><p>A glowing light scans the visor; the antenna twitches, the bulb pulses.</p></div><div class="fcard"><h3>Asleep</h3><div class="style">Expressive + glow</div><svg class="penny gl fSleep" style="--bulb:#3ddc84" width="200" height="200" viewBox="-8 -18 124 124">
+</g></svg><span>without glow</span></div><p>A glowing light scans the visor; the antenna twitches, the bulb pulses.</p></div><div class="fcard"><h3>Asleep</h3><div class="style">Expressive</div><svg class="penny gl fSleep" style="--bulb:#3ddc84" width="200" height="200" viewBox="-8 -18 124 124">
 <g class="body">
   <g class="head">
     <g class="antenna"><line x1="62" y1="25" x2="67" y2="15" stroke="#fff" stroke-width="4" stroke-linecap="round"/><circle class="bulb" cx="68" cy="13" r="4.5" fill="#3ddc84"/></g>
@@ -550,7 +551,7 @@ section{padding:10px 32px 24px}h2{font:700 20px 'Space Grotesk',system-ui;margin
     
   </g>
   <g class="zzz"><text class="z z1" x="84" y="22" font-family="Space Grotesk, sans-serif" font-weight="700" font-size="13" fill="#fff">z</text><text class="z z2" x="92" y="10" font-family="Space Grotesk, sans-serif" font-weight="700" font-size="10" fill="#fff">z</text></g>
-</g></svg><span>without glow</span></div><p>Nods off, z's float up, and she slowly dims and brightens.</p></div><div class="fcard"><h3>Meet Penny</h3><div class="style">Elastic + glow</div><svg class="penny gl fHello" style="--bulb:#3ddc84" width="200" height="200" viewBox="-8 -18 124 124">
+</g></svg><span>without glow</span></div><p>Nods off, z's float up. No glow - she's off for the night.</p></div><div class="fcard"><h3>Meet Penny</h3><div class="style">Elastic + glow</div><svg class="penny gl fHello" style="--bulb:#3ddc84" width="200" height="200" viewBox="-8 -18 124 124">
 <g class="body">
   <g class="head">
     <g class="antenna"><line x1="62" y1="25" x2="67" y2="15" stroke="#fff" stroke-width="4" stroke-linecap="round"/><circle class="bulb" cx="68" cy="13" r="4.5" fill="#3ddc84"/></g>
