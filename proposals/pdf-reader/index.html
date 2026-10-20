@@ -45,7 +45,7 @@ const MONTH_NC = "(?:" + MONTH_RE.slice(1); // the same, without capturing
 
 // A date at the very start of a line: "27 MAR", "27 Mar 26", "27 March 2026", "27/03/2026", "27-03-26", "27/03".
 const LEAD_DATE = new RegExp(
-  "^(?:(\\d{1,2})[ \\-]" + MONTH_RE + "\\.?(?:[ \\-,]+(\\d{4}|\\d{2})(?![\\d])(?!\\s*[ \\-]?" + MONTH_NC + "))?(?![a-z])|(\\d{1,2})[/\\-.](\\d{1,2})(?:[/\\-.](\\d{4}|\\d{2}))?)(?=\\s|$)",
+  "^(?:(\\d{1,2})[ \\-]?" + MONTH_RE + "\\.?(?:[ \\-,]+(\\d{4}|\\d{2})(?![\\d])(?!\\s*[ \\-]?" + MONTH_NC + "))?(?![a-z])|(\\d{1,2})[/\\-.](\\d{1,2})(?:[/\\-.](\\d{4}|\\d{2}))?)(?=\\s|$)",
   "i",
 );
 // A sum of money: "1,234.56", "£1,234.56", "-£3.20", "(626.04)", "626.04 -", "12.50CR", "12.50 DR".
@@ -395,7 +395,7 @@ function readStatement(pages) {
         if (a) { found = true; if (summary.opening == null) summary.opening = signedForCheck(a, isCard); else if (summary.closing == null) summary.closing = signedForCheck(a, isCard); }
       }
       for (const k of [...CHECK_LINES.filter((c) => c.kind === "opening" || c.kind === "closing"), ...SUMMARY_TOTALS]) {
-        const m = new RegExp("(?:" + k.re.source + ")[^£\\d(\\-]{0,25}(\\(?-?£?\\s?[\\d,]+\\.\\d{2}\\)?(?:\\s?(?:CR|DR|C|D|-(?!\\d)))?)", "i").exec(text);
+        const m = new RegExp("(?:" + k.re.source + ")[^£\\d(\\-]{0,25}(\\(?-?£?\\s?[\\d,]+\\.\\d{2}\\)?(?:\\s?(?:CR|DR|C|D|-(?!\\d))(?![a-z]))?)", "i").exec(text);
         const a = m && parseAmount(m[m.length - 1]);
         if (!a) { if (k.re.test(text) && !SUMMARY_TOTALS.includes(k)) pendingSummary = k.kind; continue; }
         found = true;
