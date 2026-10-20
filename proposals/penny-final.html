@@ -181,7 +181,7 @@ section{padding:10px 32px 24px}h2{font:700 20px 'Space Grotesk',system-ui;margin
 .penny .glowable{transition:none}
 .idleE .fill{animation:glowE 4s ease-in-out infinite}.idleE .bulb{animation:haloE 3s ease-in-out infinite}
 @keyframes glowE{0%,100%{filter:drop-shadow(0 0 0 var(--c,#3ddc84))}50%{filter:drop-shadow(0 0 5px var(--c,#3ddc84))}}
-@keyframes haloE{0%,100%{filter:drop-shadow(0 0 1px #3ddc84)}50%{filter:drop-shadow(0 0 7px #3ddc84)}}
+@keyframes haloE{0%,100%{filter:drop-shadow(0 0 1px var(--bulb,#3ddc84))}50%{filter:drop-shadow(0 0 7px var(--bulb,#3ddc84))}}
 .fillE .fill{animation:fadeE 4s ease-out infinite}
 @keyframes fadeE{0%{opacity:0;filter:none}30%{opacity:1;filter:drop-shadow(0 0 8px #3ddc84)}60%,100%{opacity:1;filter:drop-shadow(0 0 0 #3ddc84)}}
 .fillE .tick{animation:tickglowE 4s ease-out infinite}
@@ -207,7 +207,7 @@ section{padding:10px 32px 24px}h2{font:700 20px 'Space Grotesk',system-ui;margin
 @keyframes askBulbE{0%,100%{fill:#3ddc84;filter:none}20%,85%{fill:#f5a623;filter:drop-shadow(0 0 6px #f5a623)}}
 @keyframes qfadeE{0%,15%{opacity:0}30%,85%{opacity:1}100%{opacity:0}}
 .noticeE .bulb{animation:flareE 3s ease-out infinite}.noticeE .spark{animation:sparkle 3s infinite}
-@keyframes flareE{0%,25%,100%{filter:none}32%{filter:drop-shadow(0 0 12px #f5a623) brightness(1.6)}60%{filter:drop-shadow(0 0 3px #f5a623)}}
+@keyframes flareE{0%,25%,100%{filter:none}32%{filter:drop-shadow(0 0 12px var(--bulb,#3ddc84)) brightness(1.4)}60%{filter:drop-shadow(0 0 3px var(--bulb,#3ddc84))}}
 .notedE .fill{animation:greenGlowE 3s ease-out infinite}.notedE .check{animation:checkin 3s infinite;stroke-dasharray:22;stroke-dashoffset:22}
 @keyframes greenGlowE{0%,20%,100%{filter:none}35%{filter:drop-shadow(0 0 9px #3ddc84) brightness(1.4)}70%{filter:drop-shadow(0 0 2px #3ddc84)}}
 
@@ -260,7 +260,7 @@ section{padding:10px 32px 24px}h2{font:700 20px 'Space Grotesk',system-ui;margin
 .gl.fNoted .fill{animation:greenGlowE 3s ease-out infinite}
 </style></head><body>
 <header><h1>Your Penny</h1><p>Your picks for each moment, with the glow layered on top. Each also shown small without the glow, to compare. Made-up figures.</p></header>
-<section><h2>At real size</h2><p>In the header, on Home, and on the welcome screen.</p><div class="row"><div class="mock"><div class="bar"><svg class="penny gl fIdle" width="34" height="34" viewBox="-8 -18 124 124">
+<section><h2>At real size</h2><p>In the header, on Home, and on the welcome screen.</p><div class="row"><div class="mock"><div class="bar"><svg class="penny gl fIdle" style="--bulb:#3ddc84" width="34" height="34" viewBox="-8 -18 124 124">
 <g class="body">
   <g class="head">
     <g class="antenna"><line x1="62" y1="25" x2="67" y2="15" stroke="#fff" stroke-width="4" stroke-linecap="round"/><circle class="bulb" cx="68" cy="13" r="4.5" fill="#3ddc84"/></g>
@@ -274,7 +274,7 @@ section{padding:10px 32px 24px}h2{font:700 20px 'Space Grotesk',system-ui;margin
   </g>
   
 </g></svg><span style="color:#fff">spen</span><span style="margin-left:-8px">droid</span></div>
-<div class="read"><svg class="penny gl fAhead" width="40" height="40" viewBox="-8 -18 124 124">
+<div class="read"><svg class="penny gl fAhead" style="--bulb:#3ddc84" width="40" height="40" viewBox="-8 -18 124 124">
 <g class="body">
   <g class="head">
     <g class="antenna"><line x1="62" y1="25" x2="67" y2="15" stroke="#fff" stroke-width="4" stroke-linecap="round"/><circle class="bulb" cx="68" cy="13" r="4.5" fill="#3ddc84"/></g>
@@ -288,7 +288,7 @@ section{padding:10px 32px 24px}h2{font:700 20px 'Space Grotesk',system-ui;margin
   </g>
   
 </g></svg><div>£280.86 ahead of the days. A normal day keeps you there.</div></div></div>
-<div class="mock"><div class="bar"><svg class="penny gl fIdle" width="34" height="34" viewBox="-8 -18 124 124">
+<div class="mock"><div class="bar"><svg class="penny gl fIdle" style="--bulb:#3ddc84" width="34" height="34" viewBox="-8 -18 124 124">
 <g class="body">
   <g class="head">
     <g class="antenna"><line x1="62" y1="25" x2="67" y2="15" stroke="#fff" stroke-width="4" stroke-linecap="round"/><circle class="bulb" cx="68" cy="13" r="4.5" fill="#3ddc84"/></g>
@@ -302,7 +302,7 @@ section{padding:10px 32px 24px}h2{font:700 20px 'Space Grotesk',system-ui;margin
   </g>
   
 </g></svg><span style="color:#fff">spen</span><span style="margin-left:-8px">droid</span></div>
-<div class="read"><svg class="penny gl fTight" width="40" height="40" viewBox="-8 -18 124 124">
+<div class="read"><svg class="penny gl fTight" style="--bulb:#f5a623" width="40" height="40" viewBox="-8 -18 124 124">
 <g class="body">
   <g class="head">
     <g class="antenna"><line x1="62" y1="25" x2="67" y2="15" stroke="#fff" stroke-width="4" stroke-linecap="round"/><circle class="bulb" cx="68" cy="13" r="4.5" fill="#f5a623"/></g>
@@ -316,7 +316,7 @@ section{padding:10px 32px 24px}h2{font:700 20px 'Space Grotesk',system-ui;margin
   </g>
   
 </g></svg><div>Just behind the days. A light day gets you back.</div></div></div>
-<div class="mock" style="text-align:center"><div style="font:700 26px 'Space Grotesk',system-ui;text-align:left">Meet Penny</div><svg class="penny gl fHello" width="150" height="150" viewBox="-8 -18 124 124">
+<div class="mock" style="text-align:center"><div style="font:700 26px 'Space Grotesk',system-ui;text-align:left">Meet Penny</div><svg class="penny gl fHello" style="--bulb:#3ddc84" width="150" height="150" viewBox="-8 -18 124 124">
 <g class="body">
   <g class="head">
     <g class="antenna"><line x1="62" y1="25" x2="67" y2="15" stroke="#fff" stroke-width="4" stroke-linecap="round"/><circle class="bulb" cx="68" cy="13" r="4.5" fill="#3ddc84"/></g>
@@ -330,7 +330,7 @@ section{padding:10px 32px 24px}h2{font:700 20px 'Space Grotesk',system-ui;margin
   </g>
   
 </g></svg></div></div></section>
-<section><h2>Every moment</h2><div class="final"><div class="fcard"><h3>Idle</h3><div class="style">Elastic + glow</div><svg class="penny gl fIdle" width="200" height="200" viewBox="-8 -18 124 124">
+<section><h2>Every moment</h2><div class="final"><div class="fcard"><h3>Idle</h3><div class="style">Elastic + glow</div><svg class="penny gl fIdle" style="--bulb:#3ddc84" width="200" height="200" viewBox="-8 -18 124 124">
 <g class="body">
   <g class="head">
     <g class="antenna"><line x1="62" y1="25" x2="67" y2="15" stroke="#fff" stroke-width="4" stroke-linecap="round"/><circle class="bulb" cx="68" cy="13" r="4.5" fill="#3ddc84"/></g>
@@ -344,7 +344,7 @@ section{padding:10px 32px 24px}h2{font:700 20px 'Space Grotesk',system-ui;margin
   </g>
   
 </g></svg>
-<div class="plain"><svg class="penny fIdle" width="56" height="56" viewBox="-8 -18 124 124">
+<div class="plain"><svg class="penny fIdle" style="--bulb:#3ddc84" width="56" height="56" viewBox="-8 -18 124 124">
 <g class="body">
   <g class="head">
     <g class="antenna"><line x1="62" y1="25" x2="67" y2="15" stroke="#fff" stroke-width="4" stroke-linecap="round"/><circle class="bulb" cx="68" cy="13" r="4.5" fill="#3ddc84"/></g>
@@ -357,34 +357,7 @@ section{padding:10px 32px 24px}h2{font:700 20px 'Space Grotesk',system-ui;margin
     
   </g>
   
-</g></svg><span>without glow</span></div><p>Jelly wobble, springy antenna, a cartoon blink; the visor and bulb glow softly.</p></div><div class="fcard"><h3>Visor fills on open</h3><div class="style">Expressive + glow</div><svg class="penny gl fFill" width="200" height="200" viewBox="-8 -18 124 124">
-<g class="body">
-  <g class="head">
-    <g class="antenna"><line x1="62" y1="25" x2="67" y2="15" stroke="#fff" stroke-width="4" stroke-linecap="round"/><circle class="bulb" cx="68" cy="13" r="4.5" fill="#3ddc84"/></g>
-    <rect x="26" y="27" width="56" height="52" rx="16" fill="#17181c" stroke="#fff" stroke-width="5"/>
-    <g class="visor"><rect x="33" y="40" width="42" height="14" rx="4.2" fill="#3a3d45"/>
-      <rect class="fill " x="33" y="40" width="17.6" height="14" rx="4.2" fill="#3ddc84"/>
-      <rect class="shine" x="33" y="40" width="8" height="14" rx="3" fill="#fff" opacity="0"/></g>
-    <rect class="tick " x="54.1" y="36" width="4" height="22" rx="2" fill="#fff"/>
-    <path class="mouth" d="M45,66 Q54,72 63,66" stroke="#fff" stroke-width="4.5" fill="none" stroke-linecap="round"/>
-    
-  </g>
-  
-</g></svg>
-<div class="plain"><svg class="penny fFill" width="56" height="56" viewBox="-8 -18 124 124">
-<g class="body">
-  <g class="head">
-    <g class="antenna"><line x1="62" y1="25" x2="67" y2="15" stroke="#fff" stroke-width="4" stroke-linecap="round"/><circle class="bulb" cx="68" cy="13" r="4.5" fill="#3ddc84"/></g>
-    <rect x="26" y="27" width="56" height="52" rx="16" fill="#17181c" stroke="#fff" stroke-width="5"/>
-    <g class="visor"><rect x="33" y="40" width="42" height="14" rx="4.2" fill="#3a3d45"/>
-      <rect class="fill " x="33" y="40" width="17.6" height="14" rx="4.2" fill="#3ddc84"/>
-      <rect class="shine" x="33" y="40" width="8" height="14" rx="3" fill="#fff" opacity="0"/></g>
-    <rect class="tick " x="54.1" y="36" width="4" height="22" rx="2" fill="#fff"/>
-    <path class="mouth" d="M45,66 Q54,72 63,66" stroke="#fff" stroke-width="4.5" fill="none" stroke-linecap="round"/>
-    
-  </g>
-  
-</g></svg><span>without glow</span></div><p>Springs past and settles; the bar glows as it lands, then a shine runs along it.</p></div><div class="fcard"><h3>Ahead</h3><div class="style">Expressive + glow</div><svg class="penny gl fAhead" width="200" height="200" viewBox="-8 -18 124 124">
+</g></svg><span>without glow</span></div><p>Jelly wobble, springy antenna, a cartoon blink; the visor and bulb glow softly.</p></div><div class="fcard"><h3>Visor fills on open</h3><div class="style">Expressive + glow</div><svg class="penny gl fFill" style="--bulb:#3ddc84" width="200" height="200" viewBox="-8 -18 124 124">
 <g class="body">
   <g class="head">
     <g class="antenna"><line x1="62" y1="25" x2="67" y2="15" stroke="#fff" stroke-width="4" stroke-linecap="round"/><circle class="bulb" cx="68" cy="13" r="4.5" fill="#3ddc84"/></g>
@@ -398,7 +371,7 @@ section{padding:10px 32px 24px}h2{font:700 20px 'Space Grotesk',system-ui;margin
   </g>
   
 </g></svg>
-<div class="plain"><svg class="penny fAhead" width="56" height="56" viewBox="-8 -18 124 124">
+<div class="plain"><svg class="penny fFill" style="--bulb:#3ddc84" width="56" height="56" viewBox="-8 -18 124 124">
 <g class="body">
   <g class="head">
     <g class="antenna"><line x1="62" y1="25" x2="67" y2="15" stroke="#fff" stroke-width="4" stroke-linecap="round"/><circle class="bulb" cx="68" cy="13" r="4.5" fill="#3ddc84"/></g>
@@ -411,7 +384,34 @@ section{padding:10px 32px 24px}h2{font:700 20px 'Space Grotesk',system-ui;margin
     
   </g>
   
-</g></svg><span>without glow</span></div><p>A small happy hop, with a warm green glow.</p></div><div class="fcard"><h3>Tight</h3><div class="style">Elastic + glow</div><svg class="penny gl fTight" width="200" height="200" viewBox="-8 -18 124 124">
+</g></svg><span>without glow</span></div><p>Springs past and settles; the bar glows as it lands, then a shine runs along it.</p></div><div class="fcard"><h3>Ahead</h3><div class="style">Expressive + glow</div><svg class="penny gl fAhead" style="--bulb:#3ddc84" width="200" height="200" viewBox="-8 -18 124 124">
+<g class="body">
+  <g class="head">
+    <g class="antenna"><line x1="62" y1="25" x2="67" y2="15" stroke="#fff" stroke-width="4" stroke-linecap="round"/><circle class="bulb" cx="68" cy="13" r="4.5" fill="#3ddc84"/></g>
+    <rect x="26" y="27" width="56" height="52" rx="16" fill="#17181c" stroke="#fff" stroke-width="5"/>
+    <g class="visor"><rect x="33" y="40" width="42" height="14" rx="4.2" fill="#3a3d45"/>
+      <rect class="fill " x="33" y="40" width="17.6" height="14" rx="4.2" fill="#3ddc84"/>
+      <rect class="shine" x="33" y="40" width="8" height="14" rx="3" fill="#fff" opacity="0"/></g>
+    <rect class="tick " x="54.1" y="36" width="4" height="22" rx="2" fill="#fff"/>
+    <path class="mouth" d="M45,66 Q54,72 63,66" stroke="#fff" stroke-width="4.5" fill="none" stroke-linecap="round"/>
+    
+  </g>
+  
+</g></svg>
+<div class="plain"><svg class="penny fAhead" style="--bulb:#3ddc84" width="56" height="56" viewBox="-8 -18 124 124">
+<g class="body">
+  <g class="head">
+    <g class="antenna"><line x1="62" y1="25" x2="67" y2="15" stroke="#fff" stroke-width="4" stroke-linecap="round"/><circle class="bulb" cx="68" cy="13" r="4.5" fill="#3ddc84"/></g>
+    <rect x="26" y="27" width="56" height="52" rx="16" fill="#17181c" stroke="#fff" stroke-width="5"/>
+    <g class="visor"><rect x="33" y="40" width="42" height="14" rx="4.2" fill="#3a3d45"/>
+      <rect class="fill " x="33" y="40" width="17.6" height="14" rx="4.2" fill="#3ddc84"/>
+      <rect class="shine" x="33" y="40" width="8" height="14" rx="3" fill="#fff" opacity="0"/></g>
+    <rect class="tick " x="54.1" y="36" width="4" height="22" rx="2" fill="#fff"/>
+    <path class="mouth" d="M45,66 Q54,72 63,66" stroke="#fff" stroke-width="4.5" fill="none" stroke-linecap="round"/>
+    
+  </g>
+  
+</g></svg><span>without glow</span></div><p>A small happy hop, with a warm green glow.</p></div><div class="fcard"><h3>Tight</h3><div class="style">Elastic + glow</div><svg class="penny gl fTight" style="--bulb:#f5a623" width="200" height="200" viewBox="-8 -18 124 124">
 <g class="body">
   <g class="head">
     <g class="antenna"><line x1="62" y1="25" x2="67" y2="15" stroke="#fff" stroke-width="4" stroke-linecap="round"/><circle class="bulb" cx="68" cy="13" r="4.5" fill="#f5a623"/></g>
@@ -425,7 +425,7 @@ section{padding:10px 32px 24px}h2{font:700 20px 'Space Grotesk',system-ui;margin
   </g>
   <path class="sweat" d="M84,34 q3,5 0,7 q-3,-2 0,-7 Z" fill="#7cc4ff"/>
 </g></svg>
-<div class="plain"><svg class="penny fTight" width="56" height="56" viewBox="-8 -18 124 124">
+<div class="plain"><svg class="penny fTight" style="--bulb:#f5a623" width="56" height="56" viewBox="-8 -18 124 124">
 <g class="body">
   <g class="head">
     <g class="antenna"><line x1="62" y1="25" x2="67" y2="15" stroke="#fff" stroke-width="4" stroke-linecap="round"/><circle class="bulb" cx="68" cy="13" r="4.5" fill="#f5a623"/></g>
@@ -438,7 +438,7 @@ section{padding:10px 32px 24px}h2{font:700 20px 'Space Grotesk',system-ui;margin
     
   </g>
   <path class="sweat" d="M84,34 q3,5 0,7 q-3,-2 0,-7 Z" fill="#7cc4ff"/>
-</g></svg><span>without glow</span></div><p>Shivers and squints, a bead of sweat, an amber glow breathing fast.</p></div><div class="fcard"><h3>Over</h3><div class="style">Expressive + glow</div><svg class="penny gl fOver" width="200" height="200" viewBox="-8 -18 124 124">
+</g></svg><span>without glow</span></div><p>Shivers and squints, a bead of sweat, an amber glow breathing fast.</p></div><div class="fcard"><h3>Over</h3><div class="style">Expressive + glow</div><svg class="penny gl fOver" style="--bulb:#e5534b" width="200" height="200" viewBox="-8 -18 124 124">
 <g class="body">
   <g class="head">
     <g class="antenna"><line x1="62" y1="25" x2="67" y2="15" stroke="#fff" stroke-width="4" stroke-linecap="round"/><circle class="bulb" cx="68" cy="13" r="4.5" fill="#e5534b"/></g>
@@ -452,7 +452,7 @@ section{padding:10px 32px 24px}h2{font:700 20px 'Space Grotesk',system-ui;margin
   </g>
   
 </g></svg>
-<div class="plain"><svg class="penny fOver" width="56" height="56" viewBox="-8 -18 124 124">
+<div class="plain"><svg class="penny fOver" style="--bulb:#e5534b" width="56" height="56" viewBox="-8 -18 124 124">
 <g class="body">
   <g class="head">
     <g class="antenna"><line x1="62" y1="25" x2="67" y2="15" stroke="#fff" stroke-width="4" stroke-linecap="round"/><circle class="bulb" cx="68" cy="13" r="4.5" fill="#e5534b"/></g>
@@ -465,7 +465,7 @@ section{padding:10px 32px 24px}h2{font:700 20px 'Space Grotesk',system-ui;margin
     
   </g>
   
-</g></svg><span>without glow</span></div><p>Sags, the antenna wilts, the visor flickers under a heavy red glow.</p></div><div class="fcard"><h3>Payday</h3><div class="style">Expressive + glow</div><svg class="penny gl fPay" width="200" height="200" viewBox="-8 -18 124 124">
+</g></svg><span>without glow</span></div><p>Sags, the antenna wilts, the visor flickers under a heavy red glow.</p></div><div class="fcard"><h3>Payday</h3><div class="style">Expressive + glow</div><svg class="penny gl fPay" style="--bulb:#3ddc84" width="200" height="200" viewBox="-8 -18 124 124">
 <g class="body">
   <g class="head">
     <g class="antenna"><line x1="62" y1="25" x2="67" y2="15" stroke="#fff" stroke-width="4" stroke-linecap="round"/><circle class="bulb" cx="68" cy="13" r="4.5" fill="#3ddc84"/></g>
@@ -479,7 +479,7 @@ section{padding:10px 32px 24px}h2{font:700 20px 'Space Grotesk',system-ui;margin
   </g>
   <rect class="conf c0" x="12" y="32" width="5" height="5" rx="1" fill="#f5a623"/><rect class="conf c1" x="92" y="36" width="5" height="5" rx="1" fill="#ffffff"/><rect class="conf c2" x="14" y="76" width="5" height="5" rx="1" fill="#ffffff"/><rect class="conf c3" x="92" y="80" width="5" height="5" rx="1" fill="#f5a623"/><rect class="conf c4" x="22" y="14" width="5" height="5" rx="1" fill="#3ddc84"/><rect class="conf c5" x="100" y="10" width="5" height="5" rx="1" fill="#3ddc84"/><rect class="conf c6" x="4" y="52" width="5" height="5" rx="1" fill="#f5a623"/>
 </g></svg>
-<div class="plain"><svg class="penny fPay" width="56" height="56" viewBox="-8 -18 124 124">
+<div class="plain"><svg class="penny fPay" style="--bulb:#3ddc84" width="56" height="56" viewBox="-8 -18 124 124">
 <g class="body">
   <g class="head">
     <g class="antenna"><line x1="62" y1="25" x2="67" y2="15" stroke="#fff" stroke-width="4" stroke-linecap="round"/><circle class="bulb" cx="68" cy="13" r="4.5" fill="#3ddc84"/></g>
@@ -492,7 +492,7 @@ section{padding:10px 32px 24px}h2{font:700 20px 'Space Grotesk',system-ui;margin
     
   </g>
   <rect class="conf c0" x="12" y="32" width="5" height="5" rx="1" fill="#f5a623"/><rect class="conf c1" x="92" y="36" width="5" height="5" rx="1" fill="#ffffff"/><rect class="conf c2" x="14" y="76" width="5" height="5" rx="1" fill="#ffffff"/><rect class="conf c3" x="92" y="80" width="5" height="5" rx="1" fill="#f5a623"/><rect class="conf c4" x="22" y="14" width="5" height="5" rx="1" fill="#3ddc84"/><rect class="conf c5" x="100" y="10" width="5" height="5" rx="1" fill="#3ddc84"/><rect class="conf c6" x="4" y="52" width="5" height="5" rx="1" fill="#f5a623"/>
-</g></svg><span>without glow</span></div><p>Jumps, confetti bursts, and the visor glows through the colours.</p></div><div class="fcard"><h3>Syncing</h3><div class="style">Expressive + glow</div><svg class="penny gl fSync" width="200" height="200" viewBox="-8 -18 124 124">
+</g></svg><span>without glow</span></div><p>Jumps, confetti bursts, and the visor glows through the colours.</p></div><div class="fcard"><h3>Syncing</h3><div class="style">Expressive + glow</div><svg class="penny gl fSync" style="--bulb:#3ddc84" width="200" height="200" viewBox="-8 -18 124 124">
 <g class="body">
   <g class="head">
     <g class="antenna"><line x1="62" y1="25" x2="67" y2="15" stroke="#fff" stroke-width="4" stroke-linecap="round"/><circle class="bulb" cx="68" cy="13" r="4.5" fill="#3ddc84"/></g>
@@ -506,7 +506,7 @@ section{padding:10px 32px 24px}h2{font:700 20px 'Space Grotesk',system-ui;margin
   </g>
   <path class="spin" d="M88,24 a8,8 0 1 1 -6,-5" stroke="#fff" stroke-width="3" fill="none" stroke-linecap="round"/>
 </g></svg>
-<div class="plain"><svg class="penny fSync" width="56" height="56" viewBox="-8 -18 124 124">
+<div class="plain"><svg class="penny fSync" style="--bulb:#3ddc84" width="56" height="56" viewBox="-8 -18 124 124">
 <g class="body">
   <g class="head">
     <g class="antenna"><line x1="62" y1="25" x2="67" y2="15" stroke="#fff" stroke-width="4" stroke-linecap="round"/><circle class="bulb" cx="68" cy="13" r="4.5" fill="#3ddc84"/></g>
@@ -519,7 +519,7 @@ section{padding:10px 32px 24px}h2{font:700 20px 'Space Grotesk',system-ui;margin
     
   </g>
   <path class="spin" d="M88,24 a8,8 0 1 1 -6,-5" stroke="#fff" stroke-width="3" fill="none" stroke-linecap="round"/>
-</g></svg><span>without glow</span></div><p>A glowing light scans the visor; the antenna twitches, the bulb pulses.</p></div><div class="fcard"><h3>Asleep</h3><div class="style">Expressive + glow</div><svg class="penny gl fSleep" width="200" height="200" viewBox="-8 -18 124 124">
+</g></svg><span>without glow</span></div><p>A glowing light scans the visor; the antenna twitches, the bulb pulses.</p></div><div class="fcard"><h3>Asleep</h3><div class="style">Expressive + glow</div><svg class="penny gl fSleep" style="--bulb:#3ddc84" width="200" height="200" viewBox="-8 -18 124 124">
 <g class="body">
   <g class="head">
     <g class="antenna"><line x1="62" y1="25" x2="67" y2="15" stroke="#fff" stroke-width="4" stroke-linecap="round"/><circle class="bulb" cx="68" cy="13" r="4.5" fill="#3ddc84"/></g>
@@ -533,7 +533,7 @@ section{padding:10px 32px 24px}h2{font:700 20px 'Space Grotesk',system-ui;margin
   </g>
   <g class="zzz"><text class="z z1" x="84" y="22" font-family="Space Grotesk, sans-serif" font-weight="700" font-size="13" fill="#fff">z</text><text class="z z2" x="92" y="10" font-family="Space Grotesk, sans-serif" font-weight="700" font-size="10" fill="#fff">z</text></g>
 </g></svg>
-<div class="plain"><svg class="penny fSleep" width="56" height="56" viewBox="-8 -18 124 124">
+<div class="plain"><svg class="penny fSleep" style="--bulb:#3ddc84" width="56" height="56" viewBox="-8 -18 124 124">
 <g class="body">
   <g class="head">
     <g class="antenna"><line x1="62" y1="25" x2="67" y2="15" stroke="#fff" stroke-width="4" stroke-linecap="round"/><circle class="bulb" cx="68" cy="13" r="4.5" fill="#3ddc84"/></g>
@@ -546,7 +546,7 @@ section{padding:10px 32px 24px}h2{font:700 20px 'Space Grotesk',system-ui;margin
     
   </g>
   <g class="zzz"><text class="z z1" x="84" y="22" font-family="Space Grotesk, sans-serif" font-weight="700" font-size="13" fill="#fff">z</text><text class="z z2" x="92" y="10" font-family="Space Grotesk, sans-serif" font-weight="700" font-size="10" fill="#fff">z</text></g>
-</g></svg><span>without glow</span></div><p>Nods off, z's float up, and she slowly dims and brightens.</p></div><div class="fcard"><h3>Meet Penny</h3><div class="style">Elastic + glow</div><svg class="penny gl fHello" width="200" height="200" viewBox="-8 -18 124 124">
+</g></svg><span>without glow</span></div><p>Nods off, z's float up, and she slowly dims and brightens.</p></div><div class="fcard"><h3>Meet Penny</h3><div class="style">Elastic + glow</div><svg class="penny gl fHello" style="--bulb:#3ddc84" width="200" height="200" viewBox="-8 -18 124 124">
 <g class="body">
   <g class="head">
     <g class="antenna"><line x1="62" y1="25" x2="67" y2="15" stroke="#fff" stroke-width="4" stroke-linecap="round"/><circle class="bulb" cx="68" cy="13" r="4.5" fill="#3ddc84"/></g>
@@ -560,7 +560,7 @@ section{padding:10px 32px 24px}h2{font:700 20px 'Space Grotesk',system-ui;margin
   </g>
   
 </g></svg>
-<div class="plain"><svg class="penny fHello" width="56" height="56" viewBox="-8 -18 124 124">
+<div class="plain"><svg class="penny fHello" style="--bulb:#3ddc84" width="56" height="56" viewBox="-8 -18 124 124">
 <g class="body">
   <g class="head">
     <g class="antenna"><line x1="62" y1="25" x2="67" y2="15" stroke="#fff" stroke-width="4" stroke-linecap="round"/><circle class="bulb" cx="68" cy="13" r="4.5" fill="#3ddc84"/></g>
@@ -573,7 +573,7 @@ section{padding:10px 32px 24px}h2{font:700 20px 'Space Grotesk',system-ui;margin
     
   </g>
   
-</g></svg><span>without glow</span></div><p>Drops in from above, lands with a squash, lights up and waves.</p></div><div class="fcard"><h3>Penny has a question</h3><div class="style">Expressive + glow</div><svg class="penny gl fAsk" width="200" height="200" viewBox="-8 -18 124 124">
+</g></svg><span>without glow</span></div><p>Drops in from above, lands with a squash, lights up and waves.</p></div><div class="fcard"><h3>Penny has a question</h3><div class="style">Expressive + glow</div><svg class="penny gl fAsk" style="--bulb:#3ddc84" width="200" height="200" viewBox="-8 -18 124 124">
 <g class="body">
   <g class="head">
     <g class="antenna"><line x1="62" y1="25" x2="67" y2="15" stroke="#fff" stroke-width="4" stroke-linecap="round"/><circle class="bulb" cx="68" cy="13" r="4.5" fill="#3ddc84"/></g>
@@ -587,7 +587,7 @@ section{padding:10px 32px 24px}h2{font:700 20px 'Space Grotesk',system-ui;margin
   </g>
   
 </g></svg>
-<div class="plain"><svg class="penny fAsk" width="56" height="56" viewBox="-8 -18 124 124">
+<div class="plain"><svg class="penny fAsk" style="--bulb:#3ddc84" width="56" height="56" viewBox="-8 -18 124 124">
 <g class="body">
   <g class="head">
     <g class="antenna"><line x1="62" y1="25" x2="67" y2="15" stroke="#fff" stroke-width="4" stroke-linecap="round"/><circle class="bulb" cx="68" cy="13" r="4.5" fill="#3ddc84"/></g>
@@ -600,7 +600,7 @@ section{padding:10px 32px 24px}h2{font:700 20px 'Space Grotesk',system-ui;margin
     <g class="qbubble"><circle cx="90" cy="2" r="11" fill="#f5a623"/><text x="90" y="7.5" text-anchor="middle" font-family="Space Grotesk, sans-serif" font-weight="700" font-size="15" fill="#111">?</text></g>
   </g>
   
-</g></svg><span>without glow</span></div><p>Tilts her head, the '?' bounces in, her bulb glows amber.</p></div><div class="fcard"><h3>Penny noticed something</h3><div class="style">Elastic + glow</div><svg class="penny gl fNotice" width="200" height="200" viewBox="-8 -18 124 124">
+</g></svg><span>without glow</span></div><p>Tilts her head, the '?' bounces in, her bulb glows amber.</p></div><div class="fcard"><h3>Penny noticed something</h3><div class="style">Elastic + glow</div><svg class="penny gl fNotice" style="--bulb:#3ddc84" width="200" height="200" viewBox="-8 -18 124 124">
 <g class="body">
   <g class="head">
     <g class="antenna"><line x1="62" y1="25" x2="67" y2="15" stroke="#fff" stroke-width="4" stroke-linecap="round"/><circle class="bulb" cx="68" cy="13" r="4.5" fill="#3ddc84"/><g class="spark"><line x1="68" y1="4" x2="68" y2="-2" stroke="#f5a623" stroke-width="2.5" stroke-linecap="round"/><line x1="75.5" y1="7" x2="80" y2="3" stroke="#f5a623" stroke-width="2.5" stroke-linecap="round"/><line x1="60.5" y1="7" x2="56" y2="3" stroke="#f5a623" stroke-width="2.5" stroke-linecap="round"/><line x1="77" y1="14" x2="83" y2="14" stroke="#f5a623" stroke-width="2.5" stroke-linecap="round"/></g></g>
@@ -614,7 +614,7 @@ section{padding:10px 32px 24px}h2{font:700 20px 'Space Grotesk',system-ui;margin
   </g>
   
 </g></svg>
-<div class="plain"><svg class="penny fNotice" width="56" height="56" viewBox="-8 -18 124 124">
+<div class="plain"><svg class="penny fNotice" style="--bulb:#3ddc84" width="56" height="56" viewBox="-8 -18 124 124">
 <g class="body">
   <g class="head">
     <g class="antenna"><line x1="62" y1="25" x2="67" y2="15" stroke="#fff" stroke-width="4" stroke-linecap="round"/><circle class="bulb" cx="68" cy="13" r="4.5" fill="#3ddc84"/><g class="spark"><line x1="68" y1="4" x2="68" y2="-2" stroke="#f5a623" stroke-width="2.5" stroke-linecap="round"/><line x1="75.5" y1="7" x2="80" y2="3" stroke="#f5a623" stroke-width="2.5" stroke-linecap="round"/><line x1="60.5" y1="7" x2="56" y2="3" stroke="#f5a623" stroke-width="2.5" stroke-linecap="round"/><line x1="77" y1="14" x2="83" y2="14" stroke="#f5a623" stroke-width="2.5" stroke-linecap="round"/></g></g>
@@ -627,7 +627,7 @@ section{padding:10px 32px 24px}h2{font:700 20px 'Space Grotesk',system-ui;margin
     
   </g>
   
-</g></svg><span>without glow</span></div><p>Jumps in surprise, the antenna boings, the bulb flares.</p></div><div class="fcard"><h3>Penny's noted it</h3><div class="style">Elastic + glow</div><svg class="penny gl fNoted" width="200" height="200" viewBox="-8 -18 124 124">
+</g></svg><span>without glow</span></div><p>Jumps in surprise, the antenna boings, the bulb flares.</p></div><div class="fcard"><h3>Penny's noted it</h3><div class="style">Elastic + glow</div><svg class="penny gl fNoted" style="--bulb:#3ddc84" width="200" height="200" viewBox="-8 -18 124 124">
 <g class="body">
   <g class="head">
     <g class="antenna"><line x1="62" y1="25" x2="67" y2="15" stroke="#fff" stroke-width="4" stroke-linecap="round"/><circle class="bulb" cx="68" cy="13" r="4.5" fill="#3ddc84"/></g>
@@ -641,7 +641,7 @@ section{padding:10px 32px 24px}h2{font:700 20px 'Space Grotesk',system-ui;margin
   </g>
   <path class="check" d="M86,8 l4,4 l8,-9" stroke="#3ddc84" stroke-width="3.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
 </g></svg>
-<div class="plain"><svg class="penny fNoted" width="56" height="56" viewBox="-8 -18 124 124">
+<div class="plain"><svg class="penny fNoted" style="--bulb:#3ddc84" width="56" height="56" viewBox="-8 -18 124 124">
 <g class="body">
   <g class="head">
     <g class="antenna"><line x1="62" y1="25" x2="67" y2="15" stroke="#fff" stroke-width="4" stroke-linecap="round"/><circle class="bulb" cx="68" cy="13" r="4.5" fill="#3ddc84"/></g>
