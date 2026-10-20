@@ -248,10 +248,14 @@ section{padding:10px 32px 24px}h2{font:700 20px 'Space Grotesk',system-ui;margin
 .gl.fSleep .body{animation:dimE 5s ease-in-out infinite}
 /* Meet Penny: Elastic + lights up as she lands */
 .fHello .body{animation:dropinD 4s linear infinite}.fHello .antenna{animation:wave 4s ease-in-out infinite}
-.gl.fHello .visor,.gl.fHello .tick{animation:visorOnE 4s ease-out infinite}.gl.fHello .bulb{animation:bulbOnE 4s ease-out infinite}.gl.fHello .mouth{animation:mouthOnE 4s ease-out infinite}
+.gl.fHello .visor,.gl.fHello .tick{animation:lightOn 4s ease-out infinite}.gl.fHello .fill{animation:fillOnGlow 4s ease-out infinite}
+@keyframes lightOn{0%,15%{opacity:0}30%,100%{opacity:1}}
+@keyframes fillOnGlow{0%,15%{filter:none}30%{filter:drop-shadow(0 0 8px var(--bulb,#3ddc84))}55%,100%{filter:none}}.gl.fHello .bulb{animation:bulbOnE 4s ease-out infinite}.gl.fHello .mouth{animation:mouthOnE 4s ease-out infinite}
 /* Question: Expressive + amber bulb */
 .fAsk .qbubble{animation:qbounce 3s cubic-bezier(.3,1.6,.5,1) infinite;transform-origin:50% 100%}.fAsk .head{animation:tiltB 3s ease-in-out infinite}.fAsk .bulb{animation:pulse .6s ease-in-out infinite}
-.gl.fAsk .bulb{animation:askBulbE 3s ease-in-out infinite,pulse .6s ease-in-out infinite}
+.gl.fAsk .bulb{animation:askColour 3s linear infinite,askGlow .6s ease-in-out infinite}
+@keyframes askColour{0%,12%{fill:#3ddc84}16%,86%{fill:#f5a623}90%,100%{fill:#3ddc84}}
+@keyframes askGlow{0%,100%{filter:drop-shadow(0 0 2px #f5a623)}50%{filter:drop-shadow(0 0 8px #f5a623)}}
 /* Noticed: Elastic + bulb flare */
 .fNotice .body{animation:surpriseD 3s linear infinite}.fNotice .antenna{animation:boingAntD 3s linear infinite}.fNotice .spark{animation:sparkle 3s infinite}
 .gl.fNotice .bulb{animation:flareE 3s ease-out infinite}
