@@ -88,19 +88,30 @@ fun Droid(
     modifier: Modifier = Modifier,
     accent: Color = MaterialTheme.colorScheme.primary,
     line: Color = Color.White,
+    /** Something happening that Penny reacts to; otherwise she just wears her mood. */
+    moment: DroidMoment = DroidMoment.NONE,
+    /** The visor sweeps up to the figure as the screen opens. */
+    fillOnOpen: Boolean = false,
 ) {
     val colour = droidColour(face.mood, accent)
+    val description = when {
+        moment == DroidMoment.QUESTION -> "Penny has a question"
+        else -> when (face.mood) {
+            DroidMood.AHEAD -> "On track"
+            DroidMood.TIGHT -> "A bit tight"
+            DroidMood.OVER -> "Over for the days so far"
+            DroidMood.PAYDAY -> "Payday"
+            DroidMood.SYNCING -> "Syncing"
+            DroidMood.ASLEEP -> "Overnight"
+        }
+    }
+    if (!droidStill()) {
+        MovingDroid(face, size, modifier, colour, line, moment, fillOnOpen, description)
+        return
+    }
+    // Still: animations switched off on the phone, or a screenshot.
     Canvas(
-        modifier.size(size).semantics {
-            contentDescription = when (face.mood) {
-                DroidMood.AHEAD -> "On track"
-                DroidMood.TIGHT -> "A bit tight"
-                DroidMood.OVER -> "Over for the days so far"
-                DroidMood.PAYDAY -> "Payday"
-                DroidMood.SYNCING -> "Syncing"
-                DroidMood.ASLEEP -> "Overnight"
-            }
-        },
+        modifier.size(size).semantics { contentDescription = description },
     ) {
         scale(this.size.minDimension / 108f, pivot = Offset.Zero) { drawDroid(face, colour, line) }
     }

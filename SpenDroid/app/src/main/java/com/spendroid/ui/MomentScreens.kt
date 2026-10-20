@@ -123,7 +123,7 @@ fun TodayScreen(state: RootUiState, onBack: () -> Unit) {
             Modifier.padding(horizontal = 14.dp).fillMaxWidth().background(Charcoal.Panel, RoundedCornerShape(16.dp)).padding(14.dp),
             verticalAlignment = Alignment.Top,
         ) {
-            Droid(DroidNow.face, 30.dp)
+            Droid(DroidNow.face, 30.dp, fillOnOpen = true)
             Spacer(Modifier.width(10.dp))
             Text(
                 "What you don't spend today is shared over the days to payday, so every day after gets a little more.",

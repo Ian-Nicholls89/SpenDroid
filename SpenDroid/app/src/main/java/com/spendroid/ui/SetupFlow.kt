@@ -271,9 +271,9 @@ private fun Primary(text: String, enabled: Boolean = true, onClick: () -> Unit) 
 private fun Welcome(onStatements: () -> Unit, onFresh: () -> Unit, onGoCardless: () -> Unit) {
     Spacer(Modifier.height(28.dp))
     Title("Meet Penny")
-    // And there she is, in her payday best - a smile, a full visor and confetti.
+    // And there she is: she drops in, lands, lights up and waves.
     androidx.compose.foundation.layout.Box(Modifier.fillMaxWidth().padding(vertical = 8.dp), contentAlignment = androidx.compose.ui.Alignment.Center) {
-        Droid(DroidFace(DroidMood.PAYDAY, used = 1f, elapsed = 0f), 120.dp)
+        Droid(DroidFace(DroidMood.AHEAD, used = 0.42f, elapsed = 0.55f), 120.dp, moment = DroidMoment.HELLO)
     }
     Lead("She works out what's left until payday, after your bills and card statements. She helps you to know what you can spend, every day.")
     Lead("She is your personal and private assistant: no account, no company cloud.")

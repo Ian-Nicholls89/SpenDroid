@@ -428,7 +428,15 @@ fun Color.darken(amount: Float): Color =
  * something to act on rather than more of the list.
  */
 @Composable
-fun QuestionCard(title: String, colour: Color, modifier: Modifier = Modifier, trailing: String? = null, content: @Composable ColumnScope.() -> Unit) {
+fun QuestionCard(
+    title: String,
+    colour: Color,
+    modifier: Modifier = Modifier,
+    trailing: String? = null,
+    /** Penny on the strip, reacting: asking, or noting an answer. */
+    penny: DroidMoment? = null,
+    content: @Composable ColumnScope.() -> Unit,
+) {
     Column(modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Charcoal.Panel)) {
         Row(
             Modifier
@@ -437,6 +445,10 @@ fun QuestionCard(title: String, colour: Color, modifier: Modifier = Modifier, tr
                 .padding(horizontal = 16.dp, vertical = 9.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            penny?.let {
+                Droid(DroidNow.face, 26.dp, line = Color(0xFF111111), moment = it)
+                Spacer(Modifier.width(8.dp))
+            }
             SectionHeading(title, Modifier.weight(1f), colour = Color(0xFF111111))
             trailing?.let { Text(it, fontFamily = Lato, fontWeight = FontWeight.Black, fontSize = 12.sp, color = Color(0xFF111111)) }
         }

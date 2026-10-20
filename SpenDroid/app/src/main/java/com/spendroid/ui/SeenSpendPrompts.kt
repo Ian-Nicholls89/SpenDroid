@@ -69,7 +69,7 @@ internal fun SeenSpendPrompts(
             val day = NotificationSpend.dateOf(spend.seenAt)
             val whenSaid = if (day == java.time.LocalDate.now()) "today" else "on ${day.format(DAY)}"
             val shop = com.spendroid.work.SpendQuestions.shopName(spend.merchant) ?: spend.merchant
-            QuestionCard("Penny has a question", Charcoal.Warn) {
+            QuestionCard("Penny has a question", Charcoal.Warn, penny = DroidMoment.QUESTION) {
                 Text(
                     "Did you pay ${formatMoney(-spend.amountMinor, spend.currency)} at $shop once or twice $whenSaid?",
                     style = MaterialTheme.typography.titleSmall,
@@ -97,7 +97,7 @@ internal fun SeenSpendPrompts(
             val (repeat, once) = answered
             val spend = repeat.spend
             val shop = com.spendroid.work.SpendQuestions.shopName(spend.merchant) ?: spend.merchant
-            QuestionCard("Penny's noted it", Charcoal.Good) {
+            QuestionCard("Penny's noted it", Charcoal.Good, penny = DroidMoment.NOTED) {
                 Text(
                     if (once) "Counted once: ${formatMoney(-spend.amountMinor, spend.currency)} at $shop. The extra is removed."
                     else "Counted twice: both payments at $shop stay.",
@@ -114,7 +114,7 @@ internal fun SeenSpendPrompts(
             // The accounts it could be: the ones its app covers, or the Wallet cards.
             val choices = NotificationSpend.candidatesFor(spend.source, sources, accounts)?.takeIf { it.isNotEmpty() }
                 ?: accounts.filter { it.walletLinked }.ifEmpty { accounts }
-            QuestionCard("Which account?", Charcoal.Warn) {
+            QuestionCard("Which account?", Charcoal.Warn, penny = DroidMoment.QUESTION) {
                 Text(
                     "${formatMoney(-spend.amountMinor, spend.currency)} at ${spend.merchant} · ${NotificationSpend.dateOf(spend.seenAt).format(DAY)}",
                     style = MaterialTheme.typography.titleSmall,
@@ -135,7 +135,7 @@ internal fun SeenSpendPrompts(
             }
         }
         unconfirmed.forEach { spend ->
-            QuestionCard("Not reported yet", Charcoal.Warn) {
+            QuestionCard("Not reported yet", Charcoal.Warn, penny = DroidMoment.QUESTION) {
                 Text(
                     "${formatMoney(-spend.amountMinor, spend.currency)} at ${spend.merchant} · seen ${NotificationSpend.dateOf(spend.seenAt).format(DAY)}",
                     style = MaterialTheme.typography.titleSmall,

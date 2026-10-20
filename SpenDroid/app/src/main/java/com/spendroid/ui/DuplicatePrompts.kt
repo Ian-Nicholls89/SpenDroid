@@ -53,7 +53,7 @@ internal fun DuplicatePrompts(
             val candidate = q.candidate
             val counter = if (questions.size > 1) "${i + 1} of ${questions.size}" else null
             if (candidate != null) {
-                QuestionCard("Same transaction?", Charcoal.Warn, trailing = counter) {
+                QuestionCard("Same transaction?", Charcoal.Warn, trailing = counter, penny = DroidMoment.QUESTION) {
                     Text(
                         "${account ?: "The bank"} stopped listing the first, and listed the second.",
                         style = MaterialTheme.typography.bodySmall,
@@ -70,7 +70,7 @@ internal fun DuplicatePrompts(
                     }
                 }
             } else {
-                QuestionCard("No longer listed", Charcoal.Warn, trailing = counter) {
+                QuestionCard("No longer listed", Charcoal.Warn, trailing = counter, penny = DroidMoment.QUESTION) {
                     QuestionRow(q.vanished, account ?: "Your bank")
                     Text(
                         "${account ?: "Your bank"} no longer lists this. It may have been reversed or cancelled.",
