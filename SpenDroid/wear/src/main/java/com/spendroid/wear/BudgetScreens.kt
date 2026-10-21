@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -272,8 +273,11 @@ private fun Hero(r: BudgetReading) {
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         VisorArc(r.used ?: (1f - r.budgetLeft), r.elapsed, fill)
         Centre {
-            // The droid wears the budget's face, as on the phone.
-            WatchDroid(moodOf(r), r.used, r.elapsed, r.accent, 34.dp)
+            // The droid wears the budget's face, as on the phone. She's drawn larger than the
+            // room she takes, growing up into the space above, so the figures stay where they were.
+            Box(Modifier.size(54.dp, 34.dp), contentAlignment = Alignment.BottomCenter) {
+                WatchDroid(moodOf(r), r.used, r.elapsed, r.accent, 54.dp, Modifier.wrapContentSize(Alignment.BottomCenter, unbounded = true))
+            }
             Text(r.text("availableFull"), style = MaterialTheme.typography.numeralMedium, maxLines = 1)
             Text(r.text("daysLine"), style = MaterialTheme.typography.labelSmall, color = Soft, maxLines = 1)
             Spacer(Modifier.height(4.dp))
