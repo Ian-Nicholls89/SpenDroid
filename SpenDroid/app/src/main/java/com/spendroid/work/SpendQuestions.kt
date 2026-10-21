@@ -28,6 +28,8 @@ import kotlinx.coroutines.launch
 object SpendQuestions {
 
     private const val CHANNEL = "spend_questions"
+    /** On the app's own intent: open Penny's questions straight away. */
+    const val EXTRA_ASK = "com.spendroid.ASK_PENNY"
     private const val ACTION_ANSWER = "com.spendroid.SPEND_ANSWER"
     private const val EXTRA_SPEND = "spend"
     private const val EXTRA_ACCOUNT = "account"
@@ -52,7 +54,7 @@ object SpendQuestions {
         } else {
             "A payment at ${spend.merchant}"
         }
-        val open = context.packageManager.getLaunchIntentForPackage(context.packageName)?.let {
+        val open = context.packageManager.getLaunchIntentForPackage(context.packageName)?.putExtra(EXTRA_ASK, true)?.let {
             PendingIntent.getActivity(context, id, it, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         }
         val builder = NotificationCompat.Builder(context, CHANNEL)
@@ -108,7 +110,7 @@ object SpendQuestions {
         } else {
             "Did you pay at $shop once or twice today?"
         }
-        val open = context.packageManager.getLaunchIntentForPackage(context.packageName)?.let {
+        val open = context.packageManager.getLaunchIntentForPackage(context.packageName)?.putExtra(EXTRA_ASK, true)?.let {
             PendingIntent.getActivity(context, id, it, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         }
         fun answer(once: Boolean) = PendingIntent.getBroadcast(

@@ -207,12 +207,15 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
     private val openForecast = mutableStateOf<String?>(null)
     /** A manual account whose balance check is open. */
     private val checkBalance = mutableStateOf<String?>(null)
+    /** From Penny's question notification: her questions, asked now whatever "later" said. */
+    private val askPenny = mutableStateOf(false)
 
     private fun takeOpeners(intent: Intent?) {
         intent?.getStringExtra(com.spendroid.work.MoneyWatchAlerts.EXTRA_OPEN_RULE)?.let { openRule.value = it }
         intent?.getStringExtra(com.spendroid.work.MoneyWatchAlerts.EXTRA_OPEN_FORECAST)?.let { openForecast.value = it }
         intent?.getStringExtra(com.spendroid.work.ContractAlerts.EXTRA_OPEN_CONTRACT)?.let { openRule.value = it }
         intent?.getStringExtra(com.spendroid.work.ManualAlerts.EXTRA_OPEN_BALANCE_CHECK)?.let { checkBalance.value = it }
+        if (intent?.getBooleanExtra(com.spendroid.work.SpendQuestions.EXTRA_ASK, false) == true) askPenny.value = true
         intent?.getStringExtra(com.spendroid.work.ManualAlerts.EXTRA_OPEN_IMPORT)?.let { importRequest.value = com.spendroid.ui.ImportRequest(accountId = it) }
     }
 
@@ -295,6 +298,15 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                 var screenRoute by rememberSaveable { mutableStateOf(AppScreen.Home.route) }
                 val screen = AppScreen.from(screenRoute)
                 var showLinkDialog by remember { mutableStateOf(false) }
+                // Penny's questions: asked in a sheet as the app opens, unless put off for now.
+                val questions = remember(state.seenSpends, state.duplicateQuestions, state.manualCoverage) { com.spendroid.ui.pennyQuestions(state) }
+                var asking by rememberSaveable { mutableStateOf(false) }
+                // Something Penny has noticed: said on Home once, then known.
+                val newsContext = androidx.compose.ui.platform.LocalContext.current
+                val news = remember(state.rules, state.accounts, state.budget == null) { com.spendroid.ui.PennyNews.next(newsContext, state) }
+                LaunchedEffect(news?.key, screen) {
+                    if (news != null && screen == AppScreen.Home) com.spendroid.ui.PennyNews.know(newsContext, news.key)
+                }
                 // Today's allowance, the payday moment and the last cycle's review: shown over the app.
                 var showToday by rememberSaveable { mutableStateOf(false) }
                 var showReview by rememberSaveable { mutableStateOf(false) }
@@ -452,6 +464,8 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                                             onOpenForecast = { id -> forecastFor = id ?: "" },
                                             onReload = viewModel::reloadLocal,
                                             onOpenToday = { showToday = true },
+                                            news = news,
+                                            onNews = { it.ruleKey?.let { key -> openRule.value = key; navigate(AppScreen.Rules) } },
                                             prompts = {
                                                 // Accounts with no bank link: how current the figures are.
                                                 com.spendroid.ui.ManualFreshness(
@@ -459,18 +473,8 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                                                     onCheck = { checkBalance.value = it },
                                                     onImport = { importRequest.value = com.spendroid.ui.ImportRequest(accountId = it) },
                                                 )
-                                                // A missed "which account?" waits here too, not only in Spending.
-                                                com.spendroid.ui.SeenSpendPrompts(
-                                                    seen = state.seenSpends,
-                                                    accounts = state.accounts,
-                                                    onAssign = { id, account -> viewModel.assignSeenSpend(id, account, always = false) },
-                                                    onKeep = viewModel::keepSeenSpend,
-                                                    onDismiss = viewModel::dismissSeenSpend,
-                                                    sources = viewModel.spendSources.collectAsStateWithLifecycle().value,
-                                                    accountsOnly = true,
-                                                    modifier = Modifier,
-                                                    onRepeat = viewModel::answerRepeat,
-                                                )
+                                                // Penny's questions, put off: the way back to them.
+                                                com.spendroid.ui.PennyQuestionsStrip(questions.size, onOpen = { asking = true })
                                             },
                                         )
 
@@ -495,22 +499,10 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                                             tabIndex = spendingTab,
                                             onTabIndex = { spendingTab = it },
                                             prompts = {
-                                                com.spendroid.ui.DuplicatePrompts(
-                                                    questions = state.duplicateQuestions,
-                                                    accounts = state.accounts,
-                                                    onSame = viewModel::confirmDuplicate,
-                                                    onKeep = viewModel::keepVanished,
-                                                    onRemove = viewModel::removeVanished,
-                                                )
-                                                com.spendroid.ui.SeenSpendPrompts(
-                                                    seen = state.seenSpends,
-                                                    accounts = state.accounts,
-                                                    onAssign = { id, account -> viewModel.assignSeenSpend(id, account, always = false) },
-                                                    onKeep = viewModel::keepSeenSpend,
-                                                    onDismiss = viewModel::dismissSeenSpend,
-                                                    sources = viewModel.spendSources.collectAsStateWithLifecycle().value,
-                                                    coverage = state.manualCoverage,
-                                                    onRepeat = viewModel::answerRepeat,
+                                                com.spendroid.ui.PennyQuestionsStrip(
+                                                    questions.size,
+                                                    onOpen = { asking = true },
+                                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                                                 )
                                             },
                                         )
@@ -672,6 +664,55 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                             accounts = state.accounts,
                             onClose = { importRequest.value = null },
                             onAdded = viewModel::reloadLocal,
+                        )
+                    }
+                }
+
+                // Penny asks as the app opens - each time it comes back to the front - with nothing
+                // else over it, unless "Ask me later" was said in the last six hours. Her
+                // notification asks at once.
+                if (state.hasCredentials || state.setupDone) {
+                    val context = androidx.compose.ui.platform.LocalContext.current
+                    val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
+                    var opened by remember { mutableIntStateOf(0) }
+                    var offered by remember { mutableIntStateOf(-1) }
+                    androidx.compose.runtime.DisposableEffect(lifecycle) {
+                        val watch = androidx.lifecycle.LifecycleEventObserver { _, event ->
+                            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) opened++
+                        }
+                        lifecycle.addObserver(watch)
+                        onDispose { lifecycle.removeObserver(watch) }
+                    }
+                    val clear = !showToday && !showReview && !showPayday && !showRoundup.value && forecastFor == null && importRequest.value == null
+                    LaunchedEffect(opened, questions.isNotEmpty(), clear, askPenny.value) {
+                        if (questions.isEmpty() || !clear) return@LaunchedEffect
+                        if (askPenny.value) {
+                            asking = true
+                            askPenny.value = false
+                        } else if (offered != opened && com.spendroid.ui.PennyAsk.due(context)) {
+                            asking = true
+                            offered = opened
+                        }
+                    }
+                    if (asking && questions.isNotEmpty()) {
+                        com.spendroid.ui.PennyQuestionSheet(
+                            questions = questions,
+                            accounts = state.accounts,
+                            sources = viewModel.spendSources.collectAsStateWithLifecycle().value,
+                            answers = com.spendroid.ui.PennyAnswers(
+                                onRepeat = viewModel::answerRepeat,
+                                onAssign = { id, account -> viewModel.assignSeenSpend(id, account, always = false) },
+                                onKeepSeen = viewModel::keepSeenSpend,
+                                onDismissSeen = viewModel::dismissSeenSpend,
+                                onSame = viewModel::confirmDuplicate,
+                                onKeepVanished = viewModel::keepVanished,
+                                onRemoveVanished = viewModel::removeVanished,
+                            ),
+                            onLater = {
+                                com.spendroid.ui.PennyAsk.later(context)
+                                asking = false
+                            },
+                            onDone = { asking = false },
                         )
                     }
                 }

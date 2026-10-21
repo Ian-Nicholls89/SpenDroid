@@ -112,6 +112,9 @@ fun HomeScreen(
     prompts: @Composable () -> Unit = {},
     /** Today's allowance, from the hero's "a day". */
     onOpenToday: () -> Unit = {},
+    /** Something Penny has noticed, said in place of her line on the day; and following it up. */
+    news: PennyNews.News? = null,
+    onNews: (PennyNews.News) -> Unit = {},
 ) {
     val budget = state.budget
     val pages = remember(state.accounts, budget, state.transactions) {
@@ -163,7 +166,7 @@ fun HomeScreen(
 
             HorizontalPager(state = pager, modifier = Modifier.fillMaxWidth()) { index ->
                 when (val p = pages[index]) {
-                    HeroPage.Budget -> BudgetHero(budget, state.syncing, onOpenToday)
+                    HeroPage.Budget -> BudgetHero(budget, state.syncing, onOpenToday, news, onNews)
                     is HeroPage.Account -> AccountHero(p, colourOf(p.account, state.accounts), state.syncing)
                 }
             }
@@ -218,11 +221,25 @@ private fun untilLine(budget: BudgetSnapshot): String {
 }
 
 @Composable
-private fun BudgetHero(budget: BudgetSnapshot, syncing: Boolean, onOpenToday: () -> Unit = {}) {
+private fun BudgetHero(
+    budget: BudgetSnapshot,
+    syncing: Boolean,
+    onOpenToday: () -> Unit = {},
+    news: PennyNews.News? = null,
+    onNews: (PennyNews.News) -> Unit = {},
+) {
     val pace = BudgetPace.of(budget)
     Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 6.dp)) {
         // The droid's read on the day, in a word bubble: the same pace as the bar, said plainly.
-        PennySays(droidFaceOf(budget, syncing), com.spendroid.domain.TodaysRead.of(budget) { formatMoney(it, budget.baseCurrency) })
+        // Something she's noticed takes its place, once.
+        if (news != null) {
+            PennySays(
+                droidFaceOf(budget, syncing), news.line, moment = DroidMoment.NOTICED,
+                action = news.ruleKey?.let { "See it" to { onNews(news) } },
+            )
+        } else {
+            PennySays(droidFaceOf(budget, syncing), com.spendroid.domain.TodaysRead.of(budget) { formatMoney(it, budget.baseCurrency) })
+        }
         Text(untilLine(budget), style = MaterialTheme.typography.labelLarge, color = Color.White.copy(alpha = 0.78f))
         Row(verticalAlignment = Alignment.CenterVertically) {
             RollingAmount(
@@ -273,20 +290,39 @@ private fun dayOfCycle(budget: BudgetSnapshot): String? {
     return if (total > 0 && day in 1..total) "day $day of $total" else null
 }
 
-/** Penny and what she says, at the top of each page of the hero. */
+/**
+ * Penny and what she says: at the top of each page of the hero, and wherever she's noticed
+ * something - [moment] NOTICED plays her flash once - with [action] a link to follow it up.
+ */
 @Composable
-private fun PennySays(face: DroidFace, line: String, accent: Color = MaterialTheme.colorScheme.primary) {
-    Row(verticalAlignment = Alignment.Top, modifier = Modifier.padding(bottom = 12.dp)) {
-        Droid(face, 64.dp, accent = accent, fillOnOpen = true)
+internal fun PennySays(
+    face: DroidFace,
+    line: String,
+    accent: Color = MaterialTheme.colorScheme.primary,
+    moment: DroidMoment = DroidMoment.NONE,
+    action: Pair<String, () -> Unit>? = null,
+    size: androidx.compose.ui.unit.Dp = 64.dp,
+    modifier: Modifier = Modifier.padding(bottom = 12.dp),
+) {
+    Row(verticalAlignment = Alignment.Top, modifier = modifier) {
+        Droid(face, size, accent = accent, fillOnOpen = moment == DroidMoment.NONE, moment = moment)
         Spacer(Modifier.width(10.dp))
-        Text(
-            line,
-            style = MaterialTheme.typography.bodyMedium,
-            color = Color(0xFFE7E9EE),
-            modifier = Modifier
+        Column(
+            Modifier
                 .background(Color(0xFF1F2127), RoundedCornerShape(topStart = 4.dp, topEnd = 14.dp, bottomEnd = 14.dp, bottomStart = 14.dp))
                 .padding(horizontal = 12.dp, vertical = 9.dp),
-        )
+        ) {
+            Text(line, style = MaterialTheme.typography.bodyMedium, color = Color(0xFFE7E9EE))
+            action?.let { (label, go) ->
+                Text(
+                    "$label ›",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = accent,
+                    modifier = Modifier.padding(top = 6.dp).clickable(onClick = go),
+                )
+            }
+        }
     }
 }
 

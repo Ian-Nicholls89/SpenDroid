@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.MaterialTheme
@@ -109,68 +110,121 @@ class ScreensTest {
                 state = state, onRefresh = {}, onToggleRecurring = {}, onToggleInternal = {}, onQueryChange = {},
                 onAccountFilter = {}, onOverrideCategory = { _, _ -> }, onAlwaysCategorise = { _, _ -> },
                 onMarkTransfer = { _, _ -> }, onMarkCardPayment = { _, _ -> }, onCategoryFilter = {}, onSetBudgetGoal = { _, _ -> },
-                prompts = {
-                    androidx.compose.foundation.layout.Column(Modifier.padding(horizontal = 14.dp, vertical = 8.dp), verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(10.dp)) {
-                        com.spendroid.ui.DuplicatePrompts(Sample.questions(), state.accounts, {}, {}, {})
-                        com.spendroid.ui.SeenSpendPrompts(Sample.seen(), state.accounts, { _, _ -> }, {}, {})
-                    }
-                },
+                prompts = { com.spendroid.ui.PennyQuestionsStrip(3, {}, Modifier.padding(horizontal = 14.dp, vertical = 8.dp)) },
             )
         }
     }
 
-    /** 5.3: Penny's "once, or twice?" on Home. Made-up figures. */
-    @Test
-    @Config(qualifiers = "w411dp-h1500dp-xxhdpi")
-    fun pennyQuestion() {
-        val state = Sample.state()
-        val nine = java.time.LocalDate.now().atTime(9, 5).atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
-        fun shop(id: String, at: Long) = com.spendroid.data.db.SeenSpendEntity(
-            id = id, source = "com.google.android.apps.walletnfcrel", seenAt = at, amountMinor = -10_000, currency = "GBP",
-            merchant = "TESCO STORES", cardDigits = "1234", accountId = state.accounts.first().id,
-        )
-        shoot("penny-question", AppScreen.Home) {
-            HomeScreen(
-                state, onRefresh = {}, onRelink = {}, onSeeAllTransactions = {}, onSetBudgetGoal = { _, _ -> }, onLinkBank = {},
-                prompts = {
-                    com.spendroid.ui.SeenSpendPrompts(
-                        listOf(shop("p1", nine), shop("p2", nine + 4 * 60_000)), state.accounts, { _, _ -> }, {}, {},
-                        accountsOnly = true, modifier = Modifier,
-                    )
-                },
-            )
-        }
-    }
-
-    /** 5.3.1: just answered - said back, with the way to change it. */
-    @Test
-    @Config(qualifiers = "w411dp-h1500dp-xxhdpi")
-    fun pennyAnswered() {
-        val state = Sample.state()
-        val nine = java.time.LocalDate.now().atTime(9, 5).atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
-        fun shop(id: String, at: Long) = com.spendroid.data.db.SeenSpendEntity(
-            id = id, source = "com.google.android.apps.walletnfcrel", seenAt = at, amountMinor = -10_000, currency = "GBP",
-            merchant = "TESCO STORES", cardDigits = "1234", accountId = state.accounts.first().id,
-        )
-        val seen = androidx.compose.runtime.mutableStateOf(listOf(shop("p1", nine), shop("p2", nine + 4 * 60_000)))
-        compose.setContent {
-            Frame(AppScreen.Home) {
+    /** Penny's question sheet over Home, as the app opens: [body] in the sheet. */
+    @Composable
+    private fun SheetOverHome(state: com.spendroid.ui.RootUiState, count: Int, body: @Composable () -> Unit) {
+        Frame(AppScreen.Home) {
+            Box {
                 HomeScreen(
                     state, onRefresh = {}, onRelink = {}, onSeeAllTransactions = {}, onSetBudgetGoal = { _, _ -> }, onLinkBank = {},
-                    prompts = {
-                        com.spendroid.ui.SeenSpendPrompts(
-                            seen.value, state.accounts, { _, _ -> }, {}, {}, accountsOnly = true, modifier = Modifier,
-                            onRepeat = { id, twin, once ->
-                                seen.value = seen.value.map { if (it.id == id) it.copy(dismissed = once, pairedWithId = twin.takeIf { once }, confirmedSeparate = !once) else it }
-                            },
-                        )
-                    },
+                    prompts = { com.spendroid.ui.PennyQuestionsStrip(count, {}) },
                 )
+                Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.6f)))
+                androidx.compose.foundation.layout.Column(
+                    Modifier.align(androidx.compose.ui.Alignment.BottomCenter).fillMaxWidth()
+                        .background(Charcoal.Panel, androidx.compose.foundation.shape.RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
+                        .padding(top = 20.dp),
+                ) { body() }
+            }
+        }
+    }
+
+    private fun tesco(state: com.spendroid.ui.RootUiState): List<com.spendroid.data.db.SeenSpendEntity> {
+        val nine = java.time.LocalDate.now().atTime(9, 5).atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+        fun shop(id: String, at: Long) = com.spendroid.data.db.SeenSpendEntity(
+            id = id, source = "com.google.android.apps.walletnfcrel", seenAt = at, amountMinor = -10_000, currency = "GBP",
+            merchant = "TESCO STORES", cardDigits = "1234", accountId = state.accounts.first().id,
+        )
+        return listOf(shop("p1", nine), shop("p2", nine + 4 * 60_000))
+    }
+
+    /** 5.5: Penny's "once, or twice?" in her sheet over Home. Made-up figures. */
+    @Test
+    @Config(qualifiers = "w411dp-h900dp-xxhdpi")
+    fun pennyQuestion() {
+        val state = Sample.state()
+        val questions = com.spendroid.domain.NotificationSpend.possibleRepeats(tesco(state)).map { com.spendroid.ui.PennyQuestion.Repeat(it) }
+        shootRaw("penny-question") {
+            SheetOverHome(state, questions.size + 2) {
+                com.spendroid.ui.PennyQuestionBody(questions + questions + questions, state.accounts, emptyList(), com.spendroid.ui.PennyAnswers(), {}, {})
+            }
+        }
+    }
+
+    /** 5.5: just answered - said back, with the way to change it. */
+    @Test
+    @Config(qualifiers = "w411dp-h900dp-xxhdpi")
+    fun pennyAnswered() {
+        val state = Sample.state()
+        val questions = com.spendroid.domain.NotificationSpend.possibleRepeats(tesco(state)).map { com.spendroid.ui.PennyQuestion.Repeat(it) }
+        compose.mainClock.autoAdvance = false
+        compose.setContent {
+            SheetOverHome(state, 1) {
+                com.spendroid.ui.PennyQuestionBody(questions, state.accounts, emptyList(), com.spendroid.ui.PennyAnswers(), {}, {})
             }
         }
         compose.onNodeWithText("Once, remove the extra").performClick()
-        compose.waitForIdle()
+        compose.mainClock.advanceTimeBy(1_500)
         compose.onRoot().captureRoboImage("build/screenshots/penny-answered.png")
+    }
+
+    /** 5.5: every kind of question Penny asks, as her sheet asks it. Made-up figures. */
+    @Test
+    @Config(qualifiers = "w1700dp-h900dp-xxhdpi")
+    fun pennyQuestionKinds() {
+        val state = Sample.state()
+        val bank = "com.example.bank"
+        val sources = listOf(com.spendroid.domain.NotificationSpend.Source(bank, "Example Bank", listOf("acc-personal", "acc-joint"), "acc-personal"))
+        val week = System.currentTimeMillis() - 8 * 86_400_000L
+        val which = com.spendroid.data.db.SeenSpendEntity(
+            id = "seen-2", source = bank, seenAt = System.currentTimeMillis(), amountMinor = -1_240, currency = "GBP",
+            merchant = "Boots", provisionalAccountId = "acc-personal",
+        )
+        val unreported = com.spendroid.data.db.SeenSpendEntity(
+            id = "seen-3", source = bank, seenAt = week, amountMinor = -850, currency = "GBP", merchant = "Costa", accountId = "acc-personal",
+        )
+        val kinds = listOf(
+            com.spendroid.ui.PennyQuestion.WhichAccount(which),
+            com.spendroid.ui.PennyQuestion.NotReported(unreported),
+            com.spendroid.ui.PennyQuestion.Vanished(Sample.questions().first()),
+            com.spendroid.ui.PennyQuestion.Vanished(Sample.questions().first().copy(candidate = null)),
+        )
+        compose.setContent {
+            BudgetTheme {
+                androidx.compose.foundation.layout.Row(
+                    Modifier.background(Charcoal.Background).padding(10.dp),
+                    horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(10.dp),
+                ) {
+                    kinds.forEach { q ->
+                        Box(Modifier.width(400.dp).background(Charcoal.Panel, androidx.compose.foundation.shape.RoundedCornerShape(28.dp)).padding(top = 20.dp)) {
+                            com.spendroid.ui.PennyQuestionBody(listOf(q), state.accounts, sources, com.spendroid.ui.PennyAnswers(), {}, {})
+                        }
+                    }
+                }
+            }
+        }
+        compose.onRoot().captureRoboImage("build/screenshots/penny-question-kinds.png")
+    }
+
+    /** 5.5: something Penny noticed, said once on Home in her line's place. Made-up bill. */
+    @Test
+    @Config(qualifiers = "w411dp-h900dp-xxhdpi")
+    fun pennyNoticed() {
+        val state = Sample.state()
+        val news = com.spendroid.ui.PennyNews.News("bill:streamco", "I've spotted a new regular bill: StreamCo, £10.99 around the 14th each month. I'll plan for it from now on.", "rule")
+        shoot("penny-noticed", AppScreen.Home) {
+            HomeScreen(state, onRefresh = {}, onRelink = {}, onSeeAllTransactions = {}, onSetBudgetGoal = { _, _ -> }, onLinkBank = {}, news = news)
+        }
+    }
+
+    private fun shootRaw(name: String, content: @Composable () -> Unit) {
+        compose.setContent { content() }
+        compose.onRoot().captureRoboImage("build/screenshots/$name.png")
     }
 
     @Test
@@ -567,14 +621,9 @@ class ScreensTest {
         val step = androidx.compose.runtime.mutableIntStateOf(0)
         compose.setContent {
             if (step.intValue == 0) {
-                Frame(AppScreen.Home) {
-                    HomeScreen(
-                        state, onRefresh = {}, onRelink = {}, onSeeAllTransactions = {}, onSetBudgetGoal = { _, _ -> }, onLinkBank = {},
-                        prompts = {
-                            com.spendroid.ui.SeenSpendPrompts(
-                                listOf(waiting), state.accounts, { _, _ -> }, {}, {}, sources = sources, accountsOnly = true, modifier = Modifier,
-                            )
-                        },
+                SheetOverHome(state, 1) {
+                    com.spendroid.ui.PennyQuestionBody(
+                        listOf(com.spendroid.ui.PennyQuestion.WhichAccount(waiting)), state.accounts, sources, com.spendroid.ui.PennyAnswers(), {}, {},
                     )
                 }
             } else {

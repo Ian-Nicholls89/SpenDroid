@@ -544,10 +544,9 @@ private fun paidFrom(
     return PaidFrom(
         choices = choices,
         currentId = spend.accountId,
-        how = when {
-            spend.accountId == null -> "waiting for you to say"
-            spend.accountGuessed -> "Penny guessed this"
-            else -> null
+        how = if (spend.accountId == null) "waiting for you to say" else null,
+        guess = spend.accountId?.takeIf { spend.accountGuessed }?.let { id ->
+            state.accounts.firstOrNull { it.id == id }?.let { "I guessed this came from your ${it.label.trim()}. If I'm wrong, pick the right one below." }
         },
         always = state.spendPlaces[NotificationSpend.placeKey(spend.source, spend.merchant)] != null,
         onChoose = { account, always -> onAssign(spend.id, account, always); onDone() },

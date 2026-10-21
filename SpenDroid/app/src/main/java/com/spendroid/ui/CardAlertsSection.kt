@@ -216,6 +216,8 @@ internal fun CardAlertsSection(
                         onValueChange = { v ->
                             digits = v.filter(Char::isDigit).take(4)
                             if (digits.length == 4 || digits.isEmpty()) {
+                                // Typed in, so not something for Penny to announce she's learnt.
+                                if (digits.length == 4) PennyNews.know(context, PennyNews.digitsKey(account.id, digits))
                                 onUpdateAccount(account.copy(cardLastFour = digits.ifEmpty { null }))
                             }
                         },
@@ -345,6 +347,8 @@ private fun SamplesDialog(
     onDismiss: () -> Unit,
 ) {
     var teaching by remember { mutableStateOf<NotificationSampleEntity?>(null) }
+    // Penny's reply to what she was just taught, at the top of the list.
+    var taught by remember { mutableStateOf<String?>(null) }
     teaching?.let { sample ->
         val reads = remember(sample, learned) { NotificationSpend.parse(sample.source, sample.title, sample.text, learned) }
         AlertDialog(
@@ -370,10 +374,18 @@ private fun SamplesDialog(
                 }
             },
             confirmButton = {
-                TextButton(onClick = { onTeach(sample.id, true); teaching = null }) { Text("Count ones like this") }
+                TextButton(onClick = {
+                    onTeach(sample.id, true)
+                    taught = "Got it - I'll count notifications worded like that, whatever the shop and amount."
+                    teaching = null
+                }) { Text("Count ones like this") }
             },
             dismissButton = {
-                TextButton(onClick = { onTeach(sample.id, false); teaching = null }) { Text("Ignore ones like this") }
+                TextButton(onClick = {
+                    onTeach(sample.id, false)
+                    taught = "Got it - I'll ignore ones like that" + (reads?.merchant?.let { " from $it." } ?: ".")
+                    teaching = null
+                }) { Text("Ignore ones like this") }
             },
         )
     }
@@ -382,6 +394,11 @@ private fun SamplesDialog(
         title = { Text("Notifications seen") },
         text = {
             LazyColumn(modifier = Modifier.heightIn(max = 460.dp)) {
+                taught?.let { line ->
+                    item(key = "taught:$line") {
+                        PennySays(DroidNow.face, line, moment = DroidMoment.NOTICED, size = 48.dp, modifier = Modifier.padding(bottom = 10.dp))
+                    }
+                }
                 items(samples, key = { it.id }) { s ->
                     Column(Modifier.fillMaxWidth().clickable { teaching = s }.padding(vertical = 6.dp)) {
                         Text(

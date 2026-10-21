@@ -540,6 +540,8 @@ data class PaidFrom(
     val onChoose: (accountId: String, always: Boolean) -> Unit,
     /** Every account, so each keeps the colour it has everywhere else. */
     val allAccounts: List<com.spendroid.data.db.AccountEntity> = choices,
+    /** Penny's own word on a guess she made: said above the choices. */
+    val guess: String? = null,
 )
 
 /**
@@ -556,6 +558,7 @@ private fun PaidFromPanel(paidFrom: PaidFrom, shop: String) {
             .background(Charcoal.Panel, androidx.compose.foundation.shape.RoundedCornerShape(10.dp))
             .padding(horizontal = 12.dp, vertical = 10.dp),
     ) {
+        paidFrom.guess?.let { PennySays(DroidNow.face, it, moment = DroidMoment.NOTICED, size = 48.dp, modifier = Modifier.padding(bottom = 10.dp)) }
         Text(
             "Paid from" + (paidFrom.how?.let { " · $it" } ?: ""),
             style = MaterialTheme.typography.labelLarge,
