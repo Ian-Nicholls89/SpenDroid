@@ -64,18 +64,25 @@ private val TIME = DateTimeFormatter.ofPattern("HH:mm")
 internal sealed class PennyQuestion(val key: String) {
     class Repeat(val repeat: NotificationSpend.Repeat) : PennyQuestion("repeat:${repeat.spend.id}")
     class CardCheck(val spend: SeenSpendEntity) : PennyQuestion("check:${spend.id}")
+    class NewBill(val rule: com.spendroid.domain.RecurringRule) : PennyQuestion("bill:${PennyBills.id(rule)}")
     class WhichAccount(val spend: SeenSpendEntity) : PennyQuestion("account:${spend.id}")
     class NotReported(val spend: SeenSpendEntity) : PennyQuestion("unreported:${spend.id}")
     class Vanished(val question: DuplicateCheck.Question) : PennyQuestion("vanished:${question.vanished.accountId}:${question.vanished.transactionId}")
 }
 
 /** Every question waiting, most pressing first: the ones that change today's figure lead. */
-internal fun pennyQuestions(state: RootUiState, now: Long = System.currentTimeMillis()): List<PennyQuestion> {
+internal fun pennyQuestions(
+    state: RootUiState,
+    now: Long = System.currentTimeMillis(),
+    /** New bills to ask about: from [PennyBills.toAsk]. */
+    bills: List<com.spendroid.domain.RecurringRule> = emptyList(),
+): List<PennyQuestion> {
     // A tiny payment is asked about as a possible card check first; which account can wait.
     val checks = NotificationSpend.cardChecks(state.seenSpends)
     val asked = checks.map { it.id }.toSet()
     return NotificationSpend.possibleRepeats(state.seenSpends).map { PennyQuestion.Repeat(it) } +
         checks.sortedByDescending { it.seenAt }.map { PennyQuestion.CardCheck(it) } +
+        bills.map { PennyQuestion.NewBill(it) } +
         NotificationSpend.unanswered(state.seenSpends).filter { it.id !in asked }.sortedByDescending { it.seenAt }.map { PennyQuestion.WhichAccount(it) } +
         NotificationSpend.unconfirmed(state.seenSpends, now, state.manualCoverage).filter { it.id !in asked }.map { PennyQuestion.NotReported(it) } +
         state.duplicateQuestions.map { PennyQuestion.Vanished(it) }
@@ -91,6 +98,8 @@ internal class PennyAnswers(
     val onKeepVanished: (DuplicateCheck.Question) -> Unit = {},
     val onRemoveVanished: (DuplicateCheck.Question) -> Unit = {},
     val onCardCheck: (spendId: String, check: Boolean) -> Unit = { _, _ -> },
+    /** "A regular bill, or just spending?" */
+    val onBill: (rule: com.spendroid.domain.RecurringRule, isBill: Boolean) -> Unit = { _, _ -> },
 )
 
 /**
@@ -183,6 +192,7 @@ internal fun PennyQuestionBody(
         when (q) {
             is PennyQuestion.Repeat -> RepeatQuestion(q, answers) { answer(q, it) }
             is PennyQuestion.CardCheck -> CardCheckQuestion(q.spend, answers) { answer(q, it) }
+            is PennyQuestion.NewBill -> BillQuestion(q.rule, answers) { answer(q, it) }
             is PennyQuestion.WhichAccount -> AccountQuestion(q.spend, accounts, sources, answers) { answer(q, it) }
             is PennyQuestion.NotReported -> UnreportedQuestion(q.spend, answers) { answer(q, it) }
             is PennyQuestion.Vanished -> VanishedQuestion(q.question, accounts, answers) { answer(q, it) }
@@ -259,6 +269,27 @@ private fun CardCheckQuestion(spend: SeenSpendEntity, answers: PennyAnswers, sai
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         BigButton("A card check, don't count it", null, { answers.onCardCheck(spend.id, true); said(noted(true)) }, Modifier.fillMaxWidth(), colour = Charcoal.Warn, textColour = Color(0xFF111111))
         BigButton("A real payment, count it", null, { answers.onCardCheck(spend.id, false); said(noted(false)) }, Modifier.fillMaxWidth())
+    }
+}
+
+@Composable
+private fun BillQuestion(rule: com.spendroid.domain.RecurringRule, answers: PennyAnswers, said: (Noted) -> Unit) {
+    val money = formatMoney(kotlin.math.abs(rule.amountMinor), rule.currency)
+    val payee = com.spendroid.work.SpendQuestions.shopName(rule.payee) ?: rule.payee.tidyPayee().ifBlank { rule.payee }
+    Question(
+        "Is $payee a regular bill?",
+        "I've seen $money there ${PennyBills.often(rule)}. If it's a bill, I'll plan for it before each payday; if not, it's just spending. I'm planning for it until you tell me.",
+    )
+    fun noted(isBill: Boolean): Noted = Noted(
+        if (isBill) "Noted: $payee is a regular bill. I'll plan for it." else "Noted: $payee is just spending, not a bill.",
+        (if (isBill) "Change: it's just spending" else "Change: it's a regular bill") to {
+            answers.onBill(rule, !isBill)
+            said(noted(!isBill))
+        },
+    )
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        BigButton("Yes, a regular bill", null, { answers.onBill(rule, true); said(noted(true)) }, Modifier.fillMaxWidth(), colour = Charcoal.Warn, textColour = Color(0xFF111111))
+        BigButton("No, just spending", null, { answers.onBill(rule, false); said(noted(false)) }, Modifier.fillMaxWidth())
     }
 }
 

@@ -175,7 +175,7 @@ class ScreensTest {
 
     /** 5.5: every kind of question Penny asks, as her sheet asks it. Made-up figures. */
     @Test
-    @Config(qualifiers = "w2120dp-h900dp-xxhdpi")
+    @Config(qualifiers = "w2540dp-h900dp-xxhdpi")
     fun pennyQuestionKinds() {
         val state = Sample.state()
         val bank = "com.example.bank"
@@ -191,7 +191,13 @@ class ScreensTest {
         val check = com.spendroid.data.db.SeenSpendEntity(
             id = "seen-4", source = bank, seenAt = System.currentTimeMillis(), amountMinor = -1, currency = "GBP", merchant = "City Car Park", accountId = "acc-personal",
         )
+        val carPark = com.spendroid.domain.RecurringRule(
+            key = "OUT|GBP|2|city car park", payee = "CITY CAR PARK", direction = com.spendroid.domain.Direction.OUT, amountMinor = -230,
+            currency = "GBP", cadence = com.spendroid.domain.Cadence.QUARTERLY, anchorDay = 3,
+            lastOccurrence = java.time.LocalDate.of(2026, 9, 3), occurrences = 2, score = 0.6f,
+        )
         val kinds = listOf(
+            com.spendroid.ui.PennyQuestion.NewBill(carPark),
             com.spendroid.ui.PennyQuestion.CardCheck(check),
             com.spendroid.ui.PennyQuestion.WhichAccount(which),
             com.spendroid.ui.PennyQuestion.NotReported(unreported),
@@ -215,12 +221,12 @@ class ScreensTest {
         compose.onRoot().captureRoboImage("build/screenshots/penny-question-kinds.png")
     }
 
-    /** 5.5: something Penny noticed, said once on Home in her line's place. Made-up bill. */
+    /** 5.5: something Penny noticed, said once on Home in her line's place. Made-up digits. */
     @Test
     @Config(qualifiers = "w411dp-h900dp-xxhdpi")
     fun pennyNoticed() {
         val state = Sample.state()
-        val news = com.spendroid.ui.PennyNews.News("bill:streamco", "I've spotted a new regular bill: StreamCo, £10.99 around the 14th each month. I'll plan for it from now on.", "rule")
+        val news = com.spendroid.ui.PennyNews.News("digits:acc-nectar:0042", "I've learnt your Nectar Card ends 0042, so I can tell its payments apart now.")
         shoot("penny-noticed", AppScreen.Home) {
             HomeScreen(state, onRefresh = {}, onRelink = {}, onSeeAllTransactions = {}, onSetBudgetGoal = { _, _ -> }, onLinkBank = {}, news = news)
         }

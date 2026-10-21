@@ -6,8 +6,9 @@ import com.spendroid.domain.Direction
 import com.spendroid.domain.RecurringRule
 
 /**
- * What Penny has noticed for herself, said once on Home in place of her line on the day: a new
- * regular bill she's found, or a card's last four digits she's learnt from a payment. Each is
+ * What Penny has noticed for herself, said once on Home in place of her line on the day: a
+ * card's last four digits she's learnt from a payment. (A new regular bill she asks about
+ * instead - see [PennyBills].) Each is
  * said the first time it's there and then known; what was there when this began is known
  * already, so she doesn't announce everything at once.
  */
@@ -41,31 +42,62 @@ object PennyNews {
 
     fun digitsKey(accountId: String, digits: String) = "digits:$accountId:$digits"
 
-    /** Everything there is to say about: new bills first, then cards. */
-    fun of(state: RootUiState): List<News> {
-        val bills = state.rules
-            .filter { it.direction == Direction.OUT && !it.internalTransfer && !it.isManual && it.key !in state.ignoredRules }
-            .map { rule -> News("bill:${rule.payee.lowercase().filter { it.isLetterOrDigit() }}", billLine(rule), rule.key) }
-            .distinctBy { it.key }
-        val cards = state.accounts.mapNotNull { a ->
-            val digits = a.cardLastFour ?: return@mapNotNull null
-            News(digitsKey(a.id, digits), "I've learnt your ${a.label.trim()} ends $digits, so I can tell its payments apart now.")
+    /** Everything there is to say about: the cards whose digits she knows. */
+    fun of(state: RootUiState): List<News> = state.accounts.mapNotNull { a ->
+        val digits = a.cardLastFour ?: return@mapNotNull null
+        News(digitsKey(a.id, digits), "I've learnt your ${a.label.trim()} ends $digits, so I can tell its payments apart now.")
+    }
+}
+
+/**
+ * Bills Penny has found and asks about before planning for them: a car park visited now and then
+ * can look regular. Until answered a new one is planned for, the cautious way round. What was
+ * already planned for when this began is taken as said - except a quarterly or yearly "bill"
+ * seen only twice, the likeliest to be a coincidence, which she asks about too.
+ */
+object PennyBills {
+    private const val PREFS = "penny_bills"
+    private const val CONFIRMED = "confirmed"
+    private const val STARTED = "started"
+
+    /** Changes as answers are given, so what's asked is worked out again. */
+    val answered = androidx.compose.runtime.mutableIntStateOf(0)
+
+    fun id(rule: RecurringRule): String = rule.payee.lowercase().filter { it.isLetterOrDigit() }
+
+    private fun candidates(state: RootUiState): List<RecurringRule> = state.rules
+        .filter { it.direction == Direction.OUT && !it.internalTransfer && !it.isManual && it.key !in state.ignoredRules }
+        .distinctBy { id(it) }
+
+    private fun weak(rule: RecurringRule) = (rule.cadence == Cadence.QUARTERLY || rule.cadence == Cadence.ANNUAL) && rule.occurrences <= 2
+
+    /** The bills to ask about now. */
+    fun toAsk(context: Context, state: RootUiState): List<RecurringRule> {
+        if (state.budget == null || state.rules.isEmpty()) return emptyList()
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val all = candidates(state)
+        if (!prefs.getBoolean(STARTED, false)) {
+            prefs.edit().putStringSet(CONFIRMED, all.filterNot(::weak).map(::id).toSet()).putBoolean(STARTED, true).apply()
         }
-        return bills + cards
+        val confirmed = prefs.getStringSet(CONFIRMED, emptySet()).orEmpty()
+        return all.filter { id(it) !in confirmed }
     }
 
-    private fun billLine(rule: RecurringRule): String {
-        val money = formatMoney(kotlin.math.abs(rule.amountMinor), rule.currency)
-        val payee = rule.payee.tidyPayee().ifBlank { rule.payee }
-        val often = when (rule.cadence) {
-            Cadence.WEEKLY -> "every week"
-            Cadence.FORTNIGHTLY -> "every two weeks"
-            Cadence.MONTHLY -> "around the ${rule.anchorDay}${suffix(rule.anchorDay)} each month"
-            Cadence.MONTHLY_LAST_DAY, Cadence.MONTHLY_LAST_BUSINESS_DAY -> "at the end of each month"
-            Cadence.QUARTERLY -> "every three months"
-            Cadence.ANNUAL -> "once a year"
-        }
-        return "I've spotted a new regular bill: $payee, $money $often. I'll plan for it from now on."
+    /** Answered, either way: not asked about again. */
+    fun answer(context: Context, rule: RecurringRule) {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        prefs.edit().putStringSet(CONFIRMED, prefs.getStringSet(CONFIRMED, emptySet()).orEmpty() + id(rule)).apply()
+        answered.intValue++
+    }
+
+    /** How often, said plainly: "around the 14th each month". */
+    fun often(rule: RecurringRule): String = when (rule.cadence) {
+        Cadence.WEEKLY -> "every week"
+        Cadence.FORTNIGHTLY -> "every two weeks"
+        Cadence.MONTHLY -> "around the ${rule.anchorDay}${suffix(rule.anchorDay)} each month"
+        Cadence.MONTHLY_LAST_DAY, Cadence.MONTHLY_LAST_BUSINESS_DAY -> "at the end of each month"
+        Cadence.QUARTERLY -> "about every three months"
+        Cadence.ANNUAL -> "about once a year"
     }
 
     private fun suffix(day: Int): String = when {

@@ -299,7 +299,11 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                 val screen = AppScreen.from(screenRoute)
                 var showLinkDialog by remember { mutableStateOf(false) }
                 // Penny's questions: asked in a sheet as the app opens, unless put off for now.
-                val questions = remember(state.seenSpends, state.duplicateQuestions, state.manualCoverage) { com.spendroid.ui.pennyQuestions(state) }
+                val billsContext = androidx.compose.ui.platform.LocalContext.current
+                val billsAnswered = com.spendroid.ui.PennyBills.answered.intValue
+                val questions = remember(state.seenSpends, state.duplicateQuestions, state.manualCoverage, state.rules, state.ignoredRules, state.budget == null, billsAnswered) {
+                    com.spendroid.ui.pennyQuestions(state, bills = com.spendroid.ui.PennyBills.toAsk(billsContext, state))
+                }
                 var asking by rememberSaveable { mutableStateOf(false) }
                 // Something Penny has noticed: said on Home once, then known.
                 val newsContext = androidx.compose.ui.platform.LocalContext.current
@@ -465,7 +469,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                                             onReload = viewModel::reloadLocal,
                                             onOpenToday = { showToday = true },
                                             news = news,
-                                            onNews = { it.ruleKey?.let { key -> openRule.value = key; navigate(AppScreen.Rules) } },
+                                            onNews = {},
                                             prompts = {
                                                 // Accounts with no bank link: how current the figures are.
                                                 com.spendroid.ui.ManualFreshness(
@@ -709,6 +713,10 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                                 onKeepVanished = viewModel::keepVanished,
                                 onRemoveVanished = viewModel::removeVanished,
                                 onCardCheck = viewModel::answerCardCheck,
+                                onBill = { rule, isBill ->
+                                    com.spendroid.ui.PennyBills.answer(context, rule)
+                                    viewModel.setRuleIgnored(rule.key, !isBill)
+                                },
                             ),
                             onLater = {
                                 com.spendroid.ui.PennyAsk.later(context)

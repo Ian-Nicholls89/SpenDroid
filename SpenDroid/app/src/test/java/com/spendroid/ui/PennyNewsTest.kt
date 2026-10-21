@@ -28,23 +28,30 @@ class PennyNewsTest {
     )
 
     @Test
-    fun `what's there at the start is known, and a new bill is said once`() {
+    fun `a new bill is asked about once, and what was planned for already isn't`() {
         val state = Sample.state()
-        assertNull("nothing announced on first sight", PennyNews.next(context, state))
-        assertNull(PennyNews.next(context, state))
+        assertEquals("nothing asked about on first sight", emptyList<RecurringRule>(), PennyBills.toAsk(context, state))
         val more = state.copy(rules = state.rules + bill("StreamCo"))
-        val news = PennyNews.next(context, more)!!
-        assertEquals("I've spotted a new regular bill: StreamCo, £10.99 around the 14th each month. I'll plan for it from now on.", news.line)
-        PennyNews.know(context, news.key)
-        assertNull(PennyNews.next(context, more))
+        val ask = PennyBills.toAsk(context, more)
+        assertEquals(listOf("StreamCo"), ask.map { it.payee })
+        assertEquals("around the 14th each month", PennyBills.often(ask.single()))
+        PennyBills.answer(context, ask.single())
+        assertEquals(emptyList<RecurringRule>(), PennyBills.toAsk(context, more))
         // A price change is the same bill, not a new one.
-        assertNull(PennyNews.next(context, more.copy(rules = state.rules + bill("StreamCo").copy(key = "OUT|GBP|12|streamco", amountMinor = -1_199))))
+        assertEquals(emptyList<RecurringRule>(), PennyBills.toAsk(context, state.copy(rules = state.rules + bill("StreamCo").copy(key = "OUT|GBP|12|streamco"))))
+    }
+
+    @Test
+    fun `a quarterly bill seen only twice is asked about even at the start`() {
+        val state = Sample.state()
+        val carPark = bill("City Car Park").copy(cadence = Cadence.QUARTERLY, occurrences = 2, amountMinor = -230)
+        assertEquals(listOf("City Car Park"), PennyBills.toAsk(context, state.copy(rules = state.rules + carPark)).map { it.payee })
     }
 
     @Test
     fun `digits learnt from a payment are said, digits typed in aren't`() {
         val state = Sample.state()
-        PennyNews.next(context, state)
+        assertNull(PennyNews.next(context, state))
         val card = state.accounts.first()
         val learnt = state.copy(accounts = state.accounts.map { if (it.id == card.id) it.copy(cardLastFour = "0042") else it })
         assertTrue(PennyNews.next(context, learnt)!!.line.contains("ends 0042"))
