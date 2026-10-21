@@ -33,7 +33,7 @@ class AccountReadTest {
         assertEquals("A little quicker than usual - £35.00 out by day 7, of a usual £108.00.", read(row(PeriodRows.Kind.CYCLE, 3_500, 10_800, BudgetPace.Pace.TIGHT)))
         assertEquals("More out than a usual whole cycle already: £120.00, against about £108.00.", read(row(PeriodRows.Kind.CYCLE, 12_000, 10_800, BudgetPace.Pace.OVER)))
         assertEquals(
-            "£20.00 out so far this pay cycle. A cycle or two more and Penny will know what's usual here.",
+            "£20.00 out so far this pay cycle. A cycle or two more and I'll know what's usual here.",
             read(row(PeriodRows.Kind.CYCLE, 2_000, null)),
         )
     }

@@ -776,9 +776,9 @@ internal fun Verdict(r: PdfStatement.Result) {
                 )
                 Text(
                     when {
-                        none -> "The statement prints no totals or balances, so Penny can't prove she read every line. Look over it below."
-                        ok -> "Penny checked what she read against the statement's own totals${if (r.checks.size > 1) " - all ${r.checks.size} match" else ""}."
-                        else -> "Penny may have misread a line, or missed one. You can still add it - check the lines below first."
+                        none -> "The statement prints no totals or balances, so I can't prove I read every line. Have a look over it below."
+                        ok -> "I checked what I read against the statement's own totals${if (r.checks.size > 1) " - all ${r.checks.size} match" else ""}."
+                        else -> "I may have misread a line, or missed one. You can still add it - check the lines below first."
                     },
                     style = MaterialTheme.typography.bodySmall, color = Charcoal.Muted,
                 )
@@ -787,7 +787,7 @@ internal fun Verdict(r: PdfStatement.Result) {
         r.checks.filter { !it.ok }.take(5).forEach { c ->
             val said = listOfNotNull(
                 c.printed?.let { "statement says ${formatMoney(it, "GBP")}" },
-                c.counted?.let { "Penny counted ${formatMoney(it, "GBP")}" },
+                c.counted?.let { "I counted ${formatMoney(it, "GBP")}" },
                 c.page?.let { "page $it" },
             ).joinToString(" · ")
             Column(Modifier.padding(top = 10.dp)) {

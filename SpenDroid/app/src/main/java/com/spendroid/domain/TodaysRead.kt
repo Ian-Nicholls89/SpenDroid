@@ -46,7 +46,7 @@ object TodaysRead {
                 else -> "$spent so far, well inside $whose."
             }
         }
-        if (against == null) return "$spent out so far this pay cycle. A cycle or two more and Penny will know what's usual here."
+        if (against == null) return "$spent out so far this pay cycle. A cycle or two more and I'll know what's usual here."
         val usual = money(against)
         val byDay = row.day?.let { " by day $it" }.orEmpty()
         return when {
