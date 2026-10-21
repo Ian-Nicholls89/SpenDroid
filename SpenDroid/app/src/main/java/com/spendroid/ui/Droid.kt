@@ -36,19 +36,6 @@ import com.spendroid.domain.BudgetSnapshot
 import com.spendroid.ui.theme.Charcoal
 import com.spendroid.ui.theme.Grotesk
 
-/** The droid's face: how the budget is going, said with a mouth. */
-enum class DroidMood { AHEAD, TIGHT, OVER, PAYDAY, SYNCING, ASLEEP }
-
-/**
- * What the droid shows: its mood, and its visor - the pace bar, [used] the share of the budget
- * gone, the white tick at [elapsed], the share of the cycle gone.
- */
-data class DroidFace(
-    val mood: DroidMood = DroidMood.AHEAD,
-    val used: Float = 0.28f,
-    val elapsed: Float = 0.5f,
-)
-
 /** The droid as the budget has it now, shared by every header so they all wear the same face. */
 object DroidNow {
     var face by androidx.compose.runtime.mutableStateOf(DroidFace())
@@ -69,13 +56,6 @@ fun droidFaceOf(budget: BudgetSnapshot?, syncing: Boolean = false): DroidFace {
         }
     }
     return DroidFace(mood, used, elapsed)
-}
-
-/** The visor's colour for a mood: the app's own colour, unless it's a warning. */
-fun droidColour(mood: DroidMood, accent: Color): Color = when (mood) {
-    DroidMood.TIGHT -> Charcoal.Warn
-    DroidMood.OVER -> Charcoal.Bad
-    else -> accent
 }
 
 /**

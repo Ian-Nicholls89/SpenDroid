@@ -531,6 +531,8 @@ object BudgetEngine {
             cardTiming = cardTiming,
             cardsNextCycleMinor = cardsNextCycle,
             lastSevenDaysMinor = lastSevenDays,
+            cycleSpends = variableDebits,
+            spendByDay = byDay.mapValues { (_, v) -> v.sum() },
             asOf = today,
             primaryIncomeDesignated = designated != null,
             designationLost = designationLost,

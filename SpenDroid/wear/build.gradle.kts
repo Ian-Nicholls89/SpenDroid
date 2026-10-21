@@ -95,6 +95,8 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.coroutines.play.services)
     // The screens a tap on the complication opens.
+    // Penny - her face, moods and moments - shared with the phone.
+    implementation(project(":penny"))
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.compose.ui)

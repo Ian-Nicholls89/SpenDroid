@@ -143,6 +143,10 @@ data class BudgetSnapshot(
     val cardsNextCycleMinor: Long = 0L,
     /** Discretionary spending on each of the last seven days, oldest first, today last. */
     val lastSevenDaysMinor: List<Long> = emptyList(),
+    /** This cycle's day-to-day spending, row by row: where today's went, and the biggest. */
+    val cycleSpends: List<com.spendroid.data.db.TransactionEntity> = emptyList(),
+    /** Day-to-day spending by day, as far back as there's history: for "Saturdays usually...". */
+    val spendByDay: Map<java.time.LocalDate, Long> = emptyMap(),
     /**
      * Today's spending as it happened, wherever it was paid: from the accounts, and on credit
      * cards. With card spending counted at the bill, [spentToday] leaves cards out - right for

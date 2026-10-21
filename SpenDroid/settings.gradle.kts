@@ -27,3 +27,4 @@ dependencyResolutionManagement {
 rootProject.name = "SpenDroid"
 include(":app")
 include(":wear")
+include(":penny")

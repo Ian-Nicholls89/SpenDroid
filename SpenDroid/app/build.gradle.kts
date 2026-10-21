@@ -63,8 +63,8 @@ android {
         applicationId = "com.spendroid"
         minSdk = 26
         targetSdk = 35
-        versionCode = 164
-        versionName = "5.5.3"
+        versionCode = 165
+        versionName = "5.6"
 
         // Where the update checker looks for releases.
         buildConfigField("String", "GITHUB_OWNER", "\"Ian-Nicholls89\"")
@@ -108,6 +108,8 @@ android {
 }
 
 dependencies {
+    // Penny - her face, moods and moments - shared with the watch.
+    implementation(project(":penny"))
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.core.ktx)
     // Reading PDF statements on the phone (Apache 2.0).

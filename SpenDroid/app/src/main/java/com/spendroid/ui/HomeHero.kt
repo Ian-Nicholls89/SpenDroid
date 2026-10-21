@@ -4,6 +4,7 @@ import com.spendroid.domain.toRecurringRule
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -37,7 +38,9 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -117,6 +120,10 @@ fun HomeScreen(
     onNews: (PennyNews.News) -> Unit = {},
 ) {
     val budget = state.budget
+    // What Penny could say, recomputed as the figures change - and each half hour, as the
+    // day moves from morning to evening.
+    val halfHour = java.time.LocalDateTime.now().let { it.toLocalDate().toEpochDay() * 48 + it.hour * 2 + it.minute / 30 }
+    val voice = remember(budget, state.transactions, state.categoryRules, halfHour) { pennyLines(state) }
     val pages = remember(state.accounts, budget, state.transactions) {
         buildList {
             if (budget != null) add(HeroPage.Budget)
@@ -166,7 +173,7 @@ fun HomeScreen(
 
             HorizontalPager(state = pager, modifier = Modifier.fillMaxWidth()) { index ->
                 when (val p = pages[index]) {
-                    HeroPage.Budget -> BudgetHero(budget, state.syncing, onOpenToday, news, onNews)
+                    HeroPage.Budget -> BudgetHero(budget, state.syncing, onOpenToday, news, onNews, voice)
                     is HeroPage.Account -> AccountHero(p, colourOf(p.account, state.accounts), state.syncing)
                 }
             }
@@ -227,6 +234,7 @@ private fun BudgetHero(
     onOpenToday: () -> Unit = {},
     news: PennyNews.News? = null,
     onNews: (PennyNews.News) -> Unit = {},
+    voice: List<com.spendroid.domain.PennyVoice.Line> = emptyList(),
 ) {
     val pace = BudgetPace.of(budget)
     Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 6.dp)) {
@@ -236,6 +244,22 @@ private fun BudgetHero(
             PennySays(
                 droidFaceOf(budget, syncing), news.line, moment = DroidMoment.NOTICED,
                 action = news.ruleKey?.let { "See it" to { onNews(news) } },
+            )
+        } else if (voice.isNotEmpty()) {
+            // One of her top lines leads, a different one each time Home comes to the front;
+            // a tap on her bubble moves on to the next thing she's noticed.
+            val context = androidx.compose.ui.platform.LocalContext.current
+            var visit by remember { androidx.compose.runtime.mutableIntStateOf(0) }
+            androidx.lifecycle.compose.LifecycleResumeEffect(Unit) {
+                visit = PennyVisits.next(context)
+                onPauseOrDispose { }
+            }
+            var tapped by remember(visit) { androidx.compose.runtime.mutableIntStateOf(0) }
+            val shown = Math.floorMod(com.spendroid.domain.PennyVoice.lead(voice, visit) + tapped, voice.size)
+            PennySays(
+                droidFaceOf(budget, syncing), voice[shown].text,
+                onTap = { tapped += 1; Unit }.takeIf { voice.size > 1 },
+                dots = (shown to voice.size).takeIf { voice.size > 1 },
             )
         } else {
             PennySays(droidFaceOf(budget, syncing), com.spendroid.domain.TodaysRead.of(budget) { formatMoney(it, budget.baseCurrency) })
@@ -303,17 +327,35 @@ internal fun PennySays(
     action: Pair<String, () -> Unit>? = null,
     size: androidx.compose.ui.unit.Dp = 64.dp,
     modifier: Modifier = Modifier.padding(bottom = 12.dp),
+    /** Tapping the bubble: on to the next thing she has to say. */
+    onTap: (() -> Unit)? = null,
+    /** Which of how many lines this is, shown as dots under it. */
+    dots: Pair<Int, Int>? = null,
 ) {
     // Room above for her sparks and jumps: she's often at the top of something that clips.
     Row(verticalAlignment = Alignment.Top, modifier = modifier.padding(top = size * PENNY_REACH)) {
         Droid(face, size, accent = accent, fillOnOpen = moment == DroidMoment.NONE, moment = moment)
         Spacer(Modifier.width(10.dp))
+        val bubble = RoundedCornerShape(topStart = 4.dp, topEnd = 14.dp, bottomEnd = 14.dp, bottomStart = 14.dp)
         Column(
             Modifier
-                .background(Color(0xFF1F2127), RoundedCornerShape(topStart = 4.dp, topEnd = 14.dp, bottomEnd = 14.dp, bottomStart = 14.dp))
-                .padding(horizontal = 12.dp, vertical = 9.dp),
+                .clip(bubble)
+                .background(Color(0xFF1F2127))
+                .then(if (onTap != null) Modifier.clickable(onClick = onTap) else Modifier)
+                .padding(horizontal = 12.dp, vertical = 9.dp)
+                .animateContentSize(),
         ) {
-            Text(line, style = MaterialTheme.typography.bodyMedium, color = Color(0xFFE7E9EE))
+            // A new line fades in, so a tap reads as her moving on rather than a flicker.
+            androidx.compose.animation.Crossfade(line, label = "penny-line") { said ->
+                Text(said, style = MaterialTheme.typography.bodyMedium, color = Color(0xFFE7E9EE))
+            }
+            dots?.let { (at, of) ->
+                Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    repeat(minOf(of, 8)) { i ->
+                        Box(Modifier.size(5.dp).clip(androidx.compose.foundation.shape.CircleShape).background(if (i == at) Color(0xFF9AA0AA) else Color(0xFF3A3D45)))
+                    }
+                }
+            }
             action?.let { (label, go) ->
                 Text(
                     "$label ›",
