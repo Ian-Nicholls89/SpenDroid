@@ -164,7 +164,7 @@ fun HomeScreen(
             HorizontalPager(state = pager, modifier = Modifier.fillMaxWidth()) { index ->
                 when (val p = pages[index]) {
                     HeroPage.Budget -> BudgetHero(budget, state.syncing, onOpenToday)
-                    is HeroPage.Account -> AccountHero(p, colourOf(p.account, state.accounts))
+                    is HeroPage.Account -> AccountHero(p, colourOf(p.account, state.accounts), state.syncing)
                 }
             }
             if (pages.size > 1) PagerDots(pages.size, pager.currentPage, pageColour ?: MaterialTheme.colorScheme.primary)
@@ -222,18 +222,7 @@ private fun BudgetHero(budget: BudgetSnapshot, syncing: Boolean, onOpenToday: ()
     val pace = BudgetPace.of(budget)
     Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 6.dp)) {
         // The droid's read on the day, in a word bubble: the same pace as the bar, said plainly.
-        Row(verticalAlignment = Alignment.Top, modifier = Modifier.padding(bottom = 12.dp)) {
-            Droid(droidFaceOf(budget, syncing), 64.dp, fillOnOpen = true)
-            Spacer(Modifier.width(10.dp))
-            Text(
-                com.spendroid.domain.TodaysRead.of(budget) { formatMoney(it, budget.baseCurrency) },
-                style = MaterialTheme.typography.bodyMedium,
-                color = Color(0xFFE7E9EE),
-                modifier = Modifier
-                    .background(Color(0xFF1F2127), RoundedCornerShape(topStart = 4.dp, topEnd = 14.dp, bottomEnd = 14.dp, bottomStart = 14.dp))
-                    .padding(horizontal = 12.dp, vertical = 9.dp),
-            )
-        }
+        PennySays(droidFaceOf(budget, syncing), com.spendroid.domain.TodaysRead.of(budget) { formatMoney(it, budget.baseCurrency) })
         Text(untilLine(budget), style = MaterialTheme.typography.labelLarge, color = Color.White.copy(alpha = 0.78f))
         Row(verticalAlignment = Alignment.CenterVertically) {
             RollingAmount(
@@ -284,11 +273,44 @@ private fun dayOfCycle(budget: BudgetSnapshot): String? {
     return if (total > 0 && day in 1..total) "day $day of $total" else null
 }
 
+/** Penny and what she says, at the top of each page of the hero. */
 @Composable
-private fun AccountHero(page: HeroPage.Account, colour: Color) {
+private fun PennySays(face: DroidFace, line: String, accent: Color = MaterialTheme.colorScheme.primary) {
+    Row(verticalAlignment = Alignment.Top, modifier = Modifier.padding(bottom = 12.dp)) {
+        Droid(face, 64.dp, accent = accent, fillOnOpen = true)
+        Spacer(Modifier.width(10.dp))
+        Text(
+            line,
+            style = MaterialTheme.typography.bodyMedium,
+            color = Color(0xFFE7E9EE),
+            modifier = Modifier
+                .background(Color(0xFF1F2127), RoundedCornerShape(topStart = 4.dp, topEnd = 14.dp, bottomEnd = 14.dp, bottomStart = 14.dp))
+                .padding(horizontal = 12.dp, vertical = 9.dp),
+        )
+    }
+}
+
+/** Penny's face for an account's page: its own pace, its bar on her visor. */
+private fun faceOf(row: PeriodRows.Row, syncing: Boolean): DroidFace = DroidFace(
+    when {
+        syncing -> DroidMood.SYNCING
+        else -> when (row.pace) {
+            BudgetPace.Pace.ON_TRACK -> DroidMood.AHEAD
+            BudgetPace.Pace.TIGHT -> DroidMood.TIGHT
+            BudgetPace.Pace.OVER -> DroidMood.OVER
+        }
+    },
+    used = row.used ?: 0f,
+    elapsed = row.gone ?: 0.5f,
+)
+
+@Composable
+private fun AccountHero(page: HeroPage.Account, colour: Color, syncing: Boolean = false) {
     val row = page.row
     val bill = page.bill
     Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 6.dp)) {
+        // Penny on every page: this account's own pace, said plainly, in the account's colour.
+        PennySays(faceOf(row, syncing), com.spendroid.domain.TodaysRead.of(row) { formatMoney(it, row.currency) }, colour)
         Text(
             "${page.account.label} · ${if (row.kind == PeriodRows.Kind.STATEMENT) "this statement" else "this pay cycle"}",
             style = MaterialTheme.typography.labelLarge,

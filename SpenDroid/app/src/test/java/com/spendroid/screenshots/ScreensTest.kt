@@ -73,6 +73,16 @@ class ScreensTest {
         }
     }
 
+    /** Penny on the other pages too: the joint account's page, in its own pace. */
+    @Test
+    @Config(qualifiers = "w411dp-h1500dp-xxhdpi")
+    fun homeJoint() {
+        val state = Sample.state()
+        shoot("home-joint", AppScreen.Home) {
+            HomeScreen(state, onRefresh = {}, onRelink = {}, onSeeAllTransactions = {}, onSetBudgetGoal = { _, _ -> }, onLinkBank = {}, initialPage = 2)
+        }
+    }
+
     @Test
     @Config(qualifiers = "w411dp-h1500dp-xxhdpi")
     fun home() {
