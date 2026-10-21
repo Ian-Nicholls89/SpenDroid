@@ -45,6 +45,9 @@ enum class DroidMoment { NONE, HELLO, QUESTION, NOTICED, NOTED }
 /** Penny drawn still: for screenshots, and wherever motion shouldn't run. */
 val LocalDroidStill = staticCompositionLocalOf { false }
 
+/** For screenshots: every Penny drawn as she is this many ms into her mood and moment. */
+internal val LocalDroidAt = staticCompositionLocalOf<Long?> { null }
+
 /**
  * Everything that moves, in the 108-unit square she's drawn in. Neutral by default, so a pose
  * only says what differs.
@@ -268,7 +271,7 @@ internal fun MovingDroid(face: DroidFace, size: Dp, modifier: Modifier, colour: 
 private val PIVOT_BASE = Offset(54f, 79f)
 private val PIVOT_ANTENNA = Offset(62f, 25f)
 
-private fun DrawScope.drawPose(face: DroidFace, p: Pose, colour: Color, line: Color) {
+internal fun DrawScope.drawPose(face: DroidFace, p: Pose, colour: Color, line: Color) {
     val track = Color(0xFF3A3D45)
     val cap = StrokeCap.Round
     val a = p.alpha
@@ -436,6 +439,15 @@ internal fun DroidAt(face: DroidFace, size: Dp, colour: Color, ms: Long, moment:
         scale(this.size.minDimension / 108f, pivot = Offset.Zero) { drawPose(face, pose, droidColour(face.mood, colour), line) }
     }
 }
+
+/**
+ * How far above her box Penny's moods and moments draw, as a share of her size: the noticed
+ * sparks reach highest (the "?", payday's jump and confetti nearly as far). Wherever she sits at
+ * the top of something that clips - a sheet, a scrolling list, Home's pages - leave this much
+ * room above her. Meet Penny's drop-in starts higher on purpose: she falls in from above.
+ * PennyReachTest holds every pose to it.
+ */
+internal const val PENNY_REACH = 0.2f
 
 /**
  * Penny as a picture, for a widget: home-screen widgets can't move, so each redraw shows her

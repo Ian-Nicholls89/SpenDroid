@@ -174,7 +174,8 @@ internal fun PennyQuestionBody(
         }
         val q = current ?: return@Column
         val total = answered.value.size + waiting.size
-        Box(Modifier.fillMaxWidth()) {
+        // Room above her for the "?" and her bulb, which the sheet would otherwise cut off.
+        Box(Modifier.fillMaxWidth().padding(top = SHEET_PENNY * PENNY_REACH)) {
             if (total > 1) {
                 Text(
                     "${answered.value.size + 1} of $total",
@@ -183,7 +184,7 @@ internal fun PennyQuestionBody(
                 )
             }
             Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-                key(q.key) { Droid(DroidNow.face, 112.dp, moment = DroidMoment.QUESTION) }
+                key(q.key) { Droid(DroidNow.face, SHEET_PENNY, moment = DroidMoment.QUESTION) }
             }
         }
         Spacer(Modifier.height(8.dp))
@@ -397,7 +398,8 @@ private fun NotedPage(noted: Noted, onDone: () -> Unit) {
         progress.animateTo(1f, tween(NOTED_MS, easing = LinearEasing))
         onDone()
     }
-    key(noted) { Droid(DroidNow.face, 112.dp, moment = DroidMoment.NOTED) }
+    Spacer(Modifier.height(SHEET_PENNY * PENNY_REACH))
+    key(noted) { Droid(DroidNow.face, SHEET_PENNY, moment = DroidMoment.NOTED) }
     Spacer(Modifier.height(8.dp))
     Text("PENNY'S NOTED IT", color = Charcoal.Good, fontWeight = FontWeight.Black, fontSize = 12.sp, letterSpacing = 1.5.sp)
     Spacer(Modifier.height(10.dp))
@@ -419,6 +421,9 @@ private fun NotedPage(noted: Noted, onDone: () -> Unit) {
 }
 
 private const val NOTED_MS = 4_000
+
+/** Penny's size in her sheet. */
+private val SHEET_PENNY = 112.dp
 
 /** Questions put off: a slim strip at the top of Home and Spending, the way back to them. */
 @Composable

@@ -1,6 +1,7 @@
 package com.spendroid.ui
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.size
@@ -104,6 +105,10 @@ fun Droid(
             DroidMood.SYNCING -> "Syncing"
             DroidMood.ASLEEP -> "Overnight"
         }
+    }
+    LocalDroidAt.current?.let { ms ->
+        Box(modifier) { DroidAt(face, size, accent, ms, moment, ms, fillOnOpen, line) }
+        return
     }
     if (!droidStill()) {
         MovingDroid(face, size, modifier, colour, line, moment, fillOnOpen, description)

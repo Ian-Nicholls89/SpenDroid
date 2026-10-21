@@ -304,7 +304,8 @@ internal fun PennySays(
     size: androidx.compose.ui.unit.Dp = 64.dp,
     modifier: Modifier = Modifier.padding(bottom = 12.dp),
 ) {
-    Row(verticalAlignment = Alignment.Top, modifier = modifier) {
+    // Room above for her sparks and jumps: she's often at the top of something that clips.
+    Row(verticalAlignment = Alignment.Top, modifier = modifier.padding(top = size * PENNY_REACH)) {
         Droid(face, size, accent = accent, fillOnOpen = moment == DroidMoment.NONE, moment = moment)
         Spacer(Modifier.width(10.dp))
         Column(

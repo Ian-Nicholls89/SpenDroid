@@ -156,6 +156,22 @@ class ScreensTest {
         }
     }
 
+    /** 5.5.2: the sheet with Penny at her highest - the "?" up, and after answering, mid-nod - nothing cut off. */
+    @Test
+    @Config(qualifiers = "w411dp-h900dp-xxhdpi")
+    fun pennySheetReach() {
+        val state = Sample.state()
+        val questions = com.spendroid.domain.NotificationSpend.possibleRepeats(tesco(state)).map { com.spendroid.ui.PennyQuestion.Repeat(it) }
+        compose.setContent {
+            androidx.compose.runtime.CompositionLocalProvider(com.spendroid.ui.LocalDroidAt provides 700L) {
+                SheetOverHome(state, 2) {
+                    com.spendroid.ui.PennyQuestionBody(questions + questions, state.accounts, emptyList(), com.spendroid.ui.PennyAnswers(), {}, {})
+                }
+            }
+        }
+        compose.onRoot().captureRoboImage("build/screenshots/penny-sheet-reach.png")
+    }
+
     /** 5.5: just answered - said back, with the way to change it. */
     @Test
     @Config(qualifiers = "w411dp-h900dp-xxhdpi")
@@ -227,8 +243,11 @@ class ScreensTest {
     fun pennyNoticed() {
         val state = Sample.state()
         val news = com.spendroid.ui.PennyNews.News("digits:acc-nectar:0042", "I've learnt your Nectar Card ends 0042, so I can tell its payments apart now.")
+        // At the top of her sparks, to show Home's pages leave room for them.
         shoot("penny-noticed", AppScreen.Home) {
-            HomeScreen(state, onRefresh = {}, onRelink = {}, onSeeAllTransactions = {}, onSetBudgetGoal = { _, _ -> }, onLinkBank = {}, news = news)
+            androidx.compose.runtime.CompositionLocalProvider(com.spendroid.ui.LocalDroidAt provides 1_250L) {
+                HomeScreen(state, onRefresh = {}, onRelink = {}, onSeeAllTransactions = {}, onSetBudgetGoal = { _, _ -> }, onLinkBank = {}, news = news)
+            }
         }
     }
 
