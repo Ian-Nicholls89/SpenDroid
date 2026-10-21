@@ -98,6 +98,9 @@ fun TransactionDetailSheet(
     /** Counted once or twice by Penny or by the user's answer: said, and changeable. */
     pennyAnswer: NotificationSpend.Answer? = null,
     onChangeAnswer: (spendId: String, twinId: String, once: Boolean) -> Unit = { _, _, _ -> },
+    /** A tiny payment the user said was real, not a card check: and the way to say it was. */
+    realTiny: com.spendroid.data.db.SeenSpendEntity? = null,
+    onCardCheck: (spendId: String) -> Unit = {},
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val current = CategoryEngine.classify(transaction, userRules, cardPaymentKeys, creditCardAccountIds)
@@ -344,6 +347,17 @@ fun TransactionDetailSheet(
                         Spacer(Modifier.height(8.dp))
                         BigButton("It was one payment, remove the extra", null, { onChangeAnswer(a.counted.id, t.id, true) }, Modifier.fillMaxWidth())
                     }
+                }
+            }
+
+            realTiny?.let { spend ->
+                Spacer(Modifier.height(12.dp))
+                Panel(Modifier.padding(horizontal = 14.dp)) {
+                    SectionHeading("Penny's answer")
+                    Spacer(Modifier.height(8.dp))
+                    Text("Counted. You said this was a real payment, not a card check.", style = MaterialTheme.typography.bodyMedium)
+                    Spacer(Modifier.height(8.dp))
+                    BigButton("It was a card check, don't count it", null, { onCardCheck(spend.id) }, Modifier.fillMaxWidth())
                 }
             }
 

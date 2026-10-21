@@ -389,6 +389,11 @@ class GoCardlessRepository private constructor(
         dao.seenSpends().firstOrNull { it.id == id }?.let { dao.upsertSeenSpend(it.copy(dismissed = true)) }
     }
 
+    /** "A card check, or a real payment?": a check isn't counted; a real one is, reported or not. Either way round. */
+    suspend fun answerCardCheck(id: String, check: Boolean) {
+        dao.seenSpends().firstOrNull { it.id == id }?.let { dao.upsertSeenSpend(it.copy(dismissed = check, keptByUser = !check)) }
+    }
+
     suspend fun keepSeenSpend(id: String) {
         dao.seenSpends().firstOrNull { it.id == id }?.let { dao.upsertSeenSpend(it.copy(keptByUser = true)) }
     }

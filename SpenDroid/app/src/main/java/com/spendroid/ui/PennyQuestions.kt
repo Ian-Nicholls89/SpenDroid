@@ -63,17 +63,23 @@ private val TIME = DateTimeFormatter.ofPattern("HH:mm")
  */
 internal sealed class PennyQuestion(val key: String) {
     class Repeat(val repeat: NotificationSpend.Repeat) : PennyQuestion("repeat:${repeat.spend.id}")
+    class CardCheck(val spend: SeenSpendEntity) : PennyQuestion("check:${spend.id}")
     class WhichAccount(val spend: SeenSpendEntity) : PennyQuestion("account:${spend.id}")
     class NotReported(val spend: SeenSpendEntity) : PennyQuestion("unreported:${spend.id}")
     class Vanished(val question: DuplicateCheck.Question) : PennyQuestion("vanished:${question.vanished.accountId}:${question.vanished.transactionId}")
 }
 
 /** Every question waiting, most pressing first: the ones that change today's figure lead. */
-internal fun pennyQuestions(state: RootUiState, now: Long = System.currentTimeMillis()): List<PennyQuestion> =
-    NotificationSpend.possibleRepeats(state.seenSpends).map { PennyQuestion.Repeat(it) } +
-        NotificationSpend.unanswered(state.seenSpends).sortedByDescending { it.seenAt }.map { PennyQuestion.WhichAccount(it) } +
-        NotificationSpend.unconfirmed(state.seenSpends, now, state.manualCoverage).map { PennyQuestion.NotReported(it) } +
+internal fun pennyQuestions(state: RootUiState, now: Long = System.currentTimeMillis()): List<PennyQuestion> {
+    // A tiny payment is asked about as a possible card check first; which account can wait.
+    val checks = NotificationSpend.cardChecks(state.seenSpends)
+    val asked = checks.map { it.id }.toSet()
+    return NotificationSpend.possibleRepeats(state.seenSpends).map { PennyQuestion.Repeat(it) } +
+        checks.sortedByDescending { it.seenAt }.map { PennyQuestion.CardCheck(it) } +
+        NotificationSpend.unanswered(state.seenSpends).filter { it.id !in asked }.sortedByDescending { it.seenAt }.map { PennyQuestion.WhichAccount(it) } +
+        NotificationSpend.unconfirmed(state.seenSpends, now, state.manualCoverage).filter { it.id !in asked }.map { PennyQuestion.NotReported(it) } +
         state.duplicateQuestions.map { PennyQuestion.Vanished(it) }
+}
 
 /** What answering does: the same calls the cards made. */
 internal class PennyAnswers(
@@ -84,6 +90,7 @@ internal class PennyAnswers(
     val onSame: (DuplicateCheck.Question) -> Unit = {},
     val onKeepVanished: (DuplicateCheck.Question) -> Unit = {},
     val onRemoveVanished: (DuplicateCheck.Question) -> Unit = {},
+    val onCardCheck: (spendId: String, check: Boolean) -> Unit = { _, _ -> },
 )
 
 /**
@@ -175,6 +182,7 @@ internal fun PennyQuestionBody(
         Spacer(Modifier.height(10.dp))
         when (q) {
             is PennyQuestion.Repeat -> RepeatQuestion(q, answers) { answer(q, it) }
+            is PennyQuestion.CardCheck -> CardCheckQuestion(q.spend, answers) { answer(q, it) }
             is PennyQuestion.WhichAccount -> AccountQuestion(q.spend, accounts, sources, answers) { answer(q, it) }
             is PennyQuestion.NotReported -> UnreportedQuestion(q.spend, answers) { answer(q, it) }
             is PennyQuestion.Vanished -> VanishedQuestion(q.question, accounts, answers) { answer(q, it) }
@@ -229,6 +237,28 @@ private fun RepeatQuestion(q: PennyQuestion.Repeat, answers: PennyAnswers, said:
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         BigButton("Once, remove the extra", null, { answers.onRepeat(spend.id, twin.id, true); said(noted(true)) }, Modifier.fillMaxWidth(), colour = Charcoal.Warn, textColour = Color(0xFF111111))
         BigButton("Twice, keep both", null, { answers.onRepeat(spend.id, twin.id, false); said(noted(false)) }, Modifier.fillMaxWidth())
+    }
+}
+
+@Composable
+private fun CardCheckQuestion(spend: SeenSpendEntity, answers: PennyAnswers, said: (Noted) -> Unit) {
+    // "1p", as it's said, rather than "£0.01".
+    val money = if (spend.currency == "GBP") "${-spend.amountMinor}p" else formatMoney(-spend.amountMinor, spend.currency)
+    val shop = shopOf(spend)
+    Question(
+        "Did you really pay $money at $shop ${whenSaid(spend.seenAt)}, or was it a card check?",
+        "Shops and banks sometimes take a penny or two to check a card works, then give it straight back. It's counted until you tell me.",
+    )
+    fun noted(check: Boolean): Noted = Noted(
+        if (check) "Not counted: $money at $shop was a card check." else "Counted: $money at $shop was a real payment.",
+        (if (check) "Change: it was a real payment" else "Change: it was a card check") to {
+            answers.onCardCheck(spend.id, !check)
+            said(noted(!check))
+        },
+    )
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        BigButton("A card check, don't count it", null, { answers.onCardCheck(spend.id, true); said(noted(true)) }, Modifier.fillMaxWidth(), colour = Charcoal.Warn, textColour = Color(0xFF111111))
+        BigButton("A real payment, count it", null, { answers.onCardCheck(spend.id, false); said(noted(false)) }, Modifier.fillMaxWidth())
     }
 }
 

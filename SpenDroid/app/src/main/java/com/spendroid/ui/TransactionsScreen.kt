@@ -113,6 +113,7 @@ fun TransactionsScreen(
     onTreatAsBill: ((TransactionEntity, com.spendroid.domain.Cadence) -> Unit)? = null,
     onAssignSeen: (String, String, Boolean) -> Unit = { _, _, _ -> },
     onAnswerRepeat: (String, String, Boolean) -> Unit = { _, _, _ -> },
+    onCardCheck: (String, Boolean) -> Unit = { _, _ -> },
     /** Only what is still pending: the Pending tab. */
     pendingOnly: Boolean = false,
 ) {
@@ -511,6 +512,9 @@ fun TransactionsScreen(
                 NotificationSpend.answerFor(seenById[tx.transactionId]?.id, tx.takeUnless { it.transactionId in seenById }, state.seenSpends)
             },
             onChangeAnswer = { spendId, twinId, once -> onAnswerRepeat(spendId, twinId, once); selected = null },
+            // Said to be a real payment though tiny: still counted, so it can be said again here.
+            realTiny = seenById[tx.transactionId]?.takeIf { it.keptByUser && NotificationSpend.isTiny(it) },
+            onCardCheck = { id -> onCardCheck(id, true); selected = null },
             matching = remember(tx, state.seenSpends, state.transactions) {
                 seenById[tx.transactionId]?.let { spend ->
                     val alternatives = if (spend.source == NotificationSpend.GOOGLE_WALLET) {

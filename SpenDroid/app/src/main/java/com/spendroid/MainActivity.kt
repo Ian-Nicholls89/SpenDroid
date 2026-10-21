@@ -496,6 +496,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                                             onTreatAsBill = viewModel::treatAsBill,
                                             onAssignSeen = { id, account, always -> viewModel.assignSeenSpend(id, account, always) },
                                             onAnswerRepeat = viewModel::answerRepeat,
+                                            onCardCheck = viewModel::answerCardCheck,
                                             tabIndex = spendingTab,
                                             onTabIndex = { spendingTab = it },
                                             prompts = {
@@ -707,6 +708,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                                 onSame = viewModel::confirmDuplicate,
                                 onKeepVanished = viewModel::keepVanished,
                                 onRemoveVanished = viewModel::removeVanished,
+                                onCardCheck = viewModel::answerCardCheck,
                             ),
                             onLater = {
                                 com.spendroid.ui.PennyAsk.later(context)

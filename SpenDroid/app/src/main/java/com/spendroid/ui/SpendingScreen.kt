@@ -63,6 +63,8 @@ fun SpendingScreen(
     onAssignSeen: (String, String, Boolean) -> Unit = { _, _, _ -> },
     /** Penny's "once or twice?" answered, or changed: (spend, twin, once). */
     onAnswerRepeat: (String, String, Boolean) -> Unit = { _, _, _ -> },
+    /** Penny's "card check, or real?", changed from a payment's details. */
+    onCardCheck: (String, Boolean) -> Unit = { _, _ -> },
     /** The tab on show, held by the caller so the side menu can open Insights. */
     tabIndex: Int? = null,
     onTabIndex: (Int) -> Unit = {},
@@ -105,6 +107,7 @@ fun SpendingScreen(
                 onTreatAsBill = onTreatAsBill,
                 onAssignSeen = onAssignSeen,
                 onAnswerRepeat = onAnswerRepeat,
+                onCardCheck = onCardCheck,
                 pendingOnly = tab.pending,
                 )
             }

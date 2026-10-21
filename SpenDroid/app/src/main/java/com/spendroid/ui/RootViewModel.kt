@@ -643,6 +643,11 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    fun answerCardCheck(id: String, check: Boolean) {
+        if (check) com.spendroid.work.SpendQuestions.answered(getApplication(), id)
+        viewModelScope.launch { repo.answerCardCheck(id, check) }
+    }
+
     fun keepSeenSpend(id: String) {
         viewModelScope.launch { repo.keepSeenSpend(id) }
     }

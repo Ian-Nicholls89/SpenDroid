@@ -175,7 +175,7 @@ class ScreensTest {
 
     /** 5.5: every kind of question Penny asks, as her sheet asks it. Made-up figures. */
     @Test
-    @Config(qualifiers = "w1700dp-h900dp-xxhdpi")
+    @Config(qualifiers = "w2120dp-h900dp-xxhdpi")
     fun pennyQuestionKinds() {
         val state = Sample.state()
         val bank = "com.example.bank"
@@ -188,7 +188,11 @@ class ScreensTest {
         val unreported = com.spendroid.data.db.SeenSpendEntity(
             id = "seen-3", source = bank, seenAt = week, amountMinor = -850, currency = "GBP", merchant = "Costa", accountId = "acc-personal",
         )
+        val check = com.spendroid.data.db.SeenSpendEntity(
+            id = "seen-4", source = bank, seenAt = System.currentTimeMillis(), amountMinor = -1, currency = "GBP", merchant = "City Car Park", accountId = "acc-personal",
+        )
         val kinds = listOf(
+            com.spendroid.ui.PennyQuestion.CardCheck(check),
             com.spendroid.ui.PennyQuestion.WhichAccount(which),
             com.spendroid.ui.PennyQuestion.NotReported(unreported),
             com.spendroid.ui.PennyQuestion.Vanished(Sample.questions().first()),

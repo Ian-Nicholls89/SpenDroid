@@ -665,6 +665,18 @@ object NotificationSpend {
     fun counted(seen: List<SeenSpendEntity>): List<SeenSpendEntity> =
         seen.filter { it.countedOn != null && it.matchedTransactionId == null && !it.dismissed }
 
+    /**
+     * Under this, a payment is more likely a card check - a penny or two taken to see the card
+     * works, and given straight back - than something bought. Penny asks rather than assumes.
+     */
+    const val TINY_MINOR = 10L
+
+    fun isTiny(spend: SeenSpendEntity): Boolean = -spend.amountMinor in 1 until TINY_MINOR
+
+    /** Tiny payments not yet said to be real or a check, nor reported by the bank. */
+    fun cardChecks(seen: List<SeenSpendEntity>): List<SeenSpendEntity> =
+        seen.filter { it.matchedTransactionId == null && !it.dismissed && !it.keptByUser && isTiny(it) }
+
     /** Waiting on the user to say which account. */
     fun unanswered(seen: List<SeenSpendEntity>): List<SeenSpendEntity> =
         seen.filter { it.accountId == null && it.matchedTransactionId == null && !it.dismissed }
