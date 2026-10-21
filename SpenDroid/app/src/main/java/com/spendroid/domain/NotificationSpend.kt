@@ -438,8 +438,39 @@ object NotificationSpend {
     private fun overlap(a: Set<String>, b: Set<String>) = a.isEmpty() || b.isEmpty() || a.any { it in b }
 
     /**
+     * Whether a bank row dated [date] can report a purchase seen at [seenAt]: dated that day or
+     * after - or the day before, if seen in the small hours (a purchase just before midnight) or
+     * the row is still pending (a bank that announces a purchase hours late, while its row is
+     * new). Not a settled row from the day before: on 21 Oct a £9.38 lunch seen at 12:41 paired
+     * with the same lunch's row from the 20th - Monday's, posted on Tuesday - and the new
+     * purchase went uncounted.
+     */
+    fun mayReport(date: LocalDate, pending: Boolean, seenAt: Long, zone: ZoneId = ZoneId.systemDefault()): Boolean {
+        val at = Instant.ofEpochMilli(seenAt).atZone(zone)
+        val day = at.toLocalDate()
+        return when {
+            !date.isBefore(day) -> !date.isAfter(day.plusDays(HANDOVER_DAYS))
+            date == day.minusDays(1) -> at.hour < SMALL_HOURS_END || pending
+            else -> false
+        }
+    }
+
+    /**
+     * Seen spends handed to a bank row dated before they could be - paired before
+     * [mayReport] was kept to - to be counted again until their own row comes.
+     */
+    fun misdated(seen: List<SeenSpendEntity>, bank: List<TransactionEntity>, zone: ZoneId = ZoneId.systemDefault()): List<SeenSpendEntity> {
+        val rows = bank.associateBy { it.accountId to it.transactionId }
+        return seen.filter { spend ->
+            val id = spend.matchedTransactionId ?: return@filter false
+            val row = rows[spend.accountId to id] ?: return@filter false
+            RecurringAnalyzer.parseBookingDate(row.bookingDate)?.let { it.isBefore(dateOf(spend.seenAt, zone)) && !mayReport(it, row.isPending, spend.seenAt, zone) } == true
+        }
+    }
+
+    /**
      * Pairs seen spends with the bank's rows that report them: same account, same amount, the
-     * bank's date from the day before to five days after. One to one, oldest first, so two coffees
+     * bank's date as [mayReport] allows, up to five days after. One to one, oldest first, so two coffees
      * of the same price are two coffees.
      */
     fun matches(
@@ -460,13 +491,10 @@ object NotificationSpend {
         seen.filter { it.matchedTransactionId == null && !it.dismissed && it.countedOn != null }
             .sortedBy { it.seenAt }
             .forEach { spend ->
-                val day = dateOf(spend.seenAt, zone)
                 fun fits(tx: TransactionEntity) =
                     tx.amountMinor == spend.amountMinor &&
                         !tx.transactionId.startsWith(SEEN_PREFIX) && !claimed(tx, spend) &&
-                        RecurringAnalyzer.parseBookingDate(tx.bookingDate)?.let {
-                            !it.isBefore(day.minusDays(1)) && !it.isAfter(day.plusDays(HANDOVER_DAYS))
-                        } == true
+                        RecurringAnalyzer.parseBookingDate(tx.bookingDate)?.let { mayReport(it, tx.isPending, spend.seenAt, zone) } == true
                 // The bank's word wins: a payment guessed, waiting on an answer, or even answered
                 // wrongly goes to whichever account the bank reports it on - unless the card's own
                 // digits said where it was. The account it's counted on is looked at first, so two
@@ -646,8 +674,8 @@ object NotificationSpend {
             val why = when {
                 tx.accountId != spend.countedOn && tx.accountId !in elsewhere ->
                     if (sharesWord(tx.payee, spend.merchant) && !certain) "another account, but the shop's name fits" else "another account"
-                date.isBefore(day.minusDays(1)) -> "dated before the purchase"
                 date.isAfter(day.plusDays(HANDOVER_DAYS)) -> "dated too long after"
+                !mayReport(date, tx.isPending, spend.seenAt, zone) -> "dated before the purchase"
                 holder != null && abs(holder.seenAt - spend.seenAt) <= CLAIM_WINDOW_MS ->
                     "already taken by ${holder.merchant}, seen ${Instant.ofEpochMilli(holder.seenAt).atZone(zone).format(java.time.format.DateTimeFormatter.ofPattern("d MMM HH:mm"))}"
                 else -> "fits"
@@ -741,6 +769,8 @@ object NotificationSpend {
     private const val PARTNER_WINDOW_MS = 24 * 60 * 60_000L
     private const val REPOST_WINDOW_MS = 60_000L
     private const val HANDOVER_DAYS = 5L
+    /** Seen before this hour, a purchase may be dated the day before by the bank. */
+    private const val SMALL_HOURS_END = 3
     const val REVIEW_AFTER_MS = 7 * 24 * 60 * 60_000L
 }
 

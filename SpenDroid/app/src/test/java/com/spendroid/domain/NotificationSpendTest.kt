@@ -128,6 +128,28 @@ class NotificationSpendTest {
     )
 
     @Test
+    fun `a settled row from the day before is another purchase - the same lunch twice in a week`() {
+        // Monday's £9.38 lunch, posted Tuesday; the same lunch again Wednesday lunchtime.
+        val wednesday = seen("wed", 938, at(23, 12, 41))
+        val tuesdayRow = bank("tue", 938, "2026-09-22")
+        assertTrue(NotificationSpend.matches(listOf(wednesday), listOf(tuesdayRow), zone).isEmpty())
+        // Its own row, when it comes, takes over.
+        assertEquals("thu", NotificationSpend.matches(listOf(wednesday), listOf(tuesdayRow, bank("thu", 938, "2026-09-24")), zone)["wed"]!!.transactionId)
+        // Already paired with it, as before: unpaired, to be counted again.
+        assertEquals(listOf("wed"), NotificationSpend.misdated(listOf(wednesday.copy(matchedTransactionId = "tue")), listOf(tuesdayRow), zone).map { it.id })
+    }
+
+    @Test
+    fun `the day before still reports a purchase seen in the small hours, or announced late while pending`() {
+        // Bought at 23:55, announced at 00:10: the bank dates it the day before.
+        assertEquals("t", NotificationSpend.matches(listOf(seen("a", 320, at(23, 0, 10))), listOf(bank("t", 320, "2026-09-22")), zone)["a"]!!.transactionId)
+        // A bank announcing last night's purchase at 08:00, its row still pending.
+        val late = seen("b", 320, at(23, 8, 0))
+        assertEquals("p", NotificationSpend.matches(listOf(late), listOf(bank("p", 320, "2026-09-22").copy(isPending = true)), zone)["b"]!!.transactionId)
+        assertTrue(NotificationSpend.misdated(listOf(late.copy(matchedTransactionId = "p")), listOf(bank("p", 320, "2026-09-22").copy(isPending = true)), zone).isEmpty())
+    }
+
+    @Test
     fun `the bank's row takes over, one to one`() {
         val coffees = listOf(seen("a", 320, at(26, 9)), seen("b", 320, at(26, 15)))
         val rows = listOf(bank("t1", 320, "2026-09-27"), bank("t2", 320, "2026-09-28"))

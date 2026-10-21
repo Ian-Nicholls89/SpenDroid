@@ -328,9 +328,12 @@ class GoCardlessRepository private constructor(
         // ones not yet reported are ever dropped.
         NotificationSpend.toDrop(dao.seenSpends(), NotificationSpend.Setup(spendSources.first(), dao.accounts()))
             .forEach { (spend, partner) -> dao.upsertSeenSpend(spend.copy(dismissed = true, pairedWithId = partner)) }
-        val seen = dao.seenSpends()
-        if (seen.isEmpty()) return
+        if (dao.seenSpends().isEmpty()) return
         val bank = dao.accounts().flatMap { dao.transactionsFor(it.id) }
+        // Paired with a row dated before the purchase, as could happen before 5.5.3: counted
+        // again until the bank lists the purchase itself.
+        NotificationSpend.misdated(dao.seenSpends(), bank).forEach { dao.upsertSeenSpend(it.copy(matchedTransactionId = null)) }
+        val seen = dao.seenSpends()
         val sources = spendSources.first().associateBy { it.packageName }
         val walletAccounts = dao.accounts().filter { it.walletLinked }.map { it.id }.toSet()
         val alternatives = { spend: SeenSpendEntity ->
