@@ -251,6 +251,28 @@ class ScreensTest {
         }
     }
 
+    /** 5.6.8: Penny's lines as stories - the bars under her bubble, the second line halfway through its time. */
+    @Test
+    @Config(qualifiers = "w411dp-h300dp-xxhdpi")
+    fun pennyStories() {
+        shootRaw("penny-stories") {
+            BudgetTheme {
+                androidx.compose.foundation.layout.Column(Modifier.background(Charcoal.Background).padding(20.dp)) {
+                    com.spendroid.ui.PennySays(
+                        com.spendroid.ui.DroidFace(com.spendroid.ui.DroidMood.AHEAD, 0.3f, 0.4f),
+                        "That's four days in a row under your daily amount.",
+                        onTap = {}, story = com.spendroid.ui.Story(1, 5, 0.5f),
+                    )
+                    com.spendroid.ui.PennySays(
+                        com.spendroid.ui.DroidFace(com.spendroid.ui.DroidMood.AHEAD, 0.3f, 0.4f),
+                        "£9.38 so far today, all at Porton Stores. £48.39 of today's is left.",
+                        onTap = {}, story = com.spendroid.ui.Story(5, 5, 1f),
+                    )
+                }
+            }
+        }
+    }
+
     private fun shootRaw(name: String, content: @Composable () -> Unit) {
         compose.setContent { content() }
         compose.onRoot().captureRoboImage("build/screenshots/$name.png")

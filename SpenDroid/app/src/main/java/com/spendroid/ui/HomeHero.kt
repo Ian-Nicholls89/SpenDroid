@@ -44,6 +44,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -254,12 +257,30 @@ private fun BudgetHero(
                 visit = PennyVisits.next(context)
                 onPauseOrDispose { }
             }
-            var tapped by remember(visit) { androidx.compose.runtime.mutableIntStateOf(0) }
-            val shown = Math.floorMod(com.spendroid.domain.PennyVoice.lead(voice, visit) + tapped, voice.size)
+            // Like stories: each line has its time, read from a bar filling under it, then the next;
+            // once round, back to the one she led with, and still. A tap moves on; holding pauses.
+            // [step] counts on from her lead: past the last, it's taps alone.
+            // With animations off on the phone she waits for a tap instead.
+            var step by remember(visit) { androidx.compose.runtime.mutableIntStateOf(0) }
+            var held by remember { androidx.compose.runtime.mutableStateOf(false) }
+            val progress = remember(visit, step) { androidx.compose.animation.core.Animatable(0f) }
+            val lead = com.spendroid.domain.PennyVoice.lead(voice, visit)
+            val shown = Math.floorMod(lead + step, voice.size)
+            val going = voice.size > 1 && step < voice.size && !droidStill()
+            LaunchedEffect(visit, step, held, going) {
+                if (!going || held) return@LaunchedEffect
+                val total = storyMillis(voice[shown].text)
+                progress.animateTo(1f, androidx.compose.animation.core.tween(((1f - progress.value) * total).toInt(), easing = androidx.compose.animation.core.LinearEasing))
+                step += 1
+            }
             PennySays(
                 droidFaceOf(budget, syncing), voice[shown].text,
-                onTap = { tapped += 1; Unit }.takeIf { voice.size > 1 },
-                dots = (shown to voice.size).takeIf { voice.size > 1 },
+                // Once round, taps go on through them by hand.
+                onTap = { step += 1; Unit }.takeIf { voice.size > 1 },
+                onHold = { held = it },
+                sizing = voice.map { it.text },
+                // Round once: every bar full, the one she's on lit.
+                story = (if (step >= voice.size) Story(voice.size, voice.size, 1f) else Story(step, voice.size, progress.value)).takeIf { voice.size > 1 },
             )
         } else {
             PennySays(droidFaceOf(budget, syncing), com.spendroid.domain.TodaysRead.of(budget) { formatMoney(it, budget.baseCurrency) })
@@ -329,8 +350,12 @@ internal fun PennySays(
     modifier: Modifier = Modifier.padding(bottom = 12.dp),
     /** Tapping the bubble: on to the next thing she has to say. */
     onTap: (() -> Unit)? = null,
-    /** Which of how many lines this is, shown as dots under it. */
-    dots: Pair<Int, Int>? = null,
+    /** Which of how many lines this is, and how far through its time: bars under it, as stories. */
+    story: Story? = null,
+    /** Pressed and held, and let go: pauses the story. */
+    onHold: ((Boolean) -> Unit)? = null,
+    /** Every line she'll say in turn: the bubble is as tall as the longest, so nothing below jumps. */
+    sizing: List<String> = emptyList(),
 ) {
     // Room above for her sparks and jumps: she's often at the top of something that clips.
     Row(verticalAlignment = Alignment.Top, modifier = modifier.padding(top = size * PENNY_REACH)) {
@@ -341,18 +366,50 @@ internal fun PennySays(
             Modifier
                 .clip(bubble)
                 .background(Color(0xFF1F2127))
-                .then(if (onTap != null) Modifier.clickable(onClick = onTap) else Modifier)
+                .then(
+                    if (onTap != null) {
+                        Modifier.pointerInput(onTap, onHold) {
+                            detectTapGestures(
+                                onPress = {
+                                    onHold?.invoke(true)
+                                    tryAwaitRelease()
+                                    onHold?.invoke(false)
+                                },
+                                onTap = { onTap() },
+                            )
+                        }
+                    } else {
+                        Modifier
+                    },
+                )
                 .padding(horizontal = 12.dp, vertical = 9.dp)
                 .animateContentSize(),
         ) {
             // A new line fades in, so a tap reads as her moving on rather than a flicker.
-            androidx.compose.animation.Crossfade(line, label = "penny-line") { said ->
-                Text(said, style = MaterialTheme.typography.bodyMedium, color = Color(0xFFE7E9EE))
+            Box {
+                // Unseen, the longest of her lines holds the bubble's size while they change.
+                sizing.forEach {
+                    Text(
+                        it, style = MaterialTheme.typography.bodyMedium, color = Color.Transparent,
+                        // Not read aloud: only the line she's saying is.
+                        modifier = Modifier.clearAndSetSemantics { },
+                    )
+                }
+                androidx.compose.animation.Crossfade(line, label = "penny-line") { said ->
+                    Text(said, style = MaterialTheme.typography.bodyMedium, color = Color(0xFFE7E9EE))
+                }
             }
-            dots?.let { (at, of) ->
-                Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    repeat(minOf(of, 8)) { i ->
-                        Box(Modifier.size(5.dp).clip(androidx.compose.foundation.shape.CircleShape).background(if (i == at) Color(0xFF9AA0AA) else Color(0xFF3A3D45)))
+            story?.let { st ->
+                Row(Modifier.padding(top = 8.dp).width((maxOf(st.count, 2) * 22).dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    repeat(st.count) { i ->
+                        val fill = when {
+                            i < st.at -> 1f
+                            i == st.at -> st.progress
+                            else -> 0f
+                        }
+                        Box(Modifier.weight(1f).height(3.dp).clip(RoundedCornerShape(2.dp)).background(Color(0xFF3A3D45))) {
+                            Box(Modifier.fillMaxWidth(fill).height(3.dp).background(Color(0xFF9AA0AA)))
+                        }
                     }
                 }
             }
@@ -368,6 +425,12 @@ internal fun PennySays(
         }
     }
 }
+
+/** Where Penny's lines are: [at] of [count], [progress] through its time. */
+internal data class Story(val at: Int, val count: Int, val progress: Float)
+
+/** Long enough to read: four seconds, and a little more for each word, up to nine. */
+internal fun storyMillis(line: String): Long = (4_000L + line.split(' ').size * 150L).coerceAtMost(9_000L)
 
 /** Penny's face for an account's page: its own pace, its bar on her visor. */
 private fun faceOf(row: PeriodRows.Row, syncing: Boolean): DroidFace = DroidFace(
