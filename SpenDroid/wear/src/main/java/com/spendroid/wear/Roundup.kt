@@ -30,6 +30,8 @@ data class Roundup(
     companion object {
         const val PATH = "/spendroid/roundup"
         const val EXTRA_OPEN = "com.spendroid.wear.OPEN_ROUNDUP"
+        /** The roundup's "Open on phone": SpenDroid opened on the phone, and the roundup read. */
+        const val EXTRA_OPEN_PHONE = "com.spendroid.wear.OPEN_PHONE"
         private const val PREFS = "roundup"
         // Silent: the chime, when chosen, is played by the app, and the system's sound on top of it
         // would be two noises for one roundup. A channel's sound cannot be changed once made, so
@@ -156,6 +158,20 @@ data class Roundup(
                 .setCategory(NotificationCompat.CATEGORY_REMINDER)
                 .setOngoing(true)
                 .setContentIntent(open)
+                // The roundup comes here alone when the watch is about: the phone's app a tap away.
+                .addAction(
+                    NotificationCompat.Action.Builder(
+                        null, "Open on phone",
+                        PendingIntent.getActivity(
+                            context,
+                            NOTIFICATION_ID + 1,
+                            Intent(context, BudgetActivity::class.java)
+                                .putExtra(EXTRA_OPEN_PHONE, true)
+                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP),
+                            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+                        ),
+                    ).build(),
+                )
             OngoingActivity.Builder(context, NOTIFICATION_ID, builder)
                 .setStaticIcon(R.drawable.ic_roundup)
                 .setTouchIntent(open)

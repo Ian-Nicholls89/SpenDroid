@@ -72,6 +72,15 @@ internal object WatchSync {
      * time, so each day's is new to the watch even when the figures match yesterday's. Sent
      * urgently: it is the one thing here that should not wait for the watch to next wake.
      */
+    /** Whether a watch with SpenDroid on it is within reach now: the roundup is then the watch's alone. */
+    suspend fun watchReachable(context: Context): Boolean = runCatching {
+        Wearable.getCapabilityClient(context)
+            .getCapability(WATCH_APP, com.google.android.gms.wearable.CapabilityClient.FILTER_REACHABLE).await()
+            .nodes.isNotEmpty()
+    }.getOrDefault(false)
+
+    private const val WATCH_APP = "spendroid_watch_app"
+
     suspend fun sendRoundup(context: Context, s: com.spendroid.domain.BudgetSnapshot, toCheck: Int) {
         runCatching {
             val money = { minor: Long -> if (hide) com.spendroid.data.Privacy.HIDDEN else formatMoney(minor, s.baseCurrency) }

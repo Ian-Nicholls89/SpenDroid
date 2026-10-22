@@ -28,11 +28,9 @@ internal object WidgetRefresh {
     suspend fun start(context: Context) {
         prefs(context).edit().putLong(STARTED, System.currentTimeMillis()).commit()
         refreshWidgets(context)
-        refreshCardWidgets(context)
         delay(SHOWN_MS)
         prefs(context).edit().putLong(STARTED, 0L).commit()
         refreshWidgets(context)
-        refreshCardWidgets(context)
     }
 
     /** Whether a ↻ is under way: Penny shows it, syncing. */

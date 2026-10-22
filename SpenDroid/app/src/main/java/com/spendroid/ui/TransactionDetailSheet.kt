@@ -503,7 +503,6 @@ private fun RenameDialog(bankName: String, current: String?, onDone: () -> Unit)
         // The widgets and the watch show names too.
         kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Default).launch {
             com.spendroid.widget.refreshWidgets(context.applicationContext)
-            com.spendroid.widget.refreshCardWidgets(context.applicationContext)
         }
         onDone()
     }

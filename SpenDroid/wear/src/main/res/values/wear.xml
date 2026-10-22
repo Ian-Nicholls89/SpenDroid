@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools" tools:keep="@array/android_wear_capabilities">
+    <!-- How the phone knows this watch has SpenDroid: the roundup then goes here, not to the phone. -->
+    <string-array name="android_wear_capabilities">
+        <item>spendroid_watch_app</item>
+    </string-array>
+</resources>

@@ -64,12 +64,14 @@ class DailyRoundupWorker(
             .setAutoCancel(true)
             .build()
 
-        if (NotificationManagerCompat.from(applicationContext).areNotificationsEnabled()) {
+        // One roundup, not two: with the watch app within reach it pings there alone - with
+        // "Open on phone" - and waits on the watch face until read. Otherwise, on the phone.
+        if (com.spendroid.widget.WatchSync.watchReachable(applicationContext)) {
+            val toCheck = runCatching { app.repository.duplicateQuestions().size }.getOrDefault(0)
+            com.spendroid.widget.WatchSync.sendRoundup(applicationContext, snapshot, toCheck)
+        } else if (NotificationManagerCompat.from(applicationContext).areNotificationsEnabled()) {
             NotificationManagerCompat.from(applicationContext).notify(NOTIFICATION_ID, notification)
         }
-        // And to the watch, where it waits on the watch face until it is read.
-        val toCheck = runCatching { app.repository.duplicateQuestions().size }.getOrDefault(0)
-        com.spendroid.widget.WatchSync.sendRoundup(applicationContext, snapshot, toCheck)
         return Result.success()
     }
 

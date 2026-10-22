@@ -4,7 +4,6 @@ import android.app.Notification
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import com.spendroid.BudgetApplication
-import com.spendroid.widget.refreshCardWidgets
 import com.spendroid.widget.refreshWidgets
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -40,7 +39,6 @@ class SpendListenerService : NotificationListenerService() {
             val changed = runCatching { repo.onNotification(source, title, text, sbn.postTime) }.getOrDefault(false)
             if (changed) {
                 refreshWidgets(applicationContext)
-                refreshCardWidgets(applicationContext)
                 // Wallet may have just said which account an earlier alert was on.
                 runCatching { repo.settledSince(sbn.postTime - 24 * 60 * 60_000L) }.getOrDefault(emptyList())
                     .forEach { SpendQuestions.answered(applicationContext, it) }

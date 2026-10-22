@@ -7,7 +7,6 @@ import com.spendroid.BudgetApplication
 import com.spendroid.data.GoCardlessRepository
 import com.spendroid.data.SyncAllowance
 import com.spendroid.data.SyncFailure
-import com.spendroid.widget.refreshCardWidgets
 import com.spendroid.widget.refreshWidgets
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.flow.first
@@ -77,7 +76,6 @@ class DailySyncWorker(
         // Refreshing here beats the 30-minute poll on both freshness and battery.
         if (attempted > 0) {
             refreshWidgets(applicationContext)
-            refreshCardWidgets(applicationContext)
         }
 
         // Any account the bank has refused is tried again just after its allowance resets, when

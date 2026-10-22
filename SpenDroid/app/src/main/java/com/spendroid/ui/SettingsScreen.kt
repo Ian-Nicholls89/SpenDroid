@@ -197,13 +197,16 @@ fun SettingsScreen(
 
                 SettingsTab.COMPUTER -> WebSection()
 
-                SettingsTab.ABOUT -> Panel { UpdatesSection(
-                    state = state,
-                    versionName = state.versionName,
-                    versionCode = state.versionCode,
-                    onCheckUpdate = onCheckUpdate,
-                    onOpenInstallSettings = onOpenInstallSettings,
-                ) }
+                SettingsTab.ABOUT -> {
+                    Panel { UpdatesSection(
+                        state = state,
+                        versionName = state.versionName,
+                        versionCode = state.versionCode,
+                        onCheckUpdate = onCheckUpdate,
+                        onOpenInstallSettings = onOpenInstallSettings,
+                    ) }
+                    Panel { CrashSection() }
+                }
             }
         }
     }
@@ -380,6 +383,45 @@ private fun CredentialsSection(
         modifier = Modifier.fillMaxWidth(),
     ) {
         Text(if (saved) "Saved" else "Save credentials")
+    }
+}
+
+/**
+ * Crashes kept on the phone - its own and the watch's - and the way to send them: shared as text
+ * however the user likes, by email or a GitHub issue. Nothing is sent by itself.
+ */
+@Composable
+private fun CrashSection() {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var crashes by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(com.spendroid.data.CrashLog.all(context)) }
+    Text("Crash reports", style = MaterialTheme.typography.titleMedium)
+    Spacer(Modifier.height(4.dp))
+    val latest = crashes.firstOrNull()?.let {
+        java.time.Instant.ofEpochMilli(it.at).atZone(java.time.ZoneId.systemDefault())
+            .format(java.time.format.DateTimeFormatter.ofPattern("d MMM, HH:mm"))
+    }
+    Text(
+        if (crashes.isEmpty()) "No crashes recorded. If SpenDroid or the watch app ever closes unexpectedly, what happened is kept here for you to send."
+        else "${crashes.size} crash${if (crashes.size == 1) "" else "es"} recorded, the latest $latest. Sending shares a text report - " +
+            "it's worth a glance first, as an error can name a payee.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    if (crashes.isNotEmpty()) {
+        Spacer(Modifier.height(12.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(onClick = {
+                val send = android.content.Intent(android.content.Intent.ACTION_SEND)
+                    .setType("text/plain")
+                    .putExtra(android.content.Intent.EXTRA_SUBJECT, "SpenDroid crash report")
+                    .putExtra(android.content.Intent.EXTRA_TEXT, com.spendroid.data.CrashLog.report(context))
+                context.startActivity(android.content.Intent.createChooser(send, "Send crash report"))
+            }, modifier = Modifier.weight(1f)) { Text("Send report") }
+            androidx.compose.material3.OutlinedButton(onClick = {
+                com.spendroid.data.CrashLog.clear(context)
+                crashes = emptyList()
+            }, modifier = Modifier.weight(1f)) { Text("Clear") }
+        }
     }
 }
 

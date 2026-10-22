@@ -18,6 +18,12 @@ class WatchMessageService : WearableListenerService() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     override fun onMessageReceived(event: MessageEvent) {
+        // The watch app crashed: kept with the phone's, to send from Settings.
+        if (event.path == CRASH_PATH) {
+            val body = String(event.data, Charsets.UTF_8)
+            com.spendroid.data.CrashLog.record(applicationContext, "watch " + body.substringBefore('\n'), body.substringAfter('\n'))
+            return
+        }
         if (event.path != CATEGORY_PATH) return
         val parts = String(event.data, Charsets.UTF_8).split(WatchSync.SEP)
         if (parts.size != 3) return
@@ -26,7 +32,6 @@ class WatchMessageService : WearableListenerService() {
         scope.launch {
             runCatching { app.repository.setCategoryOverride(accountId, transactionId, category) }
             refreshWidgets(applicationContext)
-            refreshCardWidgets(applicationContext)
         }
     }
 
@@ -37,5 +42,6 @@ class WatchMessageService : WearableListenerService() {
 
     companion object {
         const val CATEGORY_PATH = "/spendroid/category"
+        const val CRASH_PATH = "/spendroid/crash"
     }
 }

@@ -579,7 +579,6 @@ class AvailableToSpendWidgetReceiver : GlanceAppWidgetReceiver() {
 suspend fun refreshWidgetsIfStale(context: Context, maxAgeMs: Long = 15 * 60 * 1000L) {
     if (System.currentTimeMillis() - lastRefreshAt < maxAgeMs) return
     refreshWidgets(context)
-    refreshCardWidgets(context)
 }
 
 suspend fun refreshWidgets(context: Context) {
@@ -590,10 +589,7 @@ suspend fun refreshWidgets(context: Context) {
     runCatching { SharedSnapshot.fresh(context) }
     runCatching { AvailableToSpendWidget().refreshEach(context) }
     // Drawn from the same snapshot, so it moves when this one does.
-    refreshTimelineWidgets(context)
     refreshPeriodWidgets(context)
-    refreshComingUpWidgets(context)
-    refreshAheadWidgets(context)
     // And the watch's complication, for the same reason.
     WatchSync.push(context)
 }

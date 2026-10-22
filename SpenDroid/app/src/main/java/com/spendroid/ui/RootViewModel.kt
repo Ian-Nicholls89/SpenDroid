@@ -34,7 +34,6 @@ import com.spendroid.domain.BudgetSnapshot
 import com.spendroid.domain.RecurringAnalyzer
 import com.spendroid.domain.RecurringRule
 import com.spendroid.domain.toRecurringRule
-import com.spendroid.widget.refreshCardWidgets
 import com.spendroid.widget.refreshWidgets
 import com.spendroid.work.DailyRoundupScheduler
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -807,7 +806,6 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
             cachedInstitutions = null
             // Otherwise the widgets go on showing the figures that were just deleted.
             refreshWidgets(getApplication())
-            refreshCardWidgets(getApplication())
         }
     }
 
@@ -1019,7 +1017,6 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
             }
             loadLocal()
             refreshWidgets(getApplication())
-            refreshCardWidgets(getApplication())
             _state.update { it.copy(syncing = false) }
         }
     }
@@ -1111,7 +1108,6 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
         // redrew them, and they disagreed with the app until the next one.
         if (budgetBefore != null && budget != budgetBefore) viewModelScope.launch {
             refreshWidgets(getApplication())
-            refreshCardWidgets(getApplication())
         }
     }
 

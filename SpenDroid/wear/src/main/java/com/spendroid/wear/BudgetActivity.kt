@@ -60,6 +60,12 @@ class BudgetActivity : ComponentActivity() {
 
     /** Opened from the roundup's icon: show it, and take the icon off the watch face. */
     private fun showRoundupIf(intent: Intent?) {
+        if (intent?.getBooleanExtra(Roundup.EXTRA_OPEN_PHONE, false) == true) {
+            intent.removeExtra(Roundup.EXTRA_OPEN_PHONE)
+            Roundup.markRead(this)
+            if (openOnPhone()) Toast.makeText(this, "Opening on your phone", Toast.LENGTH_SHORT).show()
+            return
+        }
         if (intent?.getBooleanExtra(Roundup.EXTRA_OPEN, false) != true) return
         intent.removeExtra(Roundup.EXTRA_OPEN)
         roundup.value = Roundup.load(this)

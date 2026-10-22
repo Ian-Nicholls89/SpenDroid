@@ -13,7 +13,6 @@ import com.spendroid.data.Privacy
 import com.spendroid.data.db.AccountEntity
 import com.spendroid.data.db.SeenSpendEntity
 import com.spendroid.ui.formatMoney
-import com.spendroid.widget.refreshCardWidgets
 import com.spendroid.widget.refreshWidgets
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -176,7 +175,6 @@ object SpendQuestions {
             try {
                 app.repository.assignSeenSpend(spendId, accountId)
                 refreshWidgets(context)
-                refreshCardWidgets(context)
             } finally {
                 pending.finish()
             }
@@ -197,7 +195,6 @@ private fun answerRepeat(context: Context, intent: Intent, pending: BroadcastRec
         try {
             app.repository.answerRepeat(spendId, twinId, once = intent.getBooleanExtra("once", false))
             refreshWidgets(context)
-            refreshCardWidgets(context)
         } finally {
             pending.finish()
         }

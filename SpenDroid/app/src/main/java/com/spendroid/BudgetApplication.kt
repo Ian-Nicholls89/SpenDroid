@@ -17,6 +17,8 @@ class BudgetApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        // First, so a crash anywhere after is kept for the user to send.
+        com.spendroid.data.CrashLog.install(this, BuildConfig.VERSION_NAME)
         com.spendroid.data.PayeeNames.load(this)
         // PDF statements: the reader finds its fonts and glyph lists through the app.
         com.tom_roush.pdfbox.android.PDFBoxResourceLoader.init(this)

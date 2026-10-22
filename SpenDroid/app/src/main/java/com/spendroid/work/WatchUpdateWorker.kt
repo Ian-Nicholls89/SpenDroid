@@ -3,7 +3,6 @@ package com.spendroid.work
 import android.content.Context
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
-import com.spendroid.widget.refreshCardWidgets
 import com.spendroid.widget.refreshWidgets
 import java.time.LocalTime
 
@@ -17,7 +16,6 @@ class WatchUpdateWorker(app: Context, parameters: WorkerParameters) : CoroutineW
     override suspend fun doWork(): Result {
         if (LocalTime.now().hour !in FIRST_HOUR..LAST_HOUR) return Result.success()
         refreshWidgets(applicationContext)
-        refreshCardWidgets(applicationContext)
         return Result.success()
     }
 

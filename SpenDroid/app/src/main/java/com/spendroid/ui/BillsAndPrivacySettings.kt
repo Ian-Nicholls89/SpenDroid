@@ -129,7 +129,6 @@ private fun refreshAll(context: android.content.Context) {
     kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Default).launch {
         runCatching {
             com.spendroid.widget.refreshWidgets(app)
-            com.spendroid.widget.refreshCardWidgets(app)
         }
     }
 }
