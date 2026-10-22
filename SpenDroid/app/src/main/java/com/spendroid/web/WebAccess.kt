@@ -31,6 +31,8 @@ object WebAccess {
     /** Tokens for computers paired without remembering: good until the page is switched off. */
     private val sessions = mutableSetOf<String>()
     private var failures = 0
+    /** After [MAX_FAILURES] wrong codes, no code is tried until then. */
+    @Volatile private var pausedUntil = 0L
     private val random = SecureRandom()
 
     @Volatile var lastActivity: Long = 0L
@@ -43,6 +45,7 @@ object WebAccess {
     fun started(addresses: List<Served>) {
         _running.value = Running(addresses, newCode())
         failures = 0
+        pausedUntil = 0L
         lastActivity = System.currentTimeMillis()
     }
 
@@ -59,10 +62,13 @@ object WebAccess {
      */
     fun pair(context: Context, code: String, remember: Boolean, name: String): String? {
         val now = _running.value ?: return null
+        // Five wrong, then a pause: a new code alone left guessing as fast as requests could go.
+        if (System.currentTimeMillis() < pausedUntil) return null
         if (code.filter { it.isDigit() } != now.code) {
             if (++failures >= MAX_FAILURES) {
                 _running.value = now.copy(code = newCode())
                 failures = 0
+                pausedUntil = System.currentTimeMillis() + PAUSE_MS
             }
             return null
         }
@@ -126,5 +132,6 @@ object WebAccess {
     private const val PREFS = "web_access"
     private const val KEY = "computers"
     private const val MAX_FAILURES = 5
+    private const val PAUSE_MS = 30_000L
     const val REMEMBER_MS = 30L * 24 * 60 * 60 * 1000
 }

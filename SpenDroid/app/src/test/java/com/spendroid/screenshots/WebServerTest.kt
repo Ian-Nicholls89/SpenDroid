@@ -65,6 +65,20 @@ class WebServerTest {
     @Test
     fun `another address is refused`() {
         assertEquals(403, call("/", host = "evil.example").first)
+        // DNS rebinding: a site whose name starts with the phone's address, pointed at it.
+        // Refused before pairing - not a wrong code's 401, which would mean the code was tried.
+        val code = WebAccess.running.value!!.code
+        assertEquals(403, call("/api/pair", "POST", "{\"code\":\"000000\",\"remember\":false}", host = "127.0.0.1.evil.example:$port").first)
+        assertEquals("a refused try doesn't count towards replacing the code", code, WebAccess.running.value!!.code)
+        assertEquals(403, call("/", host = "127.0.0.10:$port").first)
+        assertEquals(200, call("/", host = "127.0.0.1").first)
+    }
+
+    @Test
+    fun `five wrong codes pause pairing, even for the right one`() {
+        repeat(5) { call("/api/pair", "POST", "{\"code\":\"000000\",\"remember\":false}") }
+        val fresh = WebAccess.running.value!!.code
+        assertEquals(401, call("/api/pair", "POST", "{\"code\":\"$fresh\",\"remember\":false}").first)
     }
 
     @Test

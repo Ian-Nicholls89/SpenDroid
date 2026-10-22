@@ -14,9 +14,15 @@ import org.json.JSONObject
 class WebServer(private val context: Context, private val host: String, port: Int) : NanoHTTPD(host, port) {
 
     override fun serve(session: IHTTPSession): Response {
+        // Exactly the phone's own address, as shown on it. "Starts with" let a website named
+        // "192.168.1.5.example.com", pointed at the phone, past - DNS rebinding - to try codes.
+        val hostHeader = session.headers["host"].orEmpty().lowercase()
+        if (!addressedHere(hostHeader)) {
+            // Read off what was sent, so the connection is left clean for whatever comes next on it.
+            runCatching { session.parseBody(HashMap()) }
+            return plain(Response.Status.FORBIDDEN, "Use the address shown on the phone.")
+        }
         WebAccess.lastActivity = System.currentTimeMillis()
-        val hostHeader = session.headers["host"].orEmpty()
-        if (!hostHeader.startsWith(host)) return plain(Response.Status.FORBIDDEN, "Use the address shown on the phone.")
         val token = session.cookies.read(COOKIE)
         return when {
             session.method == Method.POST && session.uri == "/api/pair" -> pair(session)
@@ -93,6 +99,12 @@ class WebServer(private val context: Context, private val host: String, port: In
         val life = if (remember) "; Max-Age=${WebAccess.REMEMBER_MS / 1000}" else ""
         response.addHeader("Set-Cookie", "$COOKIE=$token; Path=/; HttpOnly; SameSite=Strict$life")
         return response
+    }
+
+    /** The Host header names this server: its address, with or without its port. */
+    private fun addressedHere(header: String): Boolean {
+        val me = if (':' in host) "[${host.lowercase()}]" else host.lowercase()
+        return header == me || header == "$me:$listeningPort"
     }
 
     private fun asset(uri: String): Response {

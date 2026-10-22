@@ -141,7 +141,9 @@ class GoCardlessRepository private constructor(
         // A spend seen in a notification lives in its own table until the bank reports it.
         if (transactionId.startsWith(NotificationSpend.SEEN_PREFIX)) {
             val id = transactionId.removePrefix(NotificationSpend.SEEN_PREFIX)
-            dao.seenSpends().firstOrNull { it.id == id }?.let { dao.upsertSeenSpend(it.copy(categoryOverride = category)) }
+            notificationLock.withLock {
+                dao.seenSpends().firstOrNull { it.id == id }?.let { dao.upsertSeenSpend(it.copy(categoryOverride = category)) }
+            }
             return
         }
         dao.setCategoryOverride(accountId, transactionId, category)
@@ -282,7 +284,7 @@ class GoCardlessRepository private constructor(
                 provisionalAccountId = placement?.provisionalAccountId,
             ),
         )
-        reconcileSeenSpends()
+        reconcileSeenSpendsHeld()
         return NotificationSpend.Outcome.COUNTED
     }
 
@@ -310,7 +312,9 @@ class GoCardlessRepository private constructor(
                 .filter { it.source == sample.source && Regex(learned.pattern).containsMatchIn(NotificationSpend.bodyOf(it.title, it.text)) }
                 .map { it.postedAt }
                 .toSet()
-            seen.filter { it.seenAt in ignored }.forEach { dao.upsertSeenSpend(it.copy(dismissed = true)) }
+            notificationLock.withLock {
+                dao.seenSpends().filter { s -> s.id in seen.map { it.id }.toSet() && s.seenAt in ignored }.forEach { dao.upsertSeenSpend(it.copy(dismissed = true)) }
+            }
         }
         return true
     }
@@ -321,7 +325,14 @@ class GoCardlessRepository private constructor(
      * Hands each seen spend over to the bank's row once one reports it, carrying a category set
      * on the seen spend across. Run after every sync and every new notification.
      */
-    suspend fun reconcileSeenSpends() {
+    suspend fun reconcileSeenSpends() = notificationLock.withLock { reconcileSeenSpendsHeld() }
+
+    /**
+     * [reconcileSeenSpends] with [notificationLock] already held: every change to a seen spend
+     * goes through the lock, or a sync's reconcile - reading them all, then writing back copies
+     * - could put back a row a notification or an answer had just changed.
+     */
+    private suspend fun reconcileSeenSpendsHeld() {
         // Any purchase counted more than once - as the race before 3.2.1 could, or a bank app
         // announcing it long after Wallet - is one again. Ones the bank already reported are
         // looked at too, so the twin of a purchase the bank took over goes as well; only
@@ -365,8 +376,8 @@ class GoCardlessRepository private constructor(
      * The user's answer to "which account?", or a change of mind about one already placed.
      * Remembers the card's digits for next time, and with [always], the shop's account.
      */
-    suspend fun assignSeenSpend(id: String, accountId: String, always: Boolean = false) {
-        val spend = dao.seenSpends().firstOrNull { it.id == id } ?: return
+    suspend fun assignSeenSpend(id: String, accountId: String, always: Boolean = false) = notificationLock.withLock {
+        val spend = dao.seenSpends().firstOrNull { it.id == id } ?: return@withLock
         dao.upsertSeenSpend(spend.copy(accountId = accountId, accountGuessed = false, provisionalAccountId = null))
         if (always) secrets.setSpendPlace(NotificationSpend.placeKey(spend.source, spend.merchant), accountId)
         val digits = spend.cardDigits
@@ -374,7 +385,7 @@ class GoCardlessRepository private constructor(
         if (digits != null && account != null && account.cardLastFour == null) {
             dao.updateAccount(account.copy(cardLastFour = digits))
         }
-        reconcileSeenSpends()
+        reconcileSeenSpendsHeld()
     }
 
     /** The question to ask now, if the payment just seen at [postedAt] may be one counted twice. */
@@ -382,8 +393,8 @@ class GoCardlessRepository private constructor(
         NotificationSpend.possibleRepeats(dao.seenSpends()).firstOrNull { it.spend.seenAt == postedAt || it.twin.seenAt == postedAt }
 
     /** The user's answer to "twice, or once?": [once] drops [spendId] as a repeat of [twinId]. */
-    suspend fun answerRepeat(spendId: String, twinId: String, once: Boolean) {
-        val spend = dao.seenSpends().firstOrNull { it.id == spendId } ?: return
+    suspend fun answerRepeat(spendId: String, twinId: String, once: Boolean) = notificationLock.withLock {
+        val spend = dao.seenSpends().firstOrNull { it.id == spendId } ?: return@withLock
         // Either way round, so a wrong answer can be put right: once drops it as a repeat; twice
         // brings it back if it was dropped, and keeps it from being dropped again.
         dao.upsertSeenSpend(
@@ -392,20 +403,20 @@ class GoCardlessRepository private constructor(
         )
     }
 
-    suspend fun dismissSeenSpend(id: String) {
+    suspend fun dismissSeenSpend(id: String) = notificationLock.withLock {
         dao.seenSpends().firstOrNull { it.id == id }?.let { dao.upsertSeenSpend(it.copy(dismissed = true)) }
     }
 
     /** "A card check, or a real payment?": a check isn't counted; a real one is, reported or not. Either way round. */
-    suspend fun answerCardCheck(id: String, check: Boolean) {
+    suspend fun answerCardCheck(id: String, check: Boolean) = notificationLock.withLock {
         dao.seenSpends().firstOrNull { it.id == id }?.let { dao.upsertSeenSpend(it.copy(dismissed = check, keptByUser = !check)) }
     }
 
-    suspend fun keepSeenSpend(id: String) {
+    suspend fun keepSeenSpend(id: String) = notificationLock.withLock {
         dao.seenSpends().firstOrNull { it.id == id }?.let { dao.upsertSeenSpend(it.copy(keptByUser = true)) }
     }
 
-    suspend fun clearNotificationData() {
+    suspend fun clearNotificationData() = notificationLock.withLock {
         dao.deleteAllSeenSpends()
         dao.deleteAllNotificationSamples()
     }
@@ -818,7 +829,22 @@ class GoCardlessRepository private constructor(
         }
     }
 
+    /**
+     * One sync at a time: the nightly sync and a pull to refresh landing together each read the
+     * stored rows before the other wrote, and each spent one of the bank's few syncs a day.
+     */
+    private val syncLock = kotlinx.coroutines.sync.Mutex()
+
     suspend fun importAccount(institutionName: String, accountId: String): AccountEntity {
+        val asked = System.currentTimeMillis()
+        return syncLock.withLock {
+            // Synced while this waited its turn: that's the fresh copy, and the bank's allowance kept.
+            dao.accounts().firstOrNull { it.id == accountId && it.lastSynced >= asked }
+                ?: importAccountNow(institutionName, accountId)
+        }
+    }
+
+    private suspend fun importAccountNow(institutionName: String, accountId: String): AccountEntity {
         val metadata: AccountDetailsDto = dataApi.accountMetadata(accountId)
         val details: AccountInfoWrapperDto = runCatching { dataApi.accountDetails(accountId) }.getOrDefault(AccountInfoWrapperDto())
         val info: AccountInfoDto = details.account ?: AccountInfoDto()
