@@ -20,7 +20,7 @@ import org.json.JSONObject
 object BackupExporter {
 
     /** Bumped when the shape changes, so a future import can tell what it is reading. */
-    const val FORMAT_VERSION = 3
+    const val FORMAT_VERSION = 4
 
     fun toJson(
         accounts: List<AccountEntity>,
@@ -31,6 +31,8 @@ object BackupExporter {
         ignoredRules: Set<String>,
         transferGroups: Set<String> = emptySet(),
         ruleOverrides: List<RuleOverrideEntity> = emptyList(),
+        /** Payments read from notifications, and Penny's answers about them (format 4). */
+        seenSpends: List<com.spendroid.data.db.SeenSpendEntity> = emptyList(),
         /** The income chosen to set the cycle, and how the budget is worked out. */
         primaryIncomeKey: String? = null,
         budgetModel: String? = null,
@@ -174,6 +176,34 @@ object BackupExporter {
                             .put("anchorDay", o.anchorDay ?: JSONObject.NULL)
                             .put("shift", o.shift ?: JSONObject.NULL)
                             .put("decemberAnchorDay", o.decemberAnchorDay ?: JSONObject.NULL),
+                    )
+                }
+            },
+        )
+        // Payments read from notifications: on an account with no bank link, the only record of
+        // spending a statement hasn't covered yet - and the answers given to Penny about them.
+        root.put(
+            "seenSpends",
+            JSONArray().also { arr ->
+                seenSpends.forEach { o ->
+                    arr.put(
+                        JSONObject()
+                            .put("id", o.id)
+                            .put("source", o.source)
+                            .put("seenAt", o.seenAt)
+                            .put("amountMinor", o.amountMinor)
+                            .put("currency", o.currency)
+                            .put("merchant", o.merchant)
+                            .put("cardDigits", o.cardDigits ?: JSONObject.NULL)
+                            .put("accountId", o.accountId ?: JSONObject.NULL)
+                            .put("matchedTransactionId", o.matchedTransactionId ?: JSONObject.NULL)
+                            .put("dismissed", o.dismissed)
+                            .put("keptByUser", o.keptByUser)
+                            .put("categoryOverride", o.categoryOverride ?: JSONObject.NULL)
+                            .put("accountGuessed", o.accountGuessed)
+                            .put("provisionalAccountId", o.provisionalAccountId ?: JSONObject.NULL)
+                            .put("pairedWithId", o.pairedWithId ?: JSONObject.NULL)
+                            .put("confirmedSeparate", o.confirmedSeparate),
                     )
                 }
             },

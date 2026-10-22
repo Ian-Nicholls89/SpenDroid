@@ -60,6 +60,14 @@ class BackupRoundTripTest {
         decemberAnchorDay = 19,
     )
 
+    /** Every field set away from its default, so a dropped one shows. */
+    private val seen = com.spendroid.data.db.SeenSpendEntity(
+        id = "wallet|1", source = "com.google.android.apps.walletnfcrel", seenAt = 1_760_000_000_000, amountMinor = -938,
+        currency = "GBP", merchant = "PORTON STORES", cardDigits = "0042", accountId = "acc-1", matchedTransactionId = "tx-9",
+        dismissed = true, keptByUser = true, categoryOverride = "WORK_LUNCHES", accountGuessed = true,
+        provisionalAccountId = "acc-2", pairedWithId = "wallet|0", confirmedSeparate = true,
+    )
+
     private fun export() = BackupExporter.toJson(
         accounts = listOf(account),
         transactions = listOf(transaction),
@@ -80,6 +88,7 @@ class BackupRoundTripTest {
         categoryRules = listOf(CategoryRuleEntity("sainsburys", "GROCERIES", 1_700_000_000_000)),
         ignoredRules = setOf("OUT|GBP|15|netflix"),
         ruleOverrides = listOf(override),
+        seenSpends = listOf(seen, seen.copy(id = "wallet|2", cardDigits = null, accountId = null, matchedTransactionId = null)),
         transferGroups = setOf("OUT|GBP|500|monthly savings"),
         primaryIncomeKey = "IN|GBP|2500|acme ltd",
         budgetModel = "ROLLOVER",
@@ -102,6 +111,7 @@ class BackupRoundTripTest {
         assertEquals("IN|GBP|2500|acme ltd", restored.primaryIncomeKey)
         assertEquals("ROLLOVER", restored.budgetModel)
         assertEquals("AT_PURCHASE", restored.cardTiming)
+        assertEquals(listOf(seen, seen.copy(id = "wallet|2", cardDigits = null, accountId = null, matchedTransactionId = null)), restored.seenSpends)
     }
 
     /** Settings missing from an older file are left alone on restore, not cleared. */

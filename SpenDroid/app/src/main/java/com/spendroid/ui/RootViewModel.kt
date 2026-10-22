@@ -335,6 +335,8 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun setRuleIgnored(key: String, ignored: Boolean) {
+        // Brought back by hand: a bill after all, so a "just spending" said to Penny no longer holds.
+        if (!ignored) _state.value.rules.firstOrNull { it.key == key }?.let { PennyBills.answer(getApplication(), it, isBill = true) }
         viewModelScope.launch {
             repo.setRuleIgnored(key, ignored)
             loadLocal()

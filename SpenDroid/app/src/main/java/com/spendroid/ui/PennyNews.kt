@@ -58,6 +58,7 @@ object PennyNews {
 object PennyBills {
     private const val PREFS = "penny_bills"
     private const val CONFIRMED = "confirmed"
+    private const val NOT_BILLS = "notBills"
     private const val STARTED = "started"
 
     /** Changes as answers are given, so what's asked is worked out again. */
@@ -65,9 +66,17 @@ object PennyBills {
 
     fun id(rule: RecurringRule): String = rule.payee.lowercase().filter { it.isLetterOrDigit() }
 
-    private fun candidates(state: RootUiState): List<RecurringRule> = state.rules
-        .filter { it.direction == Direction.OUT && !it.internalTransfer && !it.isManual && it.key !in state.ignoredRules }
-        .distinctBy { id(it) }
+    private fun candidates(state: RootUiState): List<RecurringRule> {
+        // Paying off a card isn't a bill to ask about: the card's own bill is worked out apart.
+        val cardPayments = state.budget?.cardPaymentKeys.orEmpty()
+        val payingCards = state.transactions
+            .filter { it.isCardPayment || it.isInternalTransfer || "${it.accountId}|${it.transactionId}" in cardPayments }
+        return state.rules
+            .filter { it.direction == Direction.OUT && !it.internalTransfer && !it.isManual && it.key !in state.ignoredRules }
+            .filter { !it.key.startsWith(com.spendroid.domain.CARD_BILL_KEY_PREFIX) }
+            .filter { rule -> payingCards.none { com.spendroid.domain.RecurringAnalyzer.matches(rule, it) } }
+            .distinctBy { id(it) }
+    }
 
     private fun weak(rule: RecurringRule) = (rule.cadence == Cadence.QUARTERLY || rule.cadence == Cadence.ANNUAL) && rule.occurrences <= 2
 
@@ -83,11 +92,25 @@ object PennyBills {
         return all.filter { id(it) !in confirmed }
     }
 
-    /** Answered, either way: not asked about again. */
-    fun answer(context: Context, rule: RecurringRule) {
+    /**
+     * Answered, either way: not asked about again. A "just spending" is kept by payee too, as a
+     * rule's key carries its amount: the car park at a new price is a new rule, and still not a bill.
+     */
+    fun answer(context: Context, rule: RecurringRule, isBill: Boolean = true) {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        prefs.edit().putStringSet(CONFIRMED, prefs.getStringSet(CONFIRMED, emptySet()).orEmpty() + id(rule)).apply()
+        val notBills = prefs.getStringSet(NOT_BILLS, emptySet()).orEmpty()
+        prefs.edit()
+            .putStringSet(CONFIRMED, prefs.getStringSet(CONFIRMED, emptySet()).orEmpty() + id(rule))
+            .putStringSet(NOT_BILLS, if (isBill) notBills - id(rule) else notBills + id(rule))
+            .apply()
         answered.intValue++
+    }
+
+    /** Rules for a payee said to be just spending that aren't ignored yet - a new amount, say. */
+    fun stillToIgnore(context: Context, state: RootUiState): List<String> {
+        val notBills = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getStringSet(NOT_BILLS, emptySet()).orEmpty()
+        if (notBills.isEmpty()) return emptyList()
+        return state.rules.filter { !it.isManual && it.direction == Direction.OUT && it.key !in state.ignoredRules && id(it) in notBills }.map { it.key }
     }
 
     /** How often, said plainly: "around the 14th each month". */

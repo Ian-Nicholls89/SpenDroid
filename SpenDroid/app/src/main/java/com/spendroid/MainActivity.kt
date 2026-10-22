@@ -305,6 +305,10 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                     com.spendroid.ui.pennyQuestions(state, bills = com.spendroid.ui.PennyBills.toAsk(billsContext, state))
                 }
                 var asking by rememberSaveable { mutableStateOf(false) }
+                // A payee said to be just spending stays so at a new amount, which is a new rule.
+                LaunchedEffect(state.rules, state.ignoredRules, billsAnswered) {
+                    com.spendroid.ui.PennyBills.stillToIgnore(billsContext, state).forEach { viewModel.setRuleIgnored(it, true) }
+                }
                 // Something Penny has noticed: said on Home once, then known.
                 val newsContext = androidx.compose.ui.platform.LocalContext.current
                 val news = remember(state.rules, state.accounts, state.budget == null) { com.spendroid.ui.PennyNews.next(newsContext, state) }
@@ -689,7 +693,10 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                         onDispose { lifecycle.removeObserver(watch) }
                     }
                     val clear = !showToday && !showReview && !showPayday && !showRoundup.value && forecastFor == null && importRequest.value == null
-                    LaunchedEffect(opened, questions.isNotEmpty(), clear, askPenny.value) {
+                    LaunchedEffect(opened, questions.isNotEmpty(), clear, askPenny.value, state.budget == null) {
+                        // Her notification tapped once the question was already answered: nothing to
+                        // ask, and nothing left waiting to open the sheet at the next question.
+                        if (askPenny.value && questions.isEmpty() && state.budget != null) askPenny.value = false
                         if (questions.isEmpty() || !clear) return@LaunchedEffect
                         if (askPenny.value) {
                             asking = true
@@ -699,7 +706,9 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                             offered = opened
                         }
                     }
-                    if (asking && questions.isNotEmpty()) {
+                    // Open until it closes itself: answering the last question empties the list at once,
+                    // and the "noted" page - and its Change - must still be seen.
+                    if (asking) {
                         com.spendroid.ui.PennyQuestionSheet(
                             questions = questions,
                             accounts = state.accounts,
@@ -714,7 +723,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                                 onRemoveVanished = viewModel::removeVanished,
                                 onCardCheck = viewModel::answerCardCheck,
                                 onBill = { rule, isBill ->
-                                    com.spendroid.ui.PennyBills.answer(context, rule)
+                                    com.spendroid.ui.PennyBills.answer(context, rule, isBill)
                                     viewModel.setRuleIgnored(rule.key, !isBill)
                                 },
                             ),

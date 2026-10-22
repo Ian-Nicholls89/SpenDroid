@@ -331,8 +331,12 @@ class GoCardlessRepository private constructor(
         if (dao.seenSpends().isEmpty()) return
         val bank = dao.accounts().flatMap { dao.transactionsFor(it.id) }
         // Paired with a row dated before the purchase, as could happen before 5.5.3: counted
-        // again until the bank lists the purchase itself.
-        NotificationSpend.misdated(dao.seenSpends(), bank).forEach { dao.upsertSeenSpend(it.copy(matchedTransactionId = null)) }
+        // again until the bank lists the purchase itself. Once only - after that, a pairing with
+        // a pending row the bank has since settled looks the same, and is right.
+        if (!secrets.misdatedRepaired.first()) {
+            NotificationSpend.misdated(dao.seenSpends(), bank).forEach { dao.upsertSeenSpend(it.copy(matchedTransactionId = null)) }
+            secrets.setMisdatedRepaired()
+        }
         val seen = dao.seenSpends()
         val sources = spendSources.first().associateBy { it.packageName }
         val walletAccounts = dao.accounts().filter { it.walletLinked }.map { it.id }.toSet()
@@ -1165,6 +1169,7 @@ class GoCardlessRepository private constructor(
         ignoredRules = secrets.ignoredRules.first(),
         transferGroups = secrets.transferGroups.first(),
         ruleOverrides = dao.ruleOverrides(),
+        seenSpends = dao.seenSpends(),
         primaryIncomeKey = secrets.primaryIncomeKey.first(),
         budgetModel = secrets.budgetModel.first(),
         cardTiming = secrets.cardTiming.first(),
@@ -1184,6 +1189,7 @@ class GoCardlessRepository private constructor(
         secrets.addIgnoredRules(restored.ignoredRules)
         secrets.addTransferGroups(restored.transferGroups)
         restored.ruleOverrides.forEach { dao.upsertRuleOverride(it) }
+        restored.seenSpends.forEach { dao.upsertSeenSpend(it) }
         restored.primaryIncomeKey?.let { secrets.savePrimaryIncomeKey(it) }
         restored.budgetModel?.let { secrets.saveBudgetModel(it) }
         restored.cardTiming?.let { secrets.saveCardTiming(it) }

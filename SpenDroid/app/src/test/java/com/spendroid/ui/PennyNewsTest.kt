@@ -42,10 +42,37 @@ class PennyNewsTest {
     }
 
     @Test
+    fun `paying off a card isn't asked about as a bill`() {
+        val state = Sample.state()
+        PennyBills.toAsk(context, state)
+        val repay = bill("Nectar Card Payment").copy(key = "OUT|GBP|212|nectar card payment", amountMinor = -21_208)
+        val paid = state.transactions.first().copy(
+            transactionId = "repay-1", payee = "Nectar Card Payment", amountMinor = -21_208, bookingDate = "2026-10-14", isCardPayment = true,
+        )
+        val more = state.copy(rules = state.rules + repay + bill("StreamCo"), transactions = state.transactions + paid)
+        assertEquals(listOf("StreamCo"), PennyBills.toAsk(context, more).map { it.payee })
+    }
+
+    @Test
     fun `a quarterly bill seen only twice is asked about even at the start`() {
         val state = Sample.state()
         val carPark = bill("City Car Park").copy(cadence = Cadence.QUARTERLY, occurrences = 2, amountMinor = -230)
         assertEquals(listOf("City Car Park"), PennyBills.toAsk(context, state.copy(rules = state.rules + carPark)).map { it.payee })
+    }
+
+    @Test
+    fun `just spending stays just spending at a new price, until brought back`() {
+        val state = Sample.state()
+        val carPark = bill("City Car Park").copy(key = "OUT|GBP|2|city car park", cadence = Cadence.QUARTERLY, occurrences = 2, amountMinor = -230)
+        PennyBills.answer(context, carPark, isBill = false)
+        val ignored = state.copy(rules = state.rules + carPark, ignoredRules = setOf(carPark.key))
+        assertEquals(emptyList<String>(), PennyBills.stillToIgnore(context, ignored))
+        // The same car park at £3.10: a new rule, to be ignored too.
+        val dearer = carPark.copy(key = "OUT|GBP|3|city car park", amountMinor = -310)
+        assertEquals(listOf(dearer.key), PennyBills.stillToIgnore(context, ignored.copy(rules = ignored.rules + dearer)))
+        // Brought back as a bill on Regular: left alone from then on.
+        PennyBills.answer(context, carPark, isBill = true)
+        assertEquals(emptyList<String>(), PennyBills.stillToIgnore(context, ignored.copy(rules = ignored.rules + dearer)))
     }
 
     @Test

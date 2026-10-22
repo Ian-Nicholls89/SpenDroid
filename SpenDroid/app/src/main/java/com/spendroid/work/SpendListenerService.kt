@@ -45,9 +45,10 @@ class SpendListenerService : NotificationListenerService() {
                 runCatching { repo.settledSince(sbn.postTime - 24 * 60 * 60_000L) }.getOrDefault(emptyList())
                     .forEach { SpendQuestions.answered(applicationContext, it) }
                 // Counted, but the app didn't say which account: ask now, while it's fresh.
-                runCatching { repo.questionFor(source, sbn.postTime) }.getOrNull()?.let { (spend, accounts) ->
-                    SpendQuestions.ask(applicationContext, spend, accounts)
-                }
+                // Not for a penny or two: likelier a card check, which Penny asks about in the app.
+                runCatching { repo.questionFor(source, sbn.postTime) }.getOrNull()
+                    ?.takeUnless { (spend, _) -> com.spendroid.domain.NotificationSpend.isTiny(spend) }
+                    ?.let { (spend, accounts) -> SpendQuestions.ask(applicationContext, spend, accounts) }
                 // The same amount at the same shop twice today: Penny asks, once or twice?
                 runCatching { repo.repeatQuestionFor(sbn.postTime) }.getOrNull()?.let {
                     SpendQuestions.askRepeat(applicationContext, it)

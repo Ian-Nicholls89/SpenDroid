@@ -84,6 +84,7 @@ class SecretsStore(private val context: Context) {
         val SPEND_LEARNED = stringPreferencesKey("spend_learned")
         val SPEND_PLACES = stringPreferencesKey("spend_places")
         val SPEND_READING_ON = androidx.datastore.preferences.core.booleanPreferencesKey("spend_reading_on")
+        val MISDATED_REPAIRED = androidx.datastore.preferences.core.booleanPreferencesKey("misdated_repaired")
     }
 
     val secretId: Flow<String?> = sealedFlow(Keys.SECRET_ID)
@@ -307,6 +308,15 @@ class SecretsStore(private val context: Context) {
 
     suspend fun setSpendReadingOn(on: Boolean) {
         context.dataStore.edit { prefs -> prefs[Keys.SPEND_READING_ON] = on }
+    }
+
+    /** Whether 5.5.3's repair - seen spends paired with a row dated before them - has been run. */
+    val misdatedRepaired: Flow<Boolean> = context.dataStore.data
+        .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
+        .map { prefs -> prefs[Keys.MISDATED_REPAIRED] ?: false }
+
+    suspend fun setMisdatedRepaired() {
+        context.dataStore.edit { prefs -> prefs[Keys.MISDATED_REPAIRED] = true }
     }
 
     /** GoCardless's own limit on all calls, as last reported. */

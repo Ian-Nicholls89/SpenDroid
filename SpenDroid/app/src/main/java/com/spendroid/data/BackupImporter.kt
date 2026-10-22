@@ -27,6 +27,7 @@ object BackupImporter {
         val categoryRules: List<CategoryRuleEntity>,
         val ignoredRules: Set<String>,
         val ruleOverrides: List<RuleOverrideEntity> = emptyList(),
+        val seenSpends: List<com.spendroid.data.db.SeenSpendEntity> = emptyList(),
         val transferGroups: Set<String> = emptySet(),
         /** Null when the backup predates settings being kept, so nothing is overwritten. */
         val primaryIncomeKey: String? = null,
@@ -150,6 +151,26 @@ object BackupImporter {
                 decemberAnchorDay = o.nullableInt("decemberAnchorDay"),
             )
         }
+        val seenSpends = root.optJSONArray("seenSpends").mapObjects { o ->
+            com.spendroid.data.db.SeenSpendEntity(
+                id = o.getString("id"),
+                source = o.getString("source"),
+                seenAt = o.getLong("seenAt"),
+                amountMinor = o.getLong("amountMinor"),
+                currency = o.getString("currency"),
+                merchant = o.getString("merchant"),
+                cardDigits = o.nullableString("cardDigits"),
+                accountId = o.nullableString("accountId"),
+                matchedTransactionId = o.nullableString("matchedTransactionId"),
+                dismissed = o.optBoolean("dismissed", false),
+                keptByUser = o.optBoolean("keptByUser", false),
+                categoryOverride = o.nullableString("categoryOverride"),
+                accountGuessed = o.optBoolean("accountGuessed", false),
+                provisionalAccountId = o.nullableString("provisionalAccountId"),
+                pairedWithId = o.nullableString("pairedWithId"),
+                confirmedSeparate = o.optBoolean("confirmedSeparate", false),
+            )
+        }
         val settings = root.optJSONObject("settings")
         val transferGroups = mutableSetOf<String>()
         root.optJSONArray("transferGroups")?.let { arr ->
@@ -164,6 +185,7 @@ object BackupImporter {
             categoryRules = categoryRules,
             ignoredRules = ignored,
             ruleOverrides = ruleOverrides,
+            seenSpends = seenSpends,
             transferGroups = transferGroups,
             primaryIncomeKey = settings?.nullableString("primaryIncomeKey"),
             budgetModel = settings?.nullableString("budgetModel"),
