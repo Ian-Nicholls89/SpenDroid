@@ -34,13 +34,13 @@ val CategoryParam = ActionParameters.Key<String>(MAIN_EXTRA_CATEGORY)
 const val MAIN_EXTRA_CATEGORY = "com.spendroid.extra.CATEGORY"
 
 /**
- * Redraws every widget from what is already stored. Deliberately no bank call: the bank allows
- * only a few syncs a day, and a button that spent them would soon stop working.
+ * A widget's ↻: a refresh from the bank where the bank allows - see [WidgetRefresh] - with every
+ * widget saying "Refreshing…" until it's done. It used to redraw from what was stored, which
+ * changed nothing you could see.
  */
 class RefreshWidgetsAction : ActionCallback {
     override suspend fun onAction(context: Context, glanceId: GlanceId, parameters: ActionParameters) {
-        refreshWidgets(context)
-        refreshCardWidgets(context)
+        WidgetRefresh.start(context)
     }
 }
 
@@ -52,16 +52,23 @@ class RefreshWidgetsAction : ActionCallback {
  * current account stuck on 09:29, and the figures looked fresher than they were.
  */
 fun updatedLabel(accounts: List<AccountEntity>, zone: ZoneId = ZoneId.systemDefault()): String? {
-    // Accounts with no bank link never sync, so they say nothing about how fresh the figures are.
-    val linked = accounts.filter { !it.manual }
-    val current = linked.filter { it.accountType == com.spendroid.data.db.AccountType.PERSONAL }.ifEmpty { linked }
-    val latest = current.minOfOrNull { it.lastSynced }?.takeIf { it > 0L } ?: return null
+    val latest = bankSyncedAt(accounts) ?: return null
     val at = Instant.ofEpochMilli(latest).atZone(zone)
     return if (at.toLocalDate() == LocalDate.now(zone)) {
         "Updated ${at.format(DateTimeFormatter.ofPattern("HH:mm"))}"
     } else {
         "Updated ${at.format(DateTimeFormatter.ofPattern("d MMM"))}"
     }
+}
+
+/**
+ * When the bank's figures last came: the oldest sync among the current accounts, where salaries
+ * land and the budget is decided. Accounts with no bank link never sync, so say nothing of it.
+ */
+fun bankSyncedAt(accounts: List<AccountEntity>): Long? {
+    val linked = accounts.filter { !it.manual }
+    val current = linked.filter { it.accountType == com.spendroid.data.db.AccountType.PERSONAL }.ifEmpty { linked }
+    return current.minOfOrNull { it.lastSynced }?.takeIf { it > 0L }
 }
 
 /** The pace in words and a shape, so the colour is never the only thing saying it. */
@@ -357,7 +364,9 @@ fun droidBitmap(pace: com.spendroid.domain.BudgetPace.Pace, used: Float?, elapse
 suspend fun widgetDroid(context: Context, sizePx: Int = 144): Bitmap {
     val accent = widgetAccent(context)
     val snapshot = runCatching { SharedSnapshot.get(context) }.getOrNull()
-    return com.spendroid.ui.pennyStill(com.spendroid.ui.droidFaceOf(snapshot), androidx.compose.ui.graphics.Color(accent), sizePx)
+    // Syncing while a ↻ redraws the widgets, so the tap is seen to have done something.
+    val face = com.spendroid.ui.droidFaceOf(snapshot, syncing = WidgetRefresh.refreshing(context))
+    return com.spendroid.ui.pennyStill(face, androidx.compose.ui.graphics.Color(accent), sizePx)
 }
 
 /** The droid every widget header shows, provided once at the top of each widget. */

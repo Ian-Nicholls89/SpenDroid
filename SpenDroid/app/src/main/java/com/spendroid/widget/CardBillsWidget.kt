@@ -94,7 +94,7 @@ class CardBillsWidget : GlanceAppWidget() {
                     // A card with nothing owed still has a limit worth watching once it is set.
                     .filter { it.outstandingMinor > 0L || it.capMinor != null }
                     .map { bill -> bill.toRow(snapshot.asOf) },
-                updated = updatedLabel(app.repository.accounts()),
+                updated = WidgetRefresh.label(context, bankSyncedAt(app.repository.accounts())),
             )
         }.getOrNull()
     }

@@ -95,7 +95,7 @@ class ThisPeriodWidget : GlanceAppWidget() {
             Content(
                 PeriodRows.rows(choice.accountIds, snapshot, accounts, app.repository.transactions()),
                 choice.drain,
-                updatedLabel(accounts),
+                WidgetRefresh.label(context, bankSyncedAt(accounts)),
                 accounts.associate { a ->
                     a.id to com.spendroid.ui.accountColour(a, accounts, own, accent).let {
                         android.graphics.Color.argb(255, (it.red * 255).toInt(), (it.green * 255).toInt(), (it.blue * 255).toInt())

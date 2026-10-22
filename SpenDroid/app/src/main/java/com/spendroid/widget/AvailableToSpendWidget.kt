@@ -164,7 +164,7 @@ class AvailableToSpendWidget : GlanceAppWidget() {
                 ),
                 spentTodayPending = snapshot.spentTodayPendingMinor > 0L,
                 week = snapshot.lastSevenDaysMinor,
-                updated = updatedLabel(app.repository.accounts()),
+                updated = WidgetRefresh.label(context, bankSyncedAt(app.repository.accounts())),
                 categories = topCategories(app, snapshot),
                 asOf = snapshot.asOf,
                 dayLine = snapshot.cycleEnd?.let { end ->
@@ -581,6 +581,8 @@ suspend fun refreshWidgetsIfStale(context: Context, maxAgeMs: Long = 15 * 60 * 1
 
 suspend fun refreshWidgets(context: Context) {
     lastRefreshAt = System.currentTimeMillis()
+    // "widget 10:30" on each, beside when the bank's figures came.
+    WidgetRefresh.drawn(context, lastRefreshAt)
     // Worked out once, fresh, for everything this refresh draws.
     runCatching { SharedSnapshot.fresh(context) }
     runCatching { AvailableToSpendWidget().refreshEach(context) }

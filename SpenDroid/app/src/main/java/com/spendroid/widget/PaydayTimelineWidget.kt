@@ -104,7 +104,7 @@ class PaydayTimelineWidget : GlanceAppWidget() {
                 left = formatMoney(snapshot.availableToSpend, snapshot.baseCurrency),
                 payday = payday.format(DAY_FORMAT),
                 pace = BudgetPace.of(snapshot),
-                updated = updatedLabel(app.repository.accounts()),
+                updated = WidgetRefresh.label(context, bankSyncedAt(app.repository.accounts())),
             )
         }.getOrNull()
     }
