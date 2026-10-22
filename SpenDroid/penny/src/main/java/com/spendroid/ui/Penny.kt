@@ -302,7 +302,7 @@ fun MovingDroid(face: DroidFace, size: Dp, modifier: Modifier, colour: Color, li
 private val PIVOT_BASE = Offset(54f, 79f)
 private val PIVOT_ANTENNA = Offset(62f, 25f)
 
-fun DrawScope.drawPose(face: DroidFace, p: Pose, colour: Color, line: Color) {
+fun DrawScope.drawPose(face: DroidFace, p: Pose, colour: Color, line: Color, still: Boolean = false) {
     val track = Color(0xFF3A3D45)
     val cap = StrokeCap.Round
     val a = p.alpha
@@ -367,7 +367,7 @@ fun DrawScope.drawPose(face: DroidFace, p: Pose, colour: Color, line: Color) {
             }
         }
         // Around her: confetti, sweat, sleep, the sync arrow, the tick.
-        if (p.confetti >= 0f) drawConfetti(p.confetti, colour, line)
+        if (p.confetti >= 0f) drawConfetti(p.confetti, colour, line, still)
         if (p.sweat >= 0f) {
             val s = p.sweat
             val alpha = kf(s, 0.4f, 0f, 0.55f, 1f, 1f, 0f)
@@ -409,13 +409,20 @@ private val CONFETTI = listOf(
     floatArrayOf(22f, 14f, -6f, -30f), floatArrayOf(100f, 10f, 10f, -14f), floatArrayOf(4f, 52f, -24f, -10f),
 )
 
-private fun DrawScope.drawConfetti(t: Float, colour: Color, line: Color) {
+/**
+ * In a still picture - a widget's, the watch tile's - the piece flying up and right ([STILL_LEFT_OUT])
+ * is left out: it ends past the picture's edge, and only a sliver of it showed.
+ */
+private const val STILL_LEFT_OUT = 5
+
+private fun DrawScope.drawConfetti(t: Float, colour: Color, line: Color, still: Boolean = false) {
     val colours = listOf(PENNY_WARN, line, line, PENNY_WARN, colour, colour, PENNY_WARN)
     val alpha = kf(t, 0.15f, 0f, 0.25f, 1f, 0.7f, 1f, 1f, 0f)
     if (alpha <= 0f) return
     val fly = kf(t, 0.15f, 0f, 0.7f, 1f)
     val fall = kf(t, 0.7f, 0f, 1f, 14f)
     CONFETTI.forEachIndexed { i, c ->
+        if (still && i == STILL_LEFT_OUT) return@forEachIndexed
         val x = c[0] + c[2] * fly
         val y = c[1] + c[3] * fly + fall
         rotate(320f * fly, Offset(x + 2.5f, y + 2.5f)) { drawRect(colours[i].copy(alpha = alpha), Offset(x, y), Size(5f, 5f)) }
@@ -502,7 +509,7 @@ fun pennyStill(face: DroidFace, accent: Color, sizePx: Int): android.graphics.Bi
         Size(sizePx.toFloat(), sizePx.toFloat()),
     ) {
         val pose = poseAt(face.mood, DroidMoment.NONE, ms, ms, null, false)
-        scale(sizePx / 108f, pivot = Offset.Zero) { drawPose(face, pose, droidColour(face.mood, accent), Color.White) }
+        scale(sizePx / 108f, pivot = Offset.Zero) { drawPose(face, pose, droidColour(face.mood, accent), Color.White, still = true) }
     }
     return image.asAndroidBitmap()
 }

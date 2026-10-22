@@ -37,8 +37,8 @@ private const val RESOURCES = "1"
 private const val DEFAULT_ACCENT = 0xFF3DDC84.toInt()
 
 // The leading number changes whenever her pictures do, or tiles keep the old ones they have:
-// 3 from watch 1.10.2, her poses from the shared Penny.
-private fun versionFor(accent: Int) = "3-" + Integer.toHexString(accent)
+// 3 from watch 1.10.2, her poses from the shared Penny; 4 from 1.10.4, payday without its clipped piece.
+private fun versionFor(accent: Int) = "4-" + Integer.toHexString(accent)
 private fun droidId(mood: WatchMood) = "droid_" + mood.name.lowercase()
 
 /** The droid as a tile image: tiles take pictures, sent once per version. */
