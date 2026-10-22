@@ -88,6 +88,8 @@ class AvailableToSpendWidget : GlanceAppWidget() {
     private data class Summary(
         /** The user's accent, for the wordmark and glow. */
         val accent: Int = 0xFFF5A623.toInt(),
+        /** Penny in her mood's pose - or syncing, while a ↻ redraws - as the other widgets show her. */
+        val penny: android.graphics.Bitmap? = null,
         val available: String,
         val availableRounded: String,
         val days: String?,
@@ -145,6 +147,7 @@ class AvailableToSpendWidget : GlanceAppWidget() {
 
             Summary(
                 accent = widgetAccent(context),
+                penny = widgetDroid(context),
                 available = formatMoney(snapshot.availableToSpend, snapshot.baseCurrency),
                 availableRounded = poundsOnly(snapshot.availableToSpend),
                 days = days?.let { "$it day${if (it == 1) "" else "s"}" },
@@ -422,7 +425,7 @@ class AvailableToSpendWidget : GlanceAppWidget() {
     @Composable
     private fun Droid(summary: Summary, size: androidx.compose.ui.unit.Dp) {
         Image(
-            provider = ImageProvider(droidBitmap(summary.pace, summary.used, summary.elapsed, summary.accent)),
+            provider = ImageProvider(summary.penny ?: droidBitmap(summary.pace, summary.used, summary.elapsed, summary.accent)),
             contentDescription = paceLabel(summary.pace),
             modifier = GlanceModifier.width(size).height(size),
         )

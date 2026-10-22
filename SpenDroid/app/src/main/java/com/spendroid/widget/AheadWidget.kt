@@ -168,7 +168,7 @@ internal fun LockedBody(title: String, accent: Int) {
     ) {
         Column(modifier = GlanceModifier.fillMaxSize().padding(14.dp)) {
             // Figures hidden, so the droid's visor - the budget used - is hidden too: a plain droid.
-            androidx.compose.runtime.CompositionLocalProvider(LocalWidgetDroid provides droidBitmap(com.spendroid.domain.BudgetPace.Pace.ON_TRACK, null, null, accent, 72)) {
+            androidx.compose.runtime.CompositionLocalProvider(LocalWidgetDroid provides com.spendroid.ui.pennyStill(com.spendroid.ui.DroidFace(), androidx.compose.ui.graphics.Color(accent), 144)) {
                 DroidTitle(title.lowercase(), TextStyle(color = ColorProvider(Color(accent)), fontSize = 12.sp, fontWeight = FontWeight.Bold))
             }
             Spacer(GlanceModifier.height(6.dp))
