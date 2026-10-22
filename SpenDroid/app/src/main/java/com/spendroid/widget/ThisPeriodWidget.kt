@@ -139,7 +139,10 @@ class ThisPeriodWidget : GlanceAppWidget() {
         val (density, room) = rowLayout(size.height.value, content.rows.size)
         Column(modifier = GlanceModifier.fillMaxSize()) {
             // Penny says how the budget is going; that account's own caption then isn't repeated.
-            val said = content.rows.firstOrNull { it.kind != PeriodRows.Kind.STATEMENT }
+            // The budget's own row where it's there, as her face is the budget's mood; else the first
+            // account that isn't a card.
+            val said = content.rows.firstOrNull { it.kind == PeriodRows.Kind.BUDGET }
+                ?: content.rows.firstOrNull { it.kind != PeriodRows.Kind.STATEMENT }
             Row(modifier = GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.Vertical.CenterVertically) {
                 LocalWidgetDroid.current?.let { droid ->
                     Image(provider = ImageProvider(droid), contentDescription = null, modifier = GlanceModifier.size(if (density == RowDensity.LINE) 22.dp else 38.dp))

@@ -20,7 +20,7 @@ import org.json.JSONObject
 object BackupExporter {
 
     /** Bumped when the shape changes, so a future import can tell what it is reading. */
-    const val FORMAT_VERSION = 4
+    const val FORMAT_VERSION = 5
 
     fun toJson(
         accounts: List<AccountEntity>,
@@ -33,6 +33,8 @@ object BackupExporter {
         ruleOverrides: List<RuleOverrideEntity> = emptyList(),
         /** Payments read from notifications, and Penny's answers about them (format 4). */
         seenSpends: List<com.spendroid.data.db.SeenSpendEntity> = emptyList(),
+        /** Payee names, contract dates and subscription choices: [BackupPrefs] (format 5). */
+        preferences: JSONObject? = null,
         /** The income chosen to set the cycle, and how the budget is worked out. */
         primaryIncomeKey: String? = null,
         budgetModel: String? = null,
@@ -208,6 +210,7 @@ object BackupExporter {
                 }
             },
         )
+        preferences?.let { root.put("preferences", it) }
         root.put(
             "settings",
             JSONObject()

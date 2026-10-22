@@ -1184,7 +1184,8 @@ class GoCardlessRepository private constructor(
     suspend fun accounts(): List<AccountEntity> = dao.accounts()
 
     /** Full serialised copy of the local database, for backup. */
-    suspend fun exportJson(): String = BackupExporter.toJson(
+    suspend fun exportJson(preferences: org.json.JSONObject? = null): String = BackupExporter.toJson(
+        preferences = preferences,
         accounts = dao.accounts(),
         // Deliberately not transactions(), which joins through the accounts table and would
         // drop history belonging to an account row that has since gone.

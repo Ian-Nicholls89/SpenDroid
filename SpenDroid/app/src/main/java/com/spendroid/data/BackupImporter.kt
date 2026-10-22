@@ -28,6 +28,8 @@ object BackupImporter {
         val ignoredRules: Set<String>,
         val ruleOverrides: List<RuleOverrideEntity> = emptyList(),
         val seenSpends: List<com.spendroid.data.db.SeenSpendEntity> = emptyList(),
+        /** For [BackupPrefs.restore]; null in a backup from before format 5. */
+        val preferences: JSONObject? = null,
         val transferGroups: Set<String> = emptySet(),
         /** Null when the backup predates settings being kept, so nothing is overwritten. */
         val primaryIncomeKey: String? = null,
@@ -186,6 +188,7 @@ object BackupImporter {
             ignoredRules = ignored,
             ruleOverrides = ruleOverrides,
             seenSpends = seenSpends,
+            preferences = root.optJSONObject("preferences"),
             transferGroups = transferGroups,
             primaryIncomeKey = settings?.nullableString("primaryIncomeKey"),
             budgetModel = settings?.nullableString("budgetModel"),

@@ -128,8 +128,12 @@ object PennyVoice {
 
         // ---- today ----
         if (todays != null && todays > 0L && !payday) {
-            val spent = budget.spentToday
-            val left = todays - spent
+            // Today's total as Home's "Spent today" has it, cards included; what's left of today's
+            // amount is from what counts against it - card spending is met by the card's bill.
+            val onCards = budget.spentTodayOnCardsMinor
+            val spent = budget.spentTodayFromAccountsMinor + onCards
+            val left = todays - budget.spentToday
+            val cardNote = if (onCards > 0L && spent > onCards) " (${money(onCards)} of it on cards)" else if (onCards > 0L) " (on cards)" else ""
             val shops = budget.cycleSpends
                 .filter { RecurringAnalyzer.parseBookingDate(it.bookingDate) == today }
                 .groupBy { name(it.payee) }
@@ -154,8 +158,8 @@ object PennyVoice {
                 )
                 hour >= 18 && left >= 0L -> say(
                     Kind.TODAY, 80,
-                    "Today came in at ${money(spent)}, under your ${money(todays)}. The rest rolls into tomorrow.",
-                    "${money(spent)} today, ${money(left)} under your ${money(todays)} - and that goes into the days ahead.",
+                    "Today came in at ${money(spent)}$cardNote. ${money(left)} of today's ${money(todays)} rolls into tomorrow.",
+                    "${money(spent)} today$cardNote - ${money(left)} of your ${money(todays)} left, and that goes into the days ahead.",
                 )
                 hour >= 18 -> say(
                     Kind.TODAY, 82,
@@ -164,12 +168,12 @@ object PennyVoice {
                 )
                 left >= 0L -> say(
                     Kind.TODAY, 76,
-                    "${money(spent)} so far today$where. ${money(left)} of today's is left.",
-                    "So far today: ${money(spent)}$where, with ${money(left)} still to spend.",
+                    "${money(spent)} so far today$where$cardNote. ${money(left)} of today's is left.",
+                    "So far today: ${money(spent)}$where$cardNote, with ${money(left)} still to spend.",
                 )
                 else -> say(
                     Kind.TODAY, 83,
-                    "${money(spent)} so far today$where - ${money(-left)} more than today's ${money(todays)}. The days ahead share it out.",
+                    "${money(spent)} so far today$where$cardNote - ${money(-left)} more than today's ${money(todays)}. The days ahead share it out.",
                 )
             }
         }

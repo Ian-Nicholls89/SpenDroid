@@ -742,7 +742,7 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             _state.update { it.copy(exportStatus = ExportStatus.Working) }
             val status = runCatching {
-                val json = repo.exportJson()
+                val json = repo.exportJson(com.spendroid.data.BackupPrefs.export(getApplication()))
                 withContext(Dispatchers.IO) {
                     getApplication<Application>().contentResolver
                         .openOutputStream(destination)
@@ -769,7 +769,10 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
                         ?.use { input -> input.readBytes().decodeToString() }
                         ?: error("Could not open the selected file")
                 }
-                repo.importJson(json)
+                repo.importJson(json).also { restored ->
+                    com.spendroid.data.BackupPrefs.restore(getApplication(), restored.preferences)
+                    com.spendroid.data.PayeeNames.load(getApplication())
+                }
             }.fold(
                 onSuccess = { restored ->
                     if (restored.isEmpty) {
@@ -1056,6 +1059,7 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
         val versionName = BuildConfig.VERSION_NAME
         val versionCode = BuildConfig.VERSION_CODE
         // The same calculation the widgets and the watch show.
+        val budgetBefore = _state.value.budget
         val budget = repo.budgetSnapshotOf(all, budgetTime)
         val questions = com.spendroid.domain.DuplicateCheck.questions(repo.duplicateChecks(), all)
         val outlook = runCatching {
@@ -1101,6 +1105,13 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
                 versionName = versionName,
                 versionCode = versionCode,
             )
+        }
+        // Whatever changed the figures - an answer to Penny, a transfer marked, a bill ignored, an
+        // import - the widgets and the watch show them too. Before, only a sync or a notification
+        // redrew them, and they disagreed with the app until the next one.
+        if (budgetBefore != null && budget != budgetBefore) viewModelScope.launch {
+            refreshWidgets(getApplication())
+            refreshCardWidgets(getApplication())
         }
     }
 

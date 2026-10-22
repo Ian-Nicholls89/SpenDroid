@@ -89,8 +89,13 @@ class BudgetActivity : ComponentActivity() {
     private fun openOnPhone(): Boolean {
         val intent = Intent(Intent.ACTION_VIEW, Uri.parse("spendroid://open"))
             .addCategory(Intent.CATEGORY_BROWSABLE)
-        return runCatching { RemoteActivityHelper(this).startRemoteActivity(intent) }
-            .onFailure { Toast.makeText(this, "Couldn't reach your phone", Toast.LENGTH_SHORT).show() }
-            .isSuccess
+        fun failed() = Toast.makeText(this, "Couldn't reach your phone", Toast.LENGTH_SHORT).show()
+        // The request goes off on its own: whether the phone was reached is only known later,
+        // and catching only what failed at once never told anyone the phone was out of reach.
+        val sent = runCatching { RemoteActivityHelper(this).startRemoteActivity(intent) }
+            .onFailure { failed() }
+            .getOrNull() ?: return false
+        sent.addListener({ if (runCatching { sent.get() }.isFailure) failed() }, mainExecutor)
+        return true
     }
 }
