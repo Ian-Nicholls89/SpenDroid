@@ -57,6 +57,9 @@ sealed interface ImportStatus {
     object Working : ImportStatus
     data class Done(val message: String) : ImportStatus
     data class Failed(val message: String) : ImportStatus
+
+    /** An encrypted backup: asked for its passphrase, then restored with [RootViewModel.importFrom]. */
+    data class NeedsPassphrase(val source: Uri, val wrong: Boolean = false) : ImportStatus
 }
 
 sealed interface ExportStatus {
@@ -758,15 +761,32 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** Merges a backup file back into the database, then reloads what is on screen. */
-    fun importFrom(source: Uri) {
+    /** A backup restored - an encrypted one (the automatic backups) needs its [passphrase]. */
+    fun importFrom(source: Uri, passphrase: CharArray? = null) {
         viewModelScope.launch {
             _state.update { it.copy(importStatus = ImportStatus.Working) }
             val status = runCatching {
-                val json = withContext(Dispatchers.IO) {
+                val bytes = withContext(Dispatchers.IO) {
                     getApplication<Application>().contentResolver
                         .openInputStream(source)
-                        ?.use { input -> input.readBytes().decodeToString() }
+                        ?.use { input -> input.readBytes() }
                         ?: error("Could not open the selected file")
+                }
+                val json = if (com.spendroid.data.BackupCrypto.isEncrypted(bytes)) {
+                    if (passphrase == null) {
+                        _state.update { it.copy(importStatus = ImportStatus.NeedsPassphrase(source)) }
+                        return@launch
+                    }
+                    try {
+                        withContext(Dispatchers.Default) { com.spendroid.data.BackupCrypto.decrypt(bytes, passphrase) }
+                    } catch (e: com.spendroid.data.BackupCrypto.WrongPassphrase) {
+                        _state.update { it.copy(importStatus = ImportStatus.NeedsPassphrase(source, wrong = true)) }
+                        return@launch
+                    } finally {
+                        passphrase.fill(' ')
+                    }
+                } else {
+                    bytes.decodeToString()
                 }
                 repo.importJson(json).also { restored ->
                     com.spendroid.data.BackupPrefs.restore(getApplication(), restored.preferences)
@@ -788,6 +808,11 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
             _state.update { it.copy(importStatus = status) }
             if (status is ImportStatus.Done) loadLocal()
         }
+    }
+
+    /** The passphrase asked for wasn't given: nothing restored. */
+    fun cancelRestore() {
+        _state.update { it.copy(importStatus = ImportStatus.Idle) }
     }
 
     fun clearData() {

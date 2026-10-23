@@ -58,6 +58,7 @@ class BudgetApplication : Application() {
             .build()
         repository = GoCardlessRepository.create(this, db.budgetDao())
         DailyRoundupScheduler.schedule(this)
+        com.spendroid.data.AutoBackup.schedule(this)
         // Credentials saved before 3.6 were in the clear; seal them. A failure leaves them
         // readable as they were, and it tries again next start.
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {

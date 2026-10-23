@@ -94,6 +94,8 @@ fun SettingsScreen(
     onExport: (Uri) -> Unit,
     onImport: (Uri) -> Unit,
     onClearData: () -> Unit,
+    onUnlockBackup: (Uri, CharArray) -> Unit = { _, _ -> },
+    onCancelRestore: () -> Unit = {},
     onCheckUpdate: () -> Unit,
     onOpenInstallSettings: () -> Unit,
     secretId: String,
@@ -186,6 +188,8 @@ fun SettingsScreen(
                         onExport = onExport,
                         onImport = onImport,
                         onClearData = onClearData,
+                        onUnlockBackup = onUnlockBackup,
+                        onCancelRestore = onCancelRestore,
                     )
                 }
 
@@ -676,6 +680,8 @@ private fun DataSection(
     onExport: (Uri) -> Unit,
     onImport: (Uri) -> Unit,
     onClearData: () -> Unit,
+    onUnlockBackup: (Uri, CharArray) -> Unit,
+    onCancelRestore: () -> Unit,
 ) {
     Text("Data management", style = MaterialTheme.typography.titleMedium)
     Spacer(Modifier.height(8.dp))
@@ -721,7 +727,7 @@ private fun DataSection(
     ) { uri -> uri?.let(onImport) }
 
     OutlinedButton(
-        onClick = { importPicker.launch(arrayOf("application/json", "*/*")) },
+        onClick = { importPicker.launch(arrayOf("application/json", "application/octet-stream", "*/*")) },
         enabled = state.importStatus !is ImportStatus.Working,
         modifier = Modifier.fillMaxWidth(),
     ) {
@@ -744,8 +750,16 @@ private fun DataSection(
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.error,
         )
+        is ImportStatus.NeedsPassphrase -> BackupPassphraseDialog(
+            wrong = status.wrong,
+            onUnlock = { onUnlockBackup(status.source, it) },
+            onCancel = onCancelRestore,
+        )
         else -> {}
     }
+
+    Spacer(Modifier.height(16.dp))
+    AutoBackupSettings()
 
     Spacer(Modifier.height(16.dp))
     Button(
