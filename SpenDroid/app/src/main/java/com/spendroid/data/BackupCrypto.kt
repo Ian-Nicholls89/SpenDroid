@@ -37,6 +37,7 @@ object BackupCrypto {
 
     fun decrypt(bytes: ByteArray, passphrase: CharArray): String {
         require(isEncrypted(bytes)) { "Not an encrypted SpenDroid backup" }
+        require(bytes.size >= MAGIC.size + SALT + IV + 16) { "That backup file is incomplete - try another, or download it again" }
         var at = MAGIC.size
         val salt = bytes.copyOfRange(at, at + SALT).also { at += SALT }
         val iv = bytes.copyOfRange(at, at + IV).also { at += IV }

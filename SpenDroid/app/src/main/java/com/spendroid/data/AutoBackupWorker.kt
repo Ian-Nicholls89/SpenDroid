@@ -22,6 +22,13 @@ class AutoBackupWorker(context: Context, params: WorkerParameters) : CoroutineWo
         return runCatching {
             val passphrase = AutoBackup.passphrase(applicationContext) ?: error("The passphrase isn't on this phone any more - set it again")
             val json = app.repository.exportJson(BackupPrefs.export(applicationContext))
+            // Nothing here - just after "Delete all data", or a new phone before its restore: an empty
+            // backup would push a good one out of the last seven, so none is made.
+            if (!AutoBackup.hasData(json)) {
+                passphrase.fill(' ')
+                AutoBackup.record(applicationContext, ok = true, note = null, skipped = true)
+                return Result.success()
+            }
             val bytes = BackupCrypto.encrypt(json, passphrase).also { passphrase.fill(' ') }
             AutoBackup.write(applicationContext, folder, AutoBackup.nameFor(System.currentTimeMillis()), bytes)
         }.fold(
@@ -30,7 +37,7 @@ class AutoBackupWorker(context: Context, params: WorkerParameters) : CoroutineWo
                 Result.success()
             },
             onFailure = { error ->
-                val why = error.message ?: error.javaClass.simpleName
+                val why = AutoBackup.explain(error)
                 AutoBackup.record(applicationContext, ok = false, note = why)
                 if (runAttemptCount < 2) {
                     Result.retry()
@@ -53,8 +60,8 @@ class AutoBackupWorker(context: Context, params: WorkerParameters) : CoroutineWo
         val notification = NotificationCompat.Builder(applicationContext, CHANNEL)
             .setSmallIcon(com.spendroid.R.drawable.ic_stat_droid)
             .setContentTitle("Backup to your folder didn't save")
-            .setContentText("$why. Your data on the phone is fine.")
-            .setStyle(NotificationCompat.BigTextStyle().bigText("$why. Your data on the phone is fine - Settings → Data to try again, or choose another folder."))
+            .setContentText("$why Your data on the phone is fine.")
+            .setStyle(NotificationCompat.BigTextStyle().bigText("$why Your data on the phone is fine - Settings → Data to try again, or choose another folder."))
             .setContentIntent(com.spendroid.work.openAppIntent(applicationContext, NOTIFICATION_ID))
             .setAutoCancel(true)
             .build()

@@ -21,6 +21,25 @@ class AutoBackupTest {
         assertEquals(json, BackupCrypto.decrypt(bytes, "correct horse".toCharArray()))
     }
 
+    @Test(expected = IllegalArgumentException::class)
+    fun `a cut-short file says it's incomplete`() {
+        val bytes = BackupCrypto.encrypt(json, "correct horse".toCharArray())
+        BackupCrypto.decrypt(bytes.copyOf(30), "correct horse".toCharArray())
+    }
+
+    @Test
+    fun `an empty backup isn't made - it would push a good one out`() {
+        assertFalse(AutoBackup.hasData("""{"accountCount":0,"transactionCount":0}"""))
+        assertTrue(AutoBackup.hasData("""{"accountCount":1,"transactionCount":0}"""))
+        assertTrue(AutoBackup.hasData("not json"))
+    }
+
+    @Test
+    fun `a folder that's gone is said plainly`() {
+        assertTrue(AutoBackup.explain(java.io.FileNotFoundException("doc 123")).startsWith("The backup folder can't be reached"))
+        assertEquals("Disk full.", AutoBackup.explain(RuntimeException("Disk full")))
+    }
+
     @Test
     fun `a plain backup isn't taken for an encrypted one`() {
         assertFalse(BackupCrypto.isEncrypted(json.toByteArray()))

@@ -51,6 +51,7 @@ internal fun AutoBackupSettings() {
 
     var folder by remember { mutableStateOf<Uri?>(null) }
     var stopping by remember { mutableStateOf(false) }
+    var problem by remember { mutableStateOf<String?>(null) }
     val folderPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { picked ->
         folder = picked
     }
@@ -69,8 +70,12 @@ internal fun AutoBackupSettings() {
         )
     } else {
         Text(statusLine(status, backingUp), style = MaterialTheme.typography.bodyMedium)
-        status.note?.takeIf { !status.ok }?.let {
-            Text("Last try: $it", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+        status.note?.let {
+            Text(
+                if (status.ok) it else "Last try: $it",
+                style = MaterialTheme.typography.bodySmall,
+                color = if (status.ok) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
+            )
         }
         Row {
             OutlinedButton(onClick = { AutoBackup.backUpNow(context) }, enabled = !backingUp) { Text("Back up now") }
@@ -84,12 +89,13 @@ internal fun AutoBackupSettings() {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
+    problem?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
 
     folder?.let { chosen ->
         NewPassphraseDialog(
             onSet = { passphrase ->
-                runCatching { AutoBackup.turnOn(context, chosen, passphrase) }
-                    .onFailure { e -> AutoBackup.record(context, ok = false, note = e.message ?: "Couldn't use that folder") }
+                problem = runCatching { AutoBackup.turnOn(context, chosen, passphrase) }
+                    .exceptionOrNull()?.let { "Couldn't use that folder - try another." }
                 passphrase.fill(' ')
                 folder = null
                 on = AutoBackup.isOn(context)

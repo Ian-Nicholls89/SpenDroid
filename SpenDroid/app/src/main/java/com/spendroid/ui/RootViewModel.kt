@@ -805,6 +805,9 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
                 },
                 onFailure = { ImportStatus.Failed(it.message ?: it.javaClass.simpleName) },
             )
+            // Restored during setup: the data's all here, so a restart opens on Home, not the welcome
+            // screen again - while setup carries on to what this phone still needs.
+            if (status is ImportStatus.Done && !_state.value.setupDone) setupPrefs().edit().putBoolean("done", true).apply()
             _state.update { it.copy(importStatus = status) }
             if (status is ImportStatus.Done) loadLocal()
         }

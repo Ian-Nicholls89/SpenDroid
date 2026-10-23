@@ -7,8 +7,10 @@
 <data-extraction-rules>
     <cloud-backup>
         <exclude domain="file" path="datastore/budget_settings.preferences_pb" />
+        <exclude domain="sharedpref" path="auto_backup.xml" />
     </cloud-backup>
     <device-transfer>
         <exclude domain="file" path="datastore/budget_settings.preferences_pb" />
+        <exclude domain="sharedpref" path="auto_backup.xml" />
     </device-transfer>
 </data-extraction-rules>

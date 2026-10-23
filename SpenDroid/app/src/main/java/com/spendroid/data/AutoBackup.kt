@@ -100,12 +100,31 @@ object AutoBackup {
     internal fun passphrase(context: Context): CharArray? =
         prefs(context).getString(PASSPHRASE, null)?.let { SecretCipher.open(it) }?.toCharArray()
 
-    internal fun record(context: Context, ok: Boolean, note: String?, at: Long = System.currentTimeMillis()) {
+    internal fun record(context: Context, ok: Boolean, note: String?, at: Long = System.currentTimeMillis(), skipped: Boolean = false) {
         prefs(context).edit(commit = true) {
+            // Skipped as there was nothing to back up: the last real backup's time stays.
+            if (skipped) {
+                putBoolean(LAST_OK, true)
+                putString(LAST_NOTE, "Nothing to back up yet - the backups in the folder were left as they are.")
+                return@edit
+            }
             putLong(LAST_AT, at)
             putBoolean(LAST_OK, ok)
             if (note == null) remove(LAST_NOTE) else putString(LAST_NOTE, note)
         }
+    }
+
+    /** Whether a backup has anything in it: an account, or a transaction. */
+    fun hasData(json: String): Boolean = runCatching {
+        val root = org.json.JSONObject(json)
+        root.optInt("accountCount") > 0 || root.optInt("transactionCount") > 0
+    }.getOrDefault(true)
+
+    /** What went wrong, as a sentence the user can act on - the folder's errors aren't. */
+    fun explain(error: Throwable): String = when (error) {
+        is SecurityException, is java.io.FileNotFoundException, is IllegalArgumentException ->
+            "The backup folder can't be reached - it may have been moved or deleted. Choose it again in Settings → Data."
+        else -> (error.message ?: error.javaClass.simpleName).trimEnd('.') + "."
     }
 
     /** A backup's name: sorted by name, they're sorted by when. */
