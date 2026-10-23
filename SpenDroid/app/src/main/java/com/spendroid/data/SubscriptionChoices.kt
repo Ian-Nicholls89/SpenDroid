@@ -12,7 +12,7 @@ import java.time.LocalDate
  */
 class SubscriptionChoices(context: Context) {
 
-    private val prefs = context.applicationContext.getSharedPreferences("subscriptions", Context.MODE_PRIVATE)
+    private val prefs = context.applicationContext.getSharedPreferences(com.spendroid.data.Stores.SUBSCRIPTIONS, Context.MODE_PRIVATE)
 
     fun kinds(): Map<String, Subscriptions.Kind> = prefs.all.mapNotNull { (k, v) ->
         if (!k.startsWith("kind:")) return@mapNotNull null

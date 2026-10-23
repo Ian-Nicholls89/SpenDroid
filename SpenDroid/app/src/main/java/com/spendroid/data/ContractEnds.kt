@@ -11,7 +11,7 @@ import java.time.LocalDate
  */
 class ContractEnds(context: Context) {
 
-    private val prefs = context.applicationContext.getSharedPreferences("contracts", Context.MODE_PRIVATE)
+    private val prefs = context.applicationContext.getSharedPreferences(com.spendroid.data.Stores.CONTRACTS, Context.MODE_PRIVATE)
 
     fun all(): Map<String, LocalDate> = prefs.all.mapNotNull { (k, v) ->
         if (!k.startsWith("end:")) return@mapNotNull null

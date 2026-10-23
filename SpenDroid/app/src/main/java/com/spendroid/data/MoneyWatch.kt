@@ -12,7 +12,7 @@ import java.time.LocalDate
  */
 class MoneyWatch(context: Context) {
 
-    private val prefs = context.applicationContext.getSharedPreferences("money_watch", Context.MODE_PRIVATE)
+    private val prefs = context.applicationContext.getSharedPreferences(com.spendroid.data.Stores.MONEY_WATCH, Context.MODE_PRIVATE)
 
     var riseAlerts: Boolean
         get() = prefs.getBoolean("rise_alerts", true)

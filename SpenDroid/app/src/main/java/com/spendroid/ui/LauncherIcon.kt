@@ -14,7 +14,7 @@ import com.spendroid.ui.theme.Accent
  */
 object LauncherIcon {
 
-    private fun prefs(context: Context) = context.getSharedPreferences("launcher_icon", Context.MODE_PRIVATE)
+    private fun prefs(context: Context) = context.getSharedPreferences(com.spendroid.data.Stores.LAUNCHER_ICON, Context.MODE_PRIVATE)
 
     /** Whether the launcher icon takes the app's colour. Off: it stays green. */
     fun follows(context: Context): Boolean = prefs(context).getBoolean("follows", false)

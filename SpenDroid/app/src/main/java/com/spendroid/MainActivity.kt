@@ -321,7 +321,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                 var showPayday by remember { mutableStateOf(false) }
                 var review by remember { mutableStateOf<com.spendroid.domain.CycleReview?>(null) }
                 var reviewLoading by remember { mutableStateOf(false) }
-                val moments = remember { getSharedPreferences("moments", MODE_PRIVATE) }
+                val moments = remember { getSharedPreferences(com.spendroid.data.Stores.MOMENTS, MODE_PRIVATE) }
                 // Payday, once a cycle: on the day pay came, or the day after if the app wasn't opened.
                 LaunchedEffect(state.budget?.cycleStart, state.budget?.asOf) {
                     val b = state.budget ?: return@LaunchedEffect

@@ -16,7 +16,7 @@ import kotlinx.coroutines.delay
  */
 internal object WidgetRefresh {
 
-    private const val PREFS = "widget_refresh"
+    private const val PREFS = com.spendroid.data.Stores.WIDGET_REFRESH
     private const val STARTED = "started"
     private const val DRAWN = "drawn"
 

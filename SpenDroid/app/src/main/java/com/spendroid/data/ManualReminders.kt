@@ -10,7 +10,7 @@ import com.spendroid.domain.ManualAccounts
  */
 class ManualReminders(context: Context) {
 
-    private val prefs = context.applicationContext.getSharedPreferences("manual_reminders", Context.MODE_PRIVATE)
+    private val prefs = context.applicationContext.getSharedPreferences(com.spendroid.data.Stores.MANUAL_REMINDERS, Context.MODE_PRIVATE)
 
     /** Days between statements; 0 for never. A week by default. */
     var statementEveryDays: Int

@@ -39,7 +39,7 @@ enum class Chime(val label: String, val sound: Int) {
     ;
 
     companion object {
-        private const val PREFS = "watch_chime"
+        private const val PREFS = com.spendroid.data.Stores.WATCH_CHIME
         private const val KEY = "chime"
 
         /** The chosen chime, or null when it is off - which it is until chosen. */

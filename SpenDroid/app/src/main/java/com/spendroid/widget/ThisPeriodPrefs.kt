@@ -6,7 +6,7 @@ import androidx.core.content.edit
 /** Each "This period" widget's own choices: which accounts, in what order, and which way the lines run. */
 internal object ThisPeriodPrefs {
 
-    private const val PREFS = "this_period_widget"
+    private const val PREFS = com.spendroid.data.Stores.THIS_PERIOD_WIDGET
     const val MAX_ACCOUNTS = 3
 
     data class Choice(val accountIds: List<String>, val drain: Boolean)

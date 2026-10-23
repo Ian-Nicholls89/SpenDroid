@@ -26,7 +26,7 @@ import java.util.concurrent.TimeUnit
 object AutoBackup {
 
     const val KEEP = 7
-    private const val PREFS = "auto_backup"
+    private const val PREFS = com.spendroid.data.Stores.AUTO_BACKUP
     private const val FOLDER = "folder"
     private const val PASSPHRASE = "passphrase"
     private const val LAST_AT = "lastAt"

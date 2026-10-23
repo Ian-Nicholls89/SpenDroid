@@ -271,7 +271,7 @@ object WebImport {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit { putString("layouts", all.toString()) }
     }
 
-    private const val PREFS = "web_import"
+    private const val PREFS = com.spendroid.data.Stores.WEB_IMPORT
     private const val CHANNEL = "web_import"
     private const val NOTIFICATION_ID = 5102
     private const val EXPIRY_MS = 10 * 60 * 1000L

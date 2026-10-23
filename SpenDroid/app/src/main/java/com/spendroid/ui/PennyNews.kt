@@ -16,7 +16,7 @@ object PennyNews {
 
     data class News(val key: String, val line: String, val ruleKey: String? = null)
 
-    private const val PREFS = "penny_news"
+    private const val PREFS = com.spendroid.data.Stores.PENNY_NEWS
     private const val KNOWN = "known"
     private const val STARTED = "started"
 
@@ -56,7 +56,7 @@ object PennyNews {
  * seen only twice, the likeliest to be a coincidence, which she asks about too.
  */
 object PennyBills {
-    private const val PREFS = "penny_bills"
+    private const val PREFS = com.spendroid.data.Stores.PENNY_BILLS
     private const val CONFIRMED = "confirmed"
     private const val NOT_BILLS = "notBills"
     private const val STARTED = "started"

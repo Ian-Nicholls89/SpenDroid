@@ -129,7 +129,7 @@ object WebAccess {
     private fun hash(token: String): String =
         MessageDigest.getInstance("SHA-256").digest(token.toByteArray()).joinToString("") { "%02x".format(it) }
 
-    private const val PREFS = "web_access"
+    private const val PREFS = com.spendroid.data.Stores.WEB_ACCESS
     private const val KEY = "computers"
     private const val MAX_FAILURES = 5
     private const val PAUSE_MS = 30_000L

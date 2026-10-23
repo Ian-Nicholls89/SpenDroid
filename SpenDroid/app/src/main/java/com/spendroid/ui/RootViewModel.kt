@@ -529,7 +529,7 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
 
     // --- First-run setup ---
 
-    private fun setupPrefs() = getApplication<Application>().getSharedPreferences("first_run", android.content.Context.MODE_PRIVATE)
+    private fun setupPrefs() = getApplication<Application>().getSharedPreferences(com.spendroid.data.Stores.FIRST_RUN, android.content.Context.MODE_PRIVATE)
 
     /** Setup is finished: from now on the app opens on Home. */
     fun finishSetup() {
@@ -826,7 +826,7 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
             // fresh start starts at the beginning even after a restart. Device settings (the lock,
             // the icon, the watch) and remembered file layouts stay.
             val app = getApplication<Application>()
-            USER_PREFS.forEach { app.getSharedPreferences(it, android.content.Context.MODE_PRIVATE).edit().clear().commit() }
+            com.spendroid.data.Stores.clearedWithData.forEach { app.getSharedPreferences(it, android.content.Context.MODE_PRIVATE).edit().clear().commit() }
             com.spendroid.data.PayeeNames.load(app)
             _state.update { RootUiState(connections = emptyList(), manualRules = emptyList(), showRecurringOnly = true, showInternalTransfers = false, versionName = "", versionCode = 0) }
             _secretId.value = ""
@@ -1150,11 +1150,6 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     companion object {
-        /** Preferences that hold the user's data, cleared with it. */
-        private val USER_PREFS = listOf(
-            "first_run", "moments", "contracts", "subscriptions", "money_watch", "manual_reminders", "payee_names",
-            "penny_ask", "penny_bills", "penny_news", "penny_voice",
-        )
         private val MIN_MANUAL_RESYNC_MS = java.util.concurrent.TimeUnit.HOURS.toMillis(1)
 
         /** Refusals that mean the bank's consent has lapsed or been withdrawn. */

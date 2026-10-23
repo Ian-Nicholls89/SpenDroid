@@ -37,7 +37,7 @@ import kotlinx.coroutines.launch
 @Composable
 internal fun WatchSection() {
     val context = LocalContext.current
-    val prefs = remember { context.getSharedPreferences("watch_install", Context.MODE_PRIVATE) }
+    val prefs = remember { context.getSharedPreferences(com.spendroid.data.Stores.WATCH_INSTALL, Context.MODE_PRIVATE) }
     val scope = rememberCoroutineScope()
 
     var pairAddress by rememberSaveable { mutableStateOf(prefs.getString("pair", "") ?: "") }

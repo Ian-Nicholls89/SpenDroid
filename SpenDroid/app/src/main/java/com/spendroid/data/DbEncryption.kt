@@ -21,7 +21,7 @@ import java.security.SecureRandom
 object DbEncryption {
 
     const val NAME = "budget.db"
-    private const val PREFS = "db_encryption"
+    private const val PREFS = com.spendroid.data.Stores.DB_ENCRYPTION
     private const val ON = "on"
     private const val WANTED = "wanted"
     private const val KEY = "key"

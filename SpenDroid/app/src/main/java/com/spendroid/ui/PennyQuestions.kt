@@ -107,7 +107,7 @@ internal class PennyAnswers(
  * strip on Home and Spending meanwhile, and tapping Penny's notification opens it at once.
  */
 internal object PennyAsk {
-    private const val PREFS = "penny_ask"
+    private const val PREFS = com.spendroid.data.Stores.PENNY_ASK
     private const val LATER_UNTIL = "laterUntil"
     const val LATER_MS = 6 * 60 * 60 * 1000L
 

@@ -14,7 +14,7 @@ import org.json.JSONObject
 object BackupPrefs {
 
     /** The preferences files in a backup. */
-    val FILES = listOf("payee_names", "contracts", "subscriptions")
+    val FILES get() = Stores.inBackup
 
     fun export(context: Context): JSONObject = JSONObject().also { root ->
         FILES.forEach { file ->

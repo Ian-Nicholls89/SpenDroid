@@ -10,7 +10,7 @@ import androidx.core.content.edit
  */
 class Privacy(context: Context) {
 
-    private val prefs = context.applicationContext.getSharedPreferences("privacy", Context.MODE_PRIVATE)
+    private val prefs = context.applicationContext.getSharedPreferences(com.spendroid.data.Stores.PRIVACY, Context.MODE_PRIVATE)
 
     var lockEnabled: Boolean
         get() = prefs.getBoolean("lock", false)

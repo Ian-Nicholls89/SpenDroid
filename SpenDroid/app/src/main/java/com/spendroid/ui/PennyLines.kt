@@ -35,7 +35,7 @@ internal fun pennyLines(state: RootUiState, now: LocalDateTime = LocalDateTime.n
 
 /** Each time Home comes to the front: which of her top lines leads, so she doesn't repeat herself. */
 internal object PennyVisits {
-    private const val PREFS = "penny_voice"
+    private const val PREFS = com.spendroid.data.Stores.PENNY_VOICE
     private const val VISIT = "visit"
 
     fun next(context: Context): Int {

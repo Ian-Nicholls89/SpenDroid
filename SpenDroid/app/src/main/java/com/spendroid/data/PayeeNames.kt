@@ -17,7 +17,7 @@ import org.json.JSONObject
  */
 object PayeeNames {
 
-    private const val PREFS = "payee_names"
+    private const val PREFS = com.spendroid.data.Stores.PAYEE_NAMES
     private const val KEY = "names"
 
     private var names by mutableStateOf<Map<String, String>>(emptyMap())
