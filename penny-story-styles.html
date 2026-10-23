@@ -51,6 +51,10 @@ const STYLES=[
  ["F · Typewriter","Each line types itself out, then rests; little dots say which.",
   ()=>`<div class="tiny">${LINES.map(()=>'<i></i>').join('')}</div>`,
   (el,i,p,line)=>{const n=Math.min(line.length,Math.floor(line.length*Math.min(1,p*3)));const t=el.querySelector('.line');t.textContent=line.slice(0,n);t.classList.toggle('cursor',n<line.length);el.querySelectorAll('.tiny i').forEach((d,j)=>d.classList.toggle('on',j==i))}],
+ ["H · Typewriter + stretching dot","F's writing with B's dots: the line types itself out while the current dot stretches into a pill and fills.",
+  ()=>`<div class="dots">${LINES.map(()=>'<i><b></b></i>').join('')}</div>`,
+  (el,i,p,line)=>{const n=Math.min(line.length,Math.floor(line.length*Math.min(1,p*3)));const t=el.querySelector('.line');t.textContent=line.slice(0,n);t.classList.toggle('cursor',n<line.length);
+    el.querySelectorAll('.dots i').forEach((d,j)=>{d.classList.toggle('on',j==i);d.firstChild.style.width=(j==i?p*100:0)+'%'})}],
  ["G · Bulb blink","Her antenna bulb flashes as she moves on; little dots, no timer.",
   ()=>`<div class="tiny">${LINES.map(()=>'<i></i>').join('')}</div>`,
   (el,i)=>el.querySelectorAll('.tiny i').forEach((d,j)=>d.classList.toggle('on',j==i))],
@@ -60,7 +64,7 @@ STYLES.forEach(([title,note,ind,draw],k)=>{
   const c=document.createElement('div');c.className='card';
   c.innerHTML=`<div class="title">${title}</div><div class="note">${note}</div><div class="row">${penny('p'+k)}<div class="bubble"><div class="line"></div>${ind()}</div></div>`;
   grid.appendChild(c);
-  let i=0,start=performance.now()+k*350;const lineEl=c.querySelector('.line');const typing=title.startsWith('F');
+  let i=0,start=performance.now()+k*350;const lineEl=c.querySelector('.line');const typing=title.startsWith('F')||title.startsWith('H');
   if(!typing) lineEl.textContent=LINES[0];
   const tick=t=>{let p=Math.max(0,(t-start)/ms(LINES[i]));if(p>=1){i=(i+1)%LINES.length;start=t;p=0;
       if(!typing){lineEl.classList.add('out');setTimeout(()=>{lineEl.textContent=LINES[i];lineEl.classList.remove('out')},180)}
