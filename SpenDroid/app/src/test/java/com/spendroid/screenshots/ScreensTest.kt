@@ -251,7 +251,7 @@ class ScreensTest {
         }
     }
 
-    /** 5.6.8: Penny's lines as stories - the bars under her bubble, the second line halfway through its time. */
+    /** 0.5.8: Penny's lines as stories - typed out, a stretching dot along the bubble's foot; the bubble the size of her longest line. */
     @Test
     @Config(qualifiers = "w411dp-h300dp-xxhdpi")
     fun pennyStories() {
@@ -261,12 +261,13 @@ class ScreensTest {
                     com.spendroid.ui.PennySays(
                         com.spendroid.ui.DroidFace(com.spendroid.ui.DroidMood.AHEAD, 0.3f, 0.4f),
                         "That's four days in a row under your daily amount.",
-                        onTap = {}, story = com.spendroid.ui.Story(1, 5, 0.5f),
+                        onTap = {}, story = com.spendroid.ui.Story(1, 5, 0.2f, typing = true),
+                        sizing = listOf("That's four days in a row under your daily amount.", "£9.38 so far today, all at Porton Stores. £48.39 of today's is left."),
                     )
                     com.spendroid.ui.PennySays(
                         com.spendroid.ui.DroidFace(com.spendroid.ui.DroidMood.AHEAD, 0.3f, 0.4f),
                         "£9.38 so far today, all at Porton Stores. £48.39 of today's is left.",
-                        onTap = {}, story = com.spendroid.ui.Story(5, 5, 1f),
+                        onTap = {}, story = com.spendroid.ui.Story(4, 5, 0.7f),
                     )
                 }
             }
