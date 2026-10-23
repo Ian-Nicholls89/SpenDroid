@@ -257,16 +257,16 @@ private fun BudgetHero(
                 visit = PennyVisits.next(context)
                 onPauseOrDispose { }
             }
-            // Like stories: each line has its time, read from a bar filling under it, then the next;
-            // once round, back to the one she led with, and still. A tap moves on; holding pauses.
-            // [step] counts on from her lead: past the last, it's taps alone.
+            // Like stories: each line has its time, read from a bar filling under it, then the next,
+            // round and round while Home is open. A tap moves on; holding pauses. [step] counts on
+            // from the line she led with.
             // With animations off on the phone she waits for a tap instead.
             var step by remember(visit) { androidx.compose.runtime.mutableIntStateOf(0) }
             var held by remember { androidx.compose.runtime.mutableStateOf(false) }
             val progress = remember(visit, step) { androidx.compose.animation.core.Animatable(0f) }
             val lead = com.spendroid.domain.PennyVoice.lead(voice, visit)
             val shown = Math.floorMod(lead + step, voice.size)
-            val going = voice.size > 1 && step < voice.size && !droidStill()
+            val going = voice.size > 1 && !droidStill()
             LaunchedEffect(visit, step, held, going) {
                 if (!going || held) return@LaunchedEffect
                 val total = storyMillis(voice[shown].text)
@@ -275,12 +275,11 @@ private fun BudgetHero(
             }
             PennySays(
                 droidFaceOf(budget, syncing), voice[shown].text,
-                // Once round, taps go on through them by hand.
                 onTap = { step += 1; Unit }.takeIf { voice.size > 1 },
                 onHold = { held = it },
                 sizing = voice.map { it.text },
-                // Round once: every bar full, the one she's on lit.
-                story = (if (step >= voice.size) Story(voice.size, voice.size, 1f) else Story(step, voice.size, progress.value)).takeIf { voice.size > 1 },
+                // Each time round, the bars start again from the first.
+                story = Story(Math.floorMod(step, voice.size), voice.size, progress.value).takeIf { voice.size > 1 },
             )
         } else {
             PennySays(droidFaceOf(budget, syncing), com.spendroid.domain.TodaysRead.of(budget) { formatMoney(it, budget.baseCurrency) })
