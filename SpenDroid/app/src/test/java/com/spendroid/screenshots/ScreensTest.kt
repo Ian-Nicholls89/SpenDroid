@@ -785,7 +785,7 @@ class ScreensTest {
             }
         }
         listOf(
-            com.spendroid.ui.SetupStep.WELCOME, com.spendroid.ui.SetupStep.ACCOUNTS, com.spendroid.ui.SetupStep.HISTORY,
+            com.spendroid.ui.SetupStep.WELCOME, com.spendroid.ui.SetupStep.START, com.spendroid.ui.SetupStep.ACCOUNTS, com.spendroid.ui.SetupStep.HISTORY,
             com.spendroid.ui.SetupStep.FOUND, com.spendroid.ui.SetupStep.FRESH, com.spendroid.ui.SetupStep.NOTIFY,
             com.spendroid.ui.SetupStep.APPS, com.spendroid.ui.SetupStep.REMINDERS, com.spendroid.ui.SetupStep.DONE,
         ).forEach { s ->

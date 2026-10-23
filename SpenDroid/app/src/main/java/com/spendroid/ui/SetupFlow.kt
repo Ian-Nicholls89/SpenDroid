@@ -76,7 +76,7 @@ import java.time.temporal.TemporalAdjusters
 import kotlinx.coroutines.delay
 
 /** The steps of first-run setup, in the order the statements route takes them. */
-enum class SetupStep { WELCOME, ACCOUNTS, HISTORY, READING, FOUND, FRESH, NOTIFY, APPS, REMINDERS, DONE, GOCARDLESS }
+enum class SetupStep { WELCOME, START, ACCOUNTS, HISTORY, READING, FOUND, FRESH, NOTIFY, APPS, REMINDERS, DONE, GOCARDLESS }
 
 private val DAY = DateTimeFormatter.ofPattern("EEE d MMM")
 private val SHORT = DateTimeFormatter.ofPattern("d MMM")
@@ -163,7 +163,8 @@ private fun SetupSteps(
 
     fun back() {
         step = when (step) {
-            SetupStep.ACCOUNTS, SetupStep.FRESH, SetupStep.GOCARDLESS -> SetupStep.WELCOME
+            SetupStep.ACCOUNTS, SetupStep.FRESH, SetupStep.GOCARDLESS -> SetupStep.START
+            SetupStep.START -> SetupStep.WELCOME
             SetupStep.HISTORY -> SetupStep.ACCOUNTS
             SetupStep.READING, SetupStep.FOUND -> SetupStep.HISTORY
             SetupStep.NOTIFY -> if (restored) SetupStep.WELCOME else if (fresh) SetupStep.FRESH else SetupStep.FOUND
@@ -204,12 +205,15 @@ private fun SetupSteps(
             progressOf(step)?.let { (n, label) -> Progress(n, label) }
             when (step) {
                 SetupStep.WELCOME -> Welcome(
-                    onStatements = { fresh = false; step = SetupStep.ACCOUNTS },
-                    onFresh = { fresh = true; step = SetupStep.FRESH },
-                    onGoCardless = { step = SetupStep.GOCARDLESS },
+                    onStartFresh = { step = SetupStep.START },
                     importStatus = state.importStatus,
                     onRestore = onRestore,
                     onCancelRestore = onCancelRestore,
+                )
+                SetupStep.START -> Start(
+                    onStatements = { fresh = false; step = SetupStep.ACCOUNTS },
+                    onFresh = { fresh = true; step = SetupStep.FRESH },
+                    onGoCardless = { step = SetupStep.GOCARDLESS },
                 )
                 SetupStep.ACCOUNTS -> Accounts(accounts, state.accounts, onAddAccount, onRemoveAccount) { step = SetupStep.HISTORY }
                 SetupStep.HISTORY -> History(
@@ -244,7 +248,7 @@ private fun progressOf(step: SetupStep): Pair<Int, String>? = when (step) {
     SetupStep.READING, SetupStep.FOUND -> 3 to "Check"
     SetupStep.NOTIFY, SetupStep.APPS, SetupStep.REMINDERS -> 4 to "Keep it current"
     SetupStep.DONE -> 5 to "Done"
-    SetupStep.WELCOME, SetupStep.GOCARDLESS -> null
+    SetupStep.WELCOME, SetupStep.START, SetupStep.GOCARDLESS -> null
 }
 
 @Composable
@@ -286,9 +290,7 @@ private fun Primary(text: String, enabled: Boolean = true, onClick: () -> Unit) 
 
 @Composable
 private fun Welcome(
-    onStatements: () -> Unit,
-    onFresh: () -> Unit,
-    onGoCardless: () -> Unit,
+    onStartFresh: () -> Unit,
     importStatus: ImportStatus = ImportStatus.Idle,
     onRestore: (android.net.Uri, CharArray?) -> Unit = { _, _ -> },
     onCancelRestore: () -> Unit = {},
@@ -304,30 +306,12 @@ private fun Welcome(
     }
     Lead("She works out what's left until payday, after your bills and card statements. She helps you to know what you can spend, every day.")
     Lead("She is your personal and private assistant: no account, no company cloud.")
-    Choice(
-        "⇪", "Use your bank's statements", "RECOMMENDED",
-        "Download a statement from your bank's app or website. Penny reads it, then stays up to date from your banking notifications.",
-        onStatements,
-    )
-    Choice("✎", "Start from today", null, "No statement to hand? Tell Penny your balance and payday, and she learns your bills as they come.", onFresh)
-    Spacer(Modifier.height(18.dp))
-    Text(
-        "I have GoCardless keys · link a bank",
-        style = MaterialTheme.typography.labelLarge,
-        color = Charcoal.Muted,
-        textAlign = TextAlign.Center,
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onGoCardless).padding(12.dp),
-    )
+    Choice("✦", "Start fresh", null, "Set up from your bank's statements, from today's balance, or with a bank link.", onStartFresh)
     val restoring = importStatus is ImportStatus.Working
-    Text(
-        if (restoring) "Restoring your backup…" else "I have a SpenDroid backup · restore it",
-        style = MaterialTheme.typography.labelLarge,
-        color = Charcoal.Muted,
-        textAlign = TextAlign.Center,
-        modifier = Modifier.fillMaxWidth()
-            .clickable(enabled = !restoring) { picker.launch(arrayOf("application/json", "application/octet-stream", "*/*")) }
-            .padding(12.dp),
-    )
+    Choice(
+        "↺", if (restoring) "Restoring your backup…" else "Restore a backup", null,
+        "Moving from another phone? Pick a SpenDroid backup - from Google Drive, or wherever you saved it.",
+    ) { if (!restoring) picker.launch(arrayOf("application/json", "application/octet-stream", "*/*")) }
     when (importStatus) {
         is ImportStatus.Failed -> Text(
             "Couldn't restore it: ${importStatus.message}",
@@ -343,6 +327,28 @@ private fun Welcome(
         )
         else -> Unit
     }
+}
+
+/** Starting fresh: which way in. */
+@Composable
+private fun Start(onStatements: () -> Unit, onFresh: () -> Unit, onGoCardless: () -> Unit) {
+    Title("How shall Penny start?")
+    Lead("You can add accounts, statements and a bank link later, whichever you choose.")
+    Spacer(Modifier.height(6.dp))
+    Choice(
+        "⇪", "Use your bank's statements", "RECOMMENDED",
+        "Download a statement from your bank's app or website. Penny reads it, then stays up to date from your banking notifications.",
+        onStatements,
+    )
+    Choice("✎", "Start from today", null, "No statement to hand? Tell Penny your balance and payday, and she learns your bills as they come.", onFresh)
+    Spacer(Modifier.height(18.dp))
+    Text(
+        "I have GoCardless keys · link a bank",
+        style = MaterialTheme.typography.labelLarge,
+        color = Charcoal.Muted,
+        textAlign = TextAlign.Center,
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onGoCardless).padding(12.dp),
+    )
 }
 
 @Composable
