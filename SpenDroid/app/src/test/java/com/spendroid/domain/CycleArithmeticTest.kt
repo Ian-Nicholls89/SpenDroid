@@ -210,6 +210,22 @@ class CycleArithmeticTest {
         assertEquals(LocalDate.of(2026, 9, 25), onPayday(listOf(named)).cycleStart)
     }
 
+    /**
+     * Pending before payday is still waiting: the Friday before a Monday payday mustn't start the
+     * cycle early. Once payday comes, it does.
+     */
+    @Test
+    fun `a pending salary before payday waits for payday`() {
+        val early = tx("UKHSA", 183689, LocalDate.of(2026, 9, 24)).copy(isPending = true)
+        val all = paydayHistory + early
+        fun at(day: Int) = BudgetEngine.snapshot(
+            transactions = all, rules = RecurringAnalyzer.analyze(all), accounts = listOf(account),
+            referenceTime = LocalDate.of(2026, 9, day).atTime(8, 0),
+        )
+        assertEquals("the day before payday", LocalDate.of(2026, 8, 25), at(24).cycleStart)
+        assertEquals("payday itself", LocalDate.of(2026, 9, 24), at(25).cycleStart)
+    }
+
     /** Not anything pending from the employer: an expense refund, or a payment weeks early. */
     @Test
     fun `a pending refund from the employer, or one long before payday, isn't the salary`() {

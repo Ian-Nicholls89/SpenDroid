@@ -180,13 +180,16 @@ object BudgetEngine {
         // rather than the exact amount, or a pay rise - a new amount, grouped apart from the old -
         // would leave the cycle waiting for a salary that has in fact arrived.
         //
-        // Pending counts too, from three days before payday: a salary in at 3am and still pending
-        // at the 8am sync held the new cycle up for the day. A bank often names a payment
-        // differently while it's pending, so then a word of the payer's name is enough. Should a
-        // pending salary vanish, the cycle goes back with it - it's worked out afresh each time.
+        // Pending counts too - but only once payday has come: a salary in at 3am and still pending
+        // at the 8am sync held the new cycle up for the day, while one showing pending the Friday
+        // before a Monday payday mustn't start it early. It's this payday's if dated within a few
+        // days of it. A bank often names a payment differently while it's pending, so then a word
+        // of the payer's name is enough. Should a pending salary vanish, the cycle goes back with
+        // it - it's worked out afresh each time.
         val primaryIncome = chosenIncome?.let { rule ->
             val payer = rule.payee.lowercase().trim().replace(Regex("\\s+"), " ")
             val due = nextFor(rule, rule.lastOccurrence)
+            val paydayHasCome = !today.isBefore(due)
             val payerWords = words(payer)
             val landed = transactions
                 .filter { tx ->
@@ -194,7 +197,7 @@ object BudgetEngine {
                     val samePayer = if (!tx.isPending) {
                         name == payer
                     } else {
-                        (name == payer || (words(name) intersect payerWords).isNotEmpty()) &&
+                        paydayHasCome && (name == payer || (words(name) intersect payerWords).isNotEmpty()) &&
                             RecurringAnalyzer.parseBookingDate(tx.bookingDate)?.let { !it.isBefore(due.minusDays(PENDING_PAY_EARLY_DAYS)) } == true
                     }
                     tx.amountMinor > 0 && samePayer &&
@@ -576,7 +579,7 @@ object BudgetEngine {
     /** How far from its due date a card charge can be and still be that regular payment. */
     private const val CANDIDATE_WINDOW_DAYS = 5L
 
-    /** A pending salary counts as arrived from this many days before payday. */
+    /** On payday, a pending salary dated this many days before it is still this payday's. */
     private const val PENDING_PAY_EARLY_DAYS = 3L
 
     /** The words of a payer's name that say who it is: not "payment", "ltd" and the like. */
