@@ -22,7 +22,9 @@ class BudgetApplication : Application() {
         com.spendroid.data.PayeeNames.load(this)
         // PDF statements: the reader finds its fonts and glyph lists through the app.
         com.tom_roush.pdfbox.android.PDFBoxResourceLoader.init(this)
-        val db = Room.databaseBuilder(this, BudgetDb::class.java, "budget.db")
+        // Encrypted, or plain - and a change the user asked for made now, before anything opens it.
+        val passphrase = com.spendroid.data.DbEncryption.prepare(this)
+        val db = Room.databaseBuilder(this, BudgetDb::class.java, com.spendroid.data.DbEncryption.NAME)
             .addMigrations(
                 BudgetDb.MIGRATION_1_2,
                 BudgetDb.MIGRATION_2_3,
@@ -47,6 +49,12 @@ class BudgetApplication : Application() {
                 BudgetDb.MIGRATION_21_22,
                 BudgetDb.MIGRATION_22_23,
             )
+            .apply {
+                if (passphrase != null) {
+                    System.loadLibrary("sqlcipher")
+                    openHelperFactory(net.zetetic.database.sqlcipher.SupportOpenHelperFactory(passphrase))
+                }
+            }
             .build()
         repository = GoCardlessRepository.create(this, db.budgetDao())
         DailyRoundupScheduler.schedule(this)
@@ -54,6 +62,8 @@ class BudgetApplication : Application() {
         // readable as they were, and it tries again next start.
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
             runCatching { repository.sealLegacySecrets() }
+            // Opened as it is now: the copy kept from before an encryption change can go.
+            runCatching { db.openHelper.writableDatabase }.onSuccess { com.spendroid.data.DbEncryption.opened(this@BudgetApplication) }
         }
     }
 }

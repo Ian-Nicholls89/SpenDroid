@@ -68,8 +68,11 @@ android {
         applicationId = "com.spendroid"
         minSdk = 26
         targetSdk = 35
-        versionCode = 180
-        versionName = "0.5.7.6"
+        versionCode = 181
+        versionName = "0.5.8"
+        // Native code - the database's encryption - only for the processors phones have, not
+        // emulators' x86: about half the size it would add.
+        ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
 
         // Where the update checker looks for releases.
         buildConfigField("String", "GITHUB_OWNER", "\"Ian-Nicholls89\"")
@@ -135,6 +138,8 @@ dependencies {
     implementation(libs.room.ktx)
     ksp(libs.room.compiler)
     testImplementation(libs.room.testing)
+    // The database encrypted on the phone, when the user turns it on (BSD-style licence).
+    implementation(libs.sqlcipher.android)
     implementation(libs.retrofit)
     implementation(libs.retrofit.converter.gson)
     implementation(libs.okhttp)

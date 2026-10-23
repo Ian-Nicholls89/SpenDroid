@@ -16,7 +16,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -121,6 +123,67 @@ internal fun PrivacySection(onConfirmLock: (onDone: (Boolean) -> Unit) -> Unit, 
             SettingSwitch("Figures on the watch", "Your watch locks with your wrist", watch) { watch = it; privacy.watchFigures = it; refreshAll(context) }
         }
     }
+    EncryptionPanel()
+}
+
+/**
+ * The database encrypted on the phone: opt-in while it's road-tested. Turning it on or off
+ * restarts SpenDroid, and the change is made as it starts - see [com.spendroid.data.DbEncryption].
+ */
+@Composable
+private fun EncryptionPanel() {
+    val context = LocalContext.current
+    val on = remember { com.spendroid.data.DbEncryption.isOn(context) }
+    var note by remember { mutableStateOf(com.spendroid.data.DbEncryption.note(context)) }
+    var asking by remember { mutableStateOf<Boolean?>(null) }
+    Panel {
+        SectionHeading("Data on this phone")
+        SettingSwitch(
+            "Encrypt it",
+            if (on) "On: your history is stored encrypted, with a key only this phone has" else "Your history stored encrypted, with a key only this phone has",
+            on,
+        ) { asking = it }
+        note?.let {
+            Text(it, style = MaterialTheme.typography.bodySmall, color = Charcoal.Warn, modifier = Modifier.padding(top = 6.dp))
+            TextButton(onClick = { com.spendroid.data.DbEncryption.clearNote(context); note = null }) { Text("OK") }
+        }
+    }
+    asking?.let { turnOn ->
+        AlertDialog(
+            onDismissRequest = { asking = null },
+            title = { Text(if (turnOn) "Encrypt your data?" else "Stop encrypting?") },
+            text = {
+                Text(
+                    if (turnOn) {
+                        "SpenDroid restarts, and writes your history out again encrypted - a few seconds. It checks every " +
+                            "row came across before it swaps, and keeps the old copy until the new one has opened.\n\n" +
+                            "Export a backup first (Settings → Data), to be safe.\n\n" +
+                            "The key stays on this phone. Android's own backup can't bring encrypted data to a new phone - " +
+                            "SpenDroid's backup is the way to move it."
+                    } else {
+                        "SpenDroid restarts, and writes your history out again unencrypted, checking every row came across."
+                    },
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    com.spendroid.data.DbEncryption.request(context, turnOn)
+                    restart(context)
+                }) { Text(if (turnOn) "Restart and encrypt" else "Restart and decrypt") }
+            },
+            dismissButton = { TextButton(onClick = { asking = null }) { Text("Not now") } },
+        )
+    }
+}
+
+/** SpenDroid closed and opened again: the database is only changed while nothing has it open. */
+private fun restart(context: android.content.Context) {
+    val app = context.applicationContext
+    val launch = app.packageManager.getLaunchIntentForPackage(app.packageName)
+        ?.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_CLEAR_TASK) ?: return
+    val pending = android.app.PendingIntent.getActivity(app, 7001, launch, android.app.PendingIntent.FLAG_IMMUTABLE or android.app.PendingIntent.FLAG_CANCEL_CURRENT)
+    app.getSystemService(android.app.AlarmManager::class.java).set(android.app.AlarmManager.RTC, System.currentTimeMillis() + 500, pending)
+    kotlin.system.exitProcess(0)
 }
 
 /** Widgets and the watch show figures by these settings, so they're redrawn when one changes. */

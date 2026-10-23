@@ -40,3 +40,7 @@
 -keep class com.tom_roush.harmony.** { *; }
 -dontwarn com.gemalto.jp2.JP2Decoder
 -dontwarn com.gemalto.jp2.JP2Encoder
+
+# The database's encryption (SQLCipher): its classes are reached from native code.
+-keep,includedescriptorclasses class net.zetetic.database.** { *; }
+-keep,includedescriptorclasses interface net.zetetic.database.** { *; }
