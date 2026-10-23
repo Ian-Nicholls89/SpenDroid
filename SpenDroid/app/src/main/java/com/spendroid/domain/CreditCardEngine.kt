@@ -222,11 +222,13 @@ object CreditCardEngine {
             // Pending charges are on the card as surely as booked ones - a lunch paid on it an hour
             // ago - and leaving them out showed "£0.00 since statement" with two purchases made.
             // Only charges: a pending credit is not yet a refund or a payment worth counting.
+            // Dated on the closing day too: still pending at the close, it wasn't on the statement
+            // that closed - three purchases made the day the statement closed showed nowhere.
             val pendingCharges = byAccount[card.id].orEmpty()
                 .filter { it.isPending && it.amountMinor < 0 }
                 .filter { tx ->
                     statementClose == null ||
-                        RecurringAnalyzer.parseBookingDate(tx.bookingDate)?.isAfter(statementClose) != false
+                        RecurringAnalyzer.parseBookingDate(tx.bookingDate)?.isBefore(statementClose) != true
                 }
                 .sumOf { -it.amountMinor }
 
