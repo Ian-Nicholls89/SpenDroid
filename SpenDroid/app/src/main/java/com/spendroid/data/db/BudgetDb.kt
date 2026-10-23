@@ -25,7 +25,9 @@ import kotlinx.coroutines.flow.Flow
         DuplicateCheckEntity::class,
     ],
     version = 23,
-    exportSchema = false,
+    // Each version's tables written to app/schemas, kept in the repository: the record a
+    // migration is tested against (see MigrationTest). Never edit one by hand.
+    exportSchema = true,
 )
 abstract class BudgetDb : RoomDatabase() {
     abstract fun budgetDao(): BudgetDao

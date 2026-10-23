@@ -8,6 +8,11 @@ plugins {
 }
 
 android {
+    // The saved database layouts, for the migration tests to read.
+    sourceSets {
+        // Robolectric reads the debug build's assets; the release build carries none of this.
+        getByName("debug").assets.srcDir("$projectDir/schemas")
+    }
     testOptions {
         unitTests.isIncludeAndroidResources = true
     }
@@ -129,6 +134,7 @@ dependencies {
     implementation(libs.room.runtime)
     implementation(libs.room.ktx)
     ksp(libs.room.compiler)
+    testImplementation(libs.room.testing)
     implementation(libs.retrofit)
     implementation(libs.retrofit.converter.gson)
     implementation(libs.okhttp)
@@ -168,4 +174,9 @@ tasks.withType<Test>().configureEach {
         systemProperty("roborazzi.test.record", "true")
         systemProperty("roborazzi.output.dir", rootProject.file("build/screenshots").absolutePath)
     }
+}
+
+// Room writes each database version's tables here, for migrations to be tested against.
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
 }
