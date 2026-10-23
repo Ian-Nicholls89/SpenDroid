@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Penny's lines - how they move on</title>
+<style>
+  body{margin:0;background:#0c0d10;color:#e7e9ee;font:15px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;padding:18px}
+  h1{font-size:19px;margin:0 0 4px} p.sub{color:#9aa0aa;margin:0 0 18px;font-size:13px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:16px}
+  .card{background:linear-gradient(160deg,#1c3a2a,#18191d 55%);border-radius:18px;padding:14px 16px 18px}
+  .title{font-weight:700;font-size:14px} .note{color:#9aa0aa;font-size:12px;margin:2px 0 12px;min-height:32px}
+  .row{display:flex;gap:10px;align-items:flex-start}
+  .bubble{position:relative;background:#1f2127;border-radius:4px 14px 14px 14px;padding:9px 12px;flex:1;min-height:66px}
+  .line{transition:opacity .35s} .line.out{opacity:0}
+  svg.penny{flex:none}
+  .bars{display:flex;gap:4px;margin-top:8px;width:110px} .bars i{flex:1;height:3px;border-radius:2px;background:#3a3d45;overflow:hidden;position:relative}
+  .bars i b{position:absolute;inset:0;width:0;background:#9aa0aa}
+  .dots{display:flex;gap:5px;margin-top:9px;align-items:center} .dots i{height:5px;width:5px;border-radius:3px;background:#3a3d45;position:relative;overflow:hidden;transition:width .35s}
+  .dots i.on{width:26px} .dots i b{position:absolute;inset:0;width:0;background:#9aa0aa}
+  .ring{position:absolute;right:8px;bottom:6px;width:26px;height:26px} .ring text{fill:#9aa0aa;font-size:9px;font-weight:700}
+  .visor{margin-top:9px;width:96px;height:9px;border-radius:3px;background:#3a3d45;position:relative;overflow:hidden}
+  .visor b{position:absolute;inset:0;width:0;background:#3ddc84} .visor u{position:absolute;top:-2px;width:3px;height:13px;background:#fff;border-radius:2px}
+  .count{color:#6b707a;font-size:11px;margin-left:8px}
+  .sweep{position:absolute;left:12px;right:12px;bottom:6px;height:2px;background:transparent} .sweep b{display:block;height:2px;width:0;background:#3ddc84;opacity:.8;border-radius:1px}
+  .tiny{display:flex;gap:4px;margin-top:8px} .tiny i{width:4px;height:4px;border-radius:2px;background:#3a3d45} .tiny i.on{background:#9aa0aa}
+  .flash{animation:flash .6s ease-out}
+  @keyframes flash{0%{filter:drop-shadow(0 0 0 #3ddc84)}40%{filter:drop-shadow(0 0 7px #3ddc84) brightness(1.6)}100%{filter:none}}
+  .cursor::after{content:"▍";color:#3ddc84;animation:blink .8s steps(1) infinite} @keyframes blink{50%{opacity:0}}
+</style></head><body>
+<h1>Penny's lines - how they move on</h1>
+<p class="sub">Each card runs on its own: about 4 seconds a line plus a little a word, looping. Made-up figures. On the phone a tap skips and holding pauses in every style.</p>
+<div class="grid" id="grid"></div>
+<script>
+const LINES=["£9.38 so far today, all at Porton Stores. £48.39 of today's is left.","That's four days in a row under your daily amount.","StreamCo takes £10.99 tomorrow. It's already allowed for.","Work lunches are £6.20 under usual this cycle.","Saturdays usually cost you about £40. Today's allowance covers that."];
+const ms=l=>Math.min(9000,4000+l.split(' ').length*150);
+const penny=(id)=>`<svg class="penny" id="${id}" width="56" height="56" viewBox="0 0 108 108"><line x1="62" y1="25" x2="67" y2="15" stroke="#fff" stroke-width="4" stroke-linecap="round"/><circle cx="68" cy="13" r="4.5" fill="#3ddc84"/><rect x="26" y="27" width="56" height="52" rx="16" fill="none" stroke="#fff" stroke-width="5"/><rect x="33" y="40" width="42" height="14" rx="4.2" fill="#3a3d45"/><rect x="33" y="40" width="14" height="14" rx="4.2" fill="#3ddc84"/><rect x="45" y="36" width="4" height="22" rx="2" fill="#fff"/><path d="M45 66 Q54 72 63 66" fill="none" stroke="#fff" stroke-width="4.5" stroke-linecap="round"/></svg>`;
+const STYLES=[
+ ["A · Story bars (now)","Bars fill one after another, as on Instagram.",
+  ()=>`<div class="bars">${LINES.map(()=>'<i><b></b></i>').join('')}</div>`,
+  (el,i,p)=>el.querySelectorAll('.bars i b').forEach((b,j)=>b.style.width=(j<i?100:j==i?p*100:0)+'%')],
+ ["B · Stretching dot","The current dot stretches into a pill and fills; the rest stay dots.",
+  ()=>`<div class="dots">${LINES.map(()=>'<i><b></b></i>').join('')}</div>`,
+  (el,i,p)=>el.querySelectorAll('.dots i').forEach((d,j)=>{d.classList.toggle('on',j==i);d.firstChild.style.width=(j==i?p*100:0)+'%'})],
+ ["C · Countdown ring","A small ring in the corner runs down, with which line this is.",
+  ()=>`<svg class="ring" viewBox="0 0 26 26"><circle cx="13" cy="13" r="11" fill="none" stroke="#3a3d45" stroke-width="2"/><circle class="arc" cx="13" cy="13" r="11" fill="none" stroke="#9aa0aa" stroke-width="2" stroke-dasharray="69.1" stroke-dashoffset="69.1" transform="rotate(-90 13 13)" stroke-linecap="round"/><text x="13" y="16" text-anchor="middle"></text></svg>`,
+  (el,i,p)=>{el.querySelector('.arc').setAttribute('stroke-dashoffset',69.1*(1-p));el.querySelector('.ring text').textContent=(i+1)+'/'+LINES.length}],
+ ["D · Penny's visor","A little visor - her own pace bar - fills, the tick marking which line.",
+  ()=>`<div style="display:flex;align-items:center"><div class="visor"><b></b><u></u></div><span class="count"></span></div>`,
+  (el,i,p)=>{el.querySelector('.visor b').style.width=p*100+'%';el.querySelector('.visor u').style.left=(i/(LINES.length-1))*93+'%';el.querySelector('.count').textContent=(i+1)+' of '+LINES.length}],
+ ["E · Underline sweep","A thin line sweeps under the words; no counter.",
+  ()=>`<div class="sweep"><b></b></div>`,
+  (el,i,p)=>el.querySelector('.sweep b').style.width=p*100+'%'],
+ ["F · Typewriter","Each line types itself out, then rests; little dots say which.",
+  ()=>`<div class="tiny">${LINES.map(()=>'<i></i>').join('')}</div>`,
+  (el,i,p,line)=>{const n=Math.min(line.length,Math.floor(line.length*Math.min(1,p*3)));const t=el.querySelector('.line');t.textContent=line.slice(0,n);t.classList.toggle('cursor',n<line.length);el.querySelectorAll('.tiny i').forEach((d,j)=>d.classList.toggle('on',j==i))}],
+ ["G · Bulb blink","Her antenna bulb flashes as she moves on; little dots, no timer.",
+  ()=>`<div class="tiny">${LINES.map(()=>'<i></i>').join('')}</div>`,
+  (el,i)=>el.querySelectorAll('.tiny i').forEach((d,j)=>d.classList.toggle('on',j==i))],
+];
+const grid=document.getElementById('grid');
+STYLES.forEach(([title,note,ind,draw],k)=>{
+  const c=document.createElement('div');c.className='card';
+  c.innerHTML=`<div class="title">${title}</div><div class="note">${note}</div><div class="row">${penny('p'+k)}<div class="bubble"><div class="line"></div>${ind()}</div></div>`;
+  grid.appendChild(c);
+  let i=0,start=performance.now()+k*350;const lineEl=c.querySelector('.line');const typing=title.startsWith('F');
+  if(!typing) lineEl.textContent=LINES[0];
+  const tick=t=>{let p=Math.max(0,(t-start)/ms(LINES[i]));if(p>=1){i=(i+1)%LINES.length;start=t;p=0;
+      if(!typing){lineEl.classList.add('out');setTimeout(()=>{lineEl.textContent=LINES[i];lineEl.classList.remove('out')},180)}
+      if(title.startsWith('G')){const s=c.querySelector('svg.penny');s.classList.remove('flash');void s.getBBox();s.classList.add('flash')}}
+    draw(c,i,p,LINES[i]);requestAnimationFrame(tick)};
+  requestAnimationFrame(tick);
+});
+</script></body></html>
