@@ -111,12 +111,16 @@ fun SetupFlow(
     initialStep: SetupStep = SetupStep.WELCOME,
     /** For screenshots: Android's notification access, as if granted. */
     accessGranted: Boolean? = null,
+    /** A SpenDroid backup restored - on a new phone - with its passphrase if it's an encrypted one. */
+    onRestore: (android.net.Uri, CharArray?) -> Unit = { _, _ -> },
+    onCancelRestore: () -> Unit = {},
 ) {
     // Drawn outside the app's Scaffold, which is what gives text its colour everywhere else.
     androidx.compose.runtime.CompositionLocalProvider(androidx.compose.material3.LocalContentColor provides Charcoal.Text) {
         SetupSteps(
             state, onAddAccount, onRemoveAccount, onStartFromToday, onAddPay, onSetBalance, onIgnoreRule,
             onSaveSources, onUpdateAccount, onReload, onFinish, gocardless, importScreen, initialStep, accessGranted,
+            onRestore, onCancelRestore,
         )
     }
 }
@@ -139,8 +143,18 @@ private fun SetupSteps(
     importScreen: @Composable (accountId: String, onDone: () -> Unit) -> Unit,
     initialStep: SetupStep,
     accessGranted: Boolean?,
+    onRestore: (android.net.Uri, CharArray?) -> Unit,
+    onCancelRestore: () -> Unit,
 ) {
     var step by rememberSaveable { mutableStateOf(initialStep) }
+    // Restored from a backup: the accounts are in, so it's on to what this phone still needs.
+    var restored by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(state.importStatus) {
+        if (state.importStatus is ImportStatus.Done && step == SetupStep.WELCOME) {
+            restored = true
+            step = SetupStep.NOTIFY
+        }
+    }
     // Which way in: statements, or starting from today. Back follows it.
     var fresh by rememberSaveable { mutableStateOf(initialStep == SetupStep.FRESH) }
     var importing by rememberSaveable { mutableStateOf<String?>(null) }
@@ -152,7 +166,7 @@ private fun SetupSteps(
             SetupStep.ACCOUNTS, SetupStep.FRESH, SetupStep.GOCARDLESS -> SetupStep.WELCOME
             SetupStep.HISTORY -> SetupStep.ACCOUNTS
             SetupStep.READING, SetupStep.FOUND -> SetupStep.HISTORY
-            SetupStep.NOTIFY -> if (fresh) SetupStep.FRESH else SetupStep.FOUND
+            SetupStep.NOTIFY -> if (restored) SetupStep.WELCOME else if (fresh) SetupStep.FRESH else SetupStep.FOUND
             SetupStep.APPS -> SetupStep.NOTIFY
             SetupStep.REMINDERS -> SetupStep.NOTIFY
             SetupStep.DONE -> SetupStep.REMINDERS
@@ -193,6 +207,9 @@ private fun SetupSteps(
                     onStatements = { fresh = false; step = SetupStep.ACCOUNTS },
                     onFresh = { fresh = true; step = SetupStep.FRESH },
                     onGoCardless = { step = SetupStep.GOCARDLESS },
+                    importStatus = state.importStatus,
+                    onRestore = onRestore,
+                    onCancelRestore = onCancelRestore,
                 )
                 SetupStep.ACCOUNTS -> Accounts(accounts, state.accounts, onAddAccount, onRemoveAccount) { step = SetupStep.HISTORY }
                 SetupStep.HISTORY -> History(
@@ -212,7 +229,7 @@ private fun SetupSteps(
                     Spacer(Modifier.height(14.dp))
                     Primary("Finish") { step = SetupStep.DONE }
                 }
-                SetupStep.DONE -> Done(state, accounts, onFinish)
+                SetupStep.DONE -> Done(state, if (restored) state.accounts else accounts, onFinish)
                 SetupStep.GOCARDLESS -> Unit
             }
         }
@@ -268,7 +285,17 @@ private fun Primary(text: String, enabled: Boolean = true, onClick: () -> Unit) 
 }
 
 @Composable
-private fun Welcome(onStatements: () -> Unit, onFresh: () -> Unit, onGoCardless: () -> Unit) {
+private fun Welcome(
+    onStatements: () -> Unit,
+    onFresh: () -> Unit,
+    onGoCardless: () -> Unit,
+    importStatus: ImportStatus = ImportStatus.Idle,
+    onRestore: (android.net.Uri, CharArray?) -> Unit = { _, _ -> },
+    onCancelRestore: () -> Unit = {},
+) {
+    val picker = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.OpenDocument(),
+    ) { uri -> uri?.let { onRestore(it, null) } }
     Spacer(Modifier.height(28.dp))
     Title("Meet Penny")
     // And there she is: she drops in, lands, lights up and waves.
@@ -291,6 +318,31 @@ private fun Welcome(onStatements: () -> Unit, onFresh: () -> Unit, onGoCardless:
         textAlign = TextAlign.Center,
         modifier = Modifier.fillMaxWidth().clickable(onClick = onGoCardless).padding(12.dp),
     )
+    val restoring = importStatus is ImportStatus.Working
+    Text(
+        if (restoring) "Restoring your backup…" else "I have a SpenDroid backup · restore it",
+        style = MaterialTheme.typography.labelLarge,
+        color = Charcoal.Muted,
+        textAlign = TextAlign.Center,
+        modifier = Modifier.fillMaxWidth()
+            .clickable(enabled = !restoring) { picker.launch(arrayOf("application/json", "application/octet-stream", "*/*")) }
+            .padding(12.dp),
+    )
+    when (importStatus) {
+        is ImportStatus.Failed -> Text(
+            "Couldn't restore it: ${importStatus.message}",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.error,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        is ImportStatus.NeedsPassphrase -> BackupPassphraseDialog(
+            wrong = importStatus.wrong,
+            onUnlock = { onRestore(importStatus.source, it) },
+            onCancel = onCancelRestore,
+        )
+        else -> Unit
+    }
 }
 
 @Composable

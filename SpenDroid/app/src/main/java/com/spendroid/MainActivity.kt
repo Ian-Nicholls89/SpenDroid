@@ -622,6 +622,8 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                         onUpdateAccount = viewModel::updateAccount,
                         onReload = viewModel::reloadLocal,
                         onFinish = viewModel::finishSetup,
+                        onRestore = { uri, passphrase -> viewModel.importFrom(uri, passphrase) },
+                        onCancelRestore = viewModel::cancelRestore,
                         gocardless = {
                             OnboardingScreen(
                                 state = state,
