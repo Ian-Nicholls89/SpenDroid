@@ -176,16 +176,28 @@ object BudgetEngine {
         val designationLost = primaryIncomeKey != null && designated == null
         val chosenIncome = designated ?: incomeRules.maxByOrNull { monthlyEquivalent(it) }
 
-        // The cycle turns on a confirmed salary; a pending one can still change or vanish, so it
-        // is not counted yet. Recognised by who pays it and roughly how much rather than the
-        // exact amount, or a pay rise - a new amount, grouped apart from the old - would leave
-        // the cycle waiting for a salary that has in fact arrived.
+        // The cycle turns when the salary lands. Recognised by who pays it and roughly how much
+        // rather than the exact amount, or a pay rise - a new amount, grouped apart from the old -
+        // would leave the cycle waiting for a salary that has in fact arrived.
+        //
+        // Pending counts too, from three days before payday: a salary in at 3am and still pending
+        // at the 8am sync held the new cycle up for the day. A bank often names a payment
+        // differently while it's pending, so then a word of the payer's name is enough. Should a
+        // pending salary vanish, the cycle goes back with it - it's worked out afresh each time.
         val primaryIncome = chosenIncome?.let { rule ->
             val payer = rule.payee.lowercase().trim().replace(Regex("\\s+"), " ")
+            val due = nextFor(rule, rule.lastOccurrence)
+            val payerWords = words(payer)
             val landed = transactions
                 .filter { tx ->
-                    !tx.isPending && tx.amountMinor > 0 &&
-                        tx.payee.lowercase().trim().replace(Regex("\\s+"), " ") == payer &&
+                    val name = tx.payee.lowercase().trim().replace(Regex("\\s+"), " ")
+                    val samePayer = if (!tx.isPending) {
+                        name == payer
+                    } else {
+                        (name == payer || (words(name) intersect payerWords).isNotEmpty()) &&
+                            RecurringAnalyzer.parseBookingDate(tx.bookingDate)?.let { !it.isBefore(due.minusDays(PENDING_PAY_EARLY_DAYS)) } == true
+                    }
+                    tx.amountMinor > 0 && samePayer &&
                         if (rule.isVariable) {
                             RecurringAnalyzer.matches(rule, tx)
                         } else {
@@ -563,6 +575,15 @@ object BudgetEngine {
 
     /** How far from its due date a card charge can be and still be that regular payment. */
     private const val CANDIDATE_WINDOW_DAYS = 5L
+
+    /** A pending salary counts as arrived from this many days before payday. */
+    private const val PENDING_PAY_EARLY_DAYS = 3L
+
+    /** The words of a payer's name that say who it is: not "payment", "ltd" and the like. */
+    private fun words(name: String): Set<String> =
+        name.split(Regex("[^a-z0-9]+")).filter { it.length >= 3 && it !in PAYER_FILLER }.toSet()
+
+    private val PAYER_FILLER = setOf("ltd", "limited", "plc", "the", "and", "payment", "faster", "bacs", "salary", "wages", "credit", "from", "ref", "bgc", "fps")
 
     /** How long a late salary is waited for before the cycle moves on without it. */
     private const val MAX_WAIT_FOR_INCOME_DAYS = 7L

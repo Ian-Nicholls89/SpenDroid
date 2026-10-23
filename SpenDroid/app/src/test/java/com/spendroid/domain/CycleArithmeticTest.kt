@@ -184,20 +184,39 @@ class CycleArithmeticTest {
     }
 
     /**
-     * The reported case: payday has come and the salary is still pending. The cycle does not
-     * roll over on a pending payment, which can still change - but nor does it skip today's
-     * payday for next month's, which made one cycle two months long and read "53% through"
-     * on the first day. It is the old cycle's last day, with income due today.
+     * Payday has come and nothing has arrived yet: the cycle doesn't skip today's payday for next
+     * month's, which made one cycle two months long and read "53% through" on the first day. It
+     * is the old cycle's last day, with income due today.
      */
     @Test
-    fun `until the salary is confirmed, payday is due rather than skipped`() {
-        val pending = tx("UKHSA", 183689, LocalDate.of(2026, 9, 24)).copy(isPending = true)
-        val s = onPayday(listOf(pending))
+    fun `until the salary arrives, payday is due rather than skipped`() {
+        val s = onPayday(emptyList())
 
         assertEquals(LocalDate.of(2026, 8, 25), s.cycleStart)
         assertEquals(LocalDate.of(2026, 9, 25), s.nextIncomeDate)
         assertEquals(0, s.daysUntilNextIncome)
         assertEquals(5000L, s.spentThisCycle)
+    }
+
+    /**
+     * 0.5.8: a salary in at 3am and still pending at the 8am sync held the new cycle up for the
+     * day. Pending on payday, it's arrived - named as the bank names pending payments, too.
+     */
+    @Test
+    fun `a pending salary on payday starts the new cycle`() {
+        val pending = tx("UKHSA", 183689, LocalDate.of(2026, 9, 25)).copy(isPending = true)
+        assertEquals(LocalDate.of(2026, 9, 25), onPayday(listOf(pending)).cycleStart)
+        val named = tx("FASTER PAYMENT UKHSA SALARY", 183689, LocalDate.of(2026, 9, 25)).copy(isPending = true)
+        assertEquals(LocalDate.of(2026, 9, 25), onPayday(listOf(named)).cycleStart)
+    }
+
+    /** Not anything pending from the employer: an expense refund, or a payment weeks early. */
+    @Test
+    fun `a pending refund from the employer, or one long before payday, isn't the salary`() {
+        val refund = tx("UKHSA", 4_250, LocalDate.of(2026, 9, 25)).copy(isPending = true)
+        assertEquals(LocalDate.of(2026, 8, 25), onPayday(listOf(refund)).cycleStart)
+        val early = tx("UKHSA", 183689, LocalDate.of(2026, 9, 10)).copy(isPending = true)
+        assertEquals(LocalDate.of(2026, 8, 25), onPayday(listOf(early)).cycleStart)
     }
 
     /** Once it books, the new cycle starts from the day it landed, and runs a month. */
