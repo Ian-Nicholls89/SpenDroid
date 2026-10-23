@@ -150,6 +150,21 @@ class NotificationSpendTest {
     }
 
     @Test
+    fun `paired with a pending row the bank stopped listing, it counts again - and pairs with the booked row`() {
+        // £17.24 at Waterstones: paired with First Direct's pending row at 13:30, which a later
+        // sync no longer listed - and the purchase showed nowhere.
+        val waterstones = seen("w", 1724, at(23, 13, 19), matched = "pending-1")
+        val now = at(23, 17, 0)
+        assertEquals(listOf("w"), NotificationSpend.orphaned(listOf(waterstones), listOf(bank("other", 500, "2026-09-23")), now).map { it.id })
+        // Still listed, or long since booked: left as it is.
+        assertTrue(NotificationSpend.orphaned(listOf(waterstones), listOf(bank("pending-1", 1724, "2026-09-23")), now).isEmpty())
+        assertTrue(NotificationSpend.orphaned(listOf(waterstones), emptyList(), at(23, 17, 0) + 6 * 86_400_000L).isEmpty())
+        // Unpaired, it pairs again with the bank's booked row when that comes.
+        val unpaired = waterstones.copy(matchedTransactionId = null)
+        assertEquals("booked-1", NotificationSpend.matches(listOf(unpaired), listOf(bank("booked-1", 1724, "2026-09-24")), zone)["w"]!!.transactionId)
+    }
+
+    @Test
     fun `the bank's row takes over, one to one`() {
         val coffees = listOf(seen("a", 320, at(26, 9)), seen("b", 320, at(26, 15)))
         val rows = listOf(bank("t1", 320, "2026-09-27"), bank("t2", 320, "2026-09-28"))

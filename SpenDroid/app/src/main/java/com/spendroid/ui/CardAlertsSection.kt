@@ -52,6 +52,7 @@ import androidx.lifecycle.repeatOnLifecycle
 import com.spendroid.data.db.AccountEntity
 import com.spendroid.data.db.NotificationSampleEntity
 import com.spendroid.domain.NotificationSpend
+import com.spendroid.domain.countedOn
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -92,6 +93,8 @@ internal fun CardAlertsSection(
     learned: List<NotificationSpend.Learned> = emptyList(),
     onTeach: (Long, Boolean) -> Unit = { _, _ -> },
     onForgetLearned: () -> Unit = {},
+    /** What became of a notification counted as a payment: see [notificationFate]. */
+    fate: (NotificationSampleEntity) -> String? = { null },
 ) {
     val context = LocalContext.current
     var access by remember { mutableStateOf(hasAccess(context)) }
@@ -280,6 +283,7 @@ internal fun CardAlertsSection(
             learned = learned,
             onTeach = onTeach,
             onDismiss = { showSamples = false },
+            fate = fate,
         )
     }
 }
@@ -345,6 +349,7 @@ private fun SamplesDialog(
     learned: List<NotificationSpend.Learned>,
     onTeach: (Long, Boolean) -> Unit,
     onDismiss: () -> Unit,
+    fate: (NotificationSampleEntity) -> String? = { null },
 ) {
     var teaching by remember { mutableStateOf<NotificationSampleEntity?>(null) }
     // Penny's reply to what she was just taught, at the top of the list.
@@ -413,6 +418,7 @@ private fun SamplesDialog(
                         )
                         s.title?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
                         s.text?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+                        fate(s)?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 2.dp)) }
                     }
                     HorizontalDivider()
                 }
@@ -470,4 +476,24 @@ internal fun UnsureChoice(
         style = MaterialTheme.typography.labelSmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
+}
+
+/**
+ * What became of a notification counted as a payment, said under it in "Notifications seen": with
+ * the bank's own line now, counted while the bank catches up, removed, or - the thing to look into
+ * - paired with a bank line that's no longer listed.
+ */
+internal fun notificationFate(sample: NotificationSampleEntity, state: RootUiState): String? {
+    if (sample.outcome != NotificationSpend.Outcome.COUNTED.name) return null
+    val spend = state.seenSpends.firstOrNull { it.id == "${sample.source}|${sample.postedAt}" } ?: return "Now: no longer kept"
+    fun account(id: String?) = state.accounts.firstOrNull { it.id == id }?.label?.trim() ?: "an account"
+    val id = spend.matchedTransactionId
+    return when {
+        spend.dismissed -> if (spend.pairedWithId != null) "Now: removed, as a repeat of another" else "Now: removed"
+        id != null -> state.transactions.firstOrNull { it.accountId == spend.accountId && it.transactionId == id }
+            ?.let { row -> "Now with the bank's line: ${row.payee.trim()} ${formatMoney(row.amountMinor, row.currency)}, ${account(row.accountId)}, ${row.bookingDate}" + if (row.isPending) " · pending" else "" }
+            ?: "Now: paired with a bank line that's no longer listed"
+        spend.countedOn != null -> "Now: counted on ${account(spend.countedOn)} until the bank lists it"
+        else -> "Now: waiting for you to say which account"
+    }
 }

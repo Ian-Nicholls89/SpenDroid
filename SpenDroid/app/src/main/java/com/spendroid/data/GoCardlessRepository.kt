@@ -344,6 +344,8 @@ class GoCardlessRepository private constructor(
         // Paired with a row dated before the purchase, as could happen before 5.5.3: counted
         // again until the bank lists the purchase itself. Once only - after that, a pairing with
         // a pending row the bank has since settled looks the same, and is right.
+        // Paired with a bank row that's no longer listed: counted again until the bank's row is back.
+        NotificationSpend.orphaned(dao.seenSpends(), bank, System.currentTimeMillis()).forEach { dao.upsertSeenSpend(it.copy(matchedTransactionId = null)) }
         if (!secrets.misdatedRepaired.first()) {
             NotificationSpend.misdated(dao.seenSpends(), bank).forEach { dao.upsertSeenSpend(it.copy(matchedTransactionId = null)) }
             secrets.setMisdatedRepaired()

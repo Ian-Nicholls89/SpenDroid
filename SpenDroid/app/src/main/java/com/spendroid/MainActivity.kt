@@ -592,6 +592,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                                                     learned = viewModel.spendLearned.collectAsStateWithLifecycle().value,
                                                     onTeach = viewModel::teachNotification,
                                                     onForgetLearned = viewModel::forgetLearnedNotifications,
+                                                    fate = { com.spendroid.ui.notificationFate(it, state) },
                                                 )
                                             },
                                         )

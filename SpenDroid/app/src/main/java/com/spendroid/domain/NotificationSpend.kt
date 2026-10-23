@@ -456,6 +456,21 @@ object NotificationSpend {
     }
 
     /**
+     * Recent seen spends handed to a bank row the bank no longer lists - a pending row dropped
+     * while it moves to booked, perhaps under a new id. Left paired, the purchase showed nowhere:
+     * £17.24 at Waterstones, counted at 13:19, gone by 17:00. Unpaired, it's counted again, and
+     * pairs with the bank's row once that's back. Only within the days a pairing can be made in,
+     * or a long-booked purchase's old pending pairing would come back as a second one.
+     */
+    fun orphaned(seen: List<SeenSpendEntity>, bank: List<TransactionEntity>, now: Long): List<SeenSpendEntity> {
+        val listed = bank.mapTo(HashSet()) { it.accountId to it.transactionId }
+        return seen.filter { spend ->
+            val id = spend.matchedTransactionId ?: return@filter false
+            !spend.dismissed && now - spend.seenAt <= HANDOVER_DAYS * DAY_MS && (spend.accountId to id) !in listed
+        }
+    }
+
+    /**
      * Seen spends handed to a bank row dated before they could be - paired before
      * [mayReport] was kept to - to be counted again until their own row comes.
      */
@@ -769,6 +784,7 @@ object NotificationSpend {
     private const val PARTNER_WINDOW_MS = 24 * 60 * 60_000L
     private const val REPOST_WINDOW_MS = 60_000L
     private const val HANDOVER_DAYS = 5L
+    private const val DAY_MS = 24 * 60 * 60_000L
     /** Seen before this hour, a purchase may be dated the day before by the bank. */
     private const val SMALL_HOURS_END = 3
     const val REVIEW_AFTER_MS = 7 * 24 * 60 * 60_000L
