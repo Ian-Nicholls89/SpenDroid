@@ -504,16 +504,22 @@ class SecretsStore(private val context: Context) {
 
     // ---- in a backup ---------------------------------------------------------------------------
 
-    /** This store's settings for a backup, each with its type. Never the bank link: see [BANK]. */
-    suspend fun exportStore(): JSONObject {
+    /**
+     * This store's settings for a backup, each with its type. The bank link - GoCardless keys,
+     * token, connections - only when [includeBank]: in an encrypted backup, never a plain file.
+     */
+    suspend fun exportStore(includeBank: Boolean = false): JSONObject {
         val out = JSONObject()
-        context.dataStore.data.first().asMap().forEach { (key, value) ->
-            if (key.name !in IN_BACKUP) return@forEach
+        context.dataStore.data.first().asMap().forEach { (key, stored) ->
+            val name = key.name
+            if (name !in IN_BACKUP && !(includeBank && name in BANK)) return@forEach
+            // Sealed by this phone's keystore, which another phone hasn't: opened for the backup.
+            val value = if (name in SEALED) SecretCipher.open(stored as String) ?: return@forEach else stored
             when (value) {
-                is String -> out.put(key.name, JSONObject().put("t", "s").put("v", value))
-                is Boolean -> out.put(key.name, JSONObject().put("t", "b").put("v", value))
-                is Int -> out.put(key.name, JSONObject().put("t", "i").put("v", value))
-                is Long -> out.put(key.name, JSONObject().put("t", "l").put("v", value))
+                is String -> out.put(name, JSONObject().put("t", "s").put("v", value))
+                is Boolean -> out.put(name, JSONObject().put("t", "b").put("v", value))
+                is Int -> out.put(name, JSONObject().put("t", "i").put("v", value))
+                is Long -> out.put(name, JSONObject().put("t", "l").put("v", value))
             }
         }
         return out
@@ -521,18 +527,20 @@ class SecretsStore(private val context: Context) {
 
     /**
      * A backup's settings put back. Sets - rules ignored, transfers, alerts already sent - are
-     * added to, as a restore merges; everything else takes the backup's value.
+     * added to, as a restore merges; everything else takes the backup's value. The bank link,
+     * from an encrypted backup, is sealed again with this phone's keystore.
      */
     suspend fun restoreStore(json: JSONObject) {
         context.dataStore.edit { prefs ->
             json.keys().forEach { name ->
-                if (name !in IN_BACKUP) return@forEach
+                if (name !in IN_BACKUP && name !in BANK) return@forEach
                 val o = json.optJSONObject(name) ?: return@forEach
                 when (o.optString("t")) {
                     "s" -> {
                         val key = stringPreferencesKey(name)
                         val value = o.optString("v")
                         prefs[key] = when {
+                            name in SEALED -> SecretCipher.seal(value)
                             name in MERGED -> JSONArray((parseStringSet(prefs[key]) + parseStringSet(value)).toList()).toString()
                             else -> value
                         }
@@ -546,8 +554,11 @@ class SecretsStore(private val context: Context) {
     }
 
     companion object {
-        /** The bank link - GoCardless keys, token, connections: not in a backup; linked again after a restore. */
+        /** The bank link - GoCardless keys, token, connections: only in an encrypted backup. */
         internal val BANK = setOf("secret_id", "secret_key", "refresh_token", "connections")
+
+        /** Sealed by this phone's keystore: opened for a backup, sealed again on restore. */
+        internal val SEALED = setOf("secret_id", "secret_key", "refresh_token")
 
         /** Sets, as JSON arrays: a restore adds to them, so it can't undo a choice or resend an alert. */
         internal val MERGED = setOf("ignored_rules", "transfer_groups", "notified_goal_warnings", "notified_large_transactions", "notified_card_warnings", "notified_duplicates")

@@ -804,12 +804,15 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
                     } else {
                         ImportStatus.Done(
                             "Restored ${restored.transactions.size} transactions " +
-                                "across ${restored.accounts.size} accounts.",
+                                "across ${restored.accounts.size} accounts" +
+                                if (restored.hasBank) ", and your bank link." else ".",
                         )
                     }
                 },
                 onFailure = { ImportStatus.Failed(it.message ?: it.javaClass.simpleName) },
             )
+            // The bank link came with it: linked again as it was, and its banks listed.
+            if (status is ImportStatus.Done) refreshConfig()
             // Restored during setup: the data's all here, so a restart opens on Home, not the welcome
             // screen again - while setup carries on to what this phone still needs.
             if (status is ImportStatus.Done && !_state.value.setupDone) setupPrefs().edit().putBoolean("done", true).apply()

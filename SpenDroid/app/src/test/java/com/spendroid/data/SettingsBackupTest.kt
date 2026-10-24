@@ -30,7 +30,7 @@ class SettingsBackupTest {
     }
 
     @Test
-    fun `settings come back as they were, and sets are added to`() = runBlocking {
+    fun `settings come back as they were, sets are added to, and the bank link only from an encrypted backup`() = runBlocking {
         val store = SecretsStore(ApplicationProvider.getApplicationContext<Context>())
         store.saveAccent("BLUE")
         store.saveAccountColours(true)
@@ -39,8 +39,13 @@ class SettingsBackupTest {
         store.saveNotifiedDuplicates(setOf("dup-1"))
         store.addIgnoredRules(setOf("OUT|GBP|15|netflix"))
 
-        val backup = store.exportStore()
-        assertFalse(SecretsStore.BANK.any { backup.has(it) })
+        val connection = Connection("NATIONWIDE", "Made-up Bank", "req-1", listOf("acc-1"), createdAt = 1_760_000_000_000)
+        store.saveConnections(listOf(connection))
+
+        // A plain file never has the bank link; an encrypted backup does.
+        assertFalse(SecretsStore.BANK.any { store.exportStore().has(it) })
+        assertTrue(store.exportStore(includeBank = true).has("connections"))
+        val backup = store.exportStore(includeBank = true)
 
         // A different state, then the backup put back.
         store.saveAccent("GREEN")
@@ -48,6 +53,7 @@ class SettingsBackupTest {
         store.saveNotificationTime("21:00")
         store.setSpendPlace("porton stores", null)
         store.saveNotifiedDuplicates(setOf("dup-2"))
+        store.saveConnections(emptyList())
         store.restoreStore(backup)
 
         assertEquals("BLUE", store.accent.first())
@@ -56,5 +62,6 @@ class SettingsBackupTest {
         assertEquals("acc-1", store.spendPlaces.first()["porton stores"])
         assertEquals(setOf("dup-1", "dup-2"), store.notifiedDuplicates.first())
         assertEquals(setOf("OUT|GBP|15|netflix"), store.ignoredRules.first())
+        assertEquals(listOf(connection), store.connections.first())
     }
 }

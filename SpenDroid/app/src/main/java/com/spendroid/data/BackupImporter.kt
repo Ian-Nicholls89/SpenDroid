@@ -40,6 +40,9 @@ object BackupImporter {
         /** For [SecretsStore.restoreStore]; null in a backup from before format 6. */
         val store: JSONObject? = null,
     ) {
+        /** Whether it carries the bank link: an encrypted backup made from 0.6.0.3 on. */
+        val hasBank: Boolean get() = store?.has("secret_id") == true
+
         val isEmpty: Boolean
             get() = accounts.isEmpty() && transactions.isEmpty() && manualRules.isEmpty()
     }

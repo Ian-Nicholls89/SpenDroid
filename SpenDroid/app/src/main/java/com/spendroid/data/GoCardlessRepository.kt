@@ -1186,9 +1186,10 @@ class GoCardlessRepository private constructor(
     suspend fun accounts(): List<AccountEntity> = dao.accounts()
 
     /** Full serialised copy of the local database, for backup. */
-    suspend fun exportJson(preferences: org.json.JSONObject? = null): String = BackupExporter.toJson(
+    /** A backup: everything - with the bank link only if [includeBank], for an encrypted one. */
+    suspend fun exportJson(preferences: org.json.JSONObject? = null, includeBank: Boolean = false): String = BackupExporter.toJson(
         preferences = preferences,
-        store = secrets.exportStore(),
+        store = secrets.exportStore(includeBank),
         duplicateChecks = dao.duplicateChecks(),
         notificationSamples = dao.notificationSamples(),
         accounts = dao.accounts(),
@@ -1228,6 +1229,8 @@ class GoCardlessRepository private constructor(
         if (restored.duplicateChecks.isNotEmpty()) dao.upsertDuplicateChecks(restored.duplicateChecks)
         if (restored.notificationSamples.isNotEmpty()) dao.upsertNotificationSamples(restored.notificationSamples)
         restored.store?.let { secrets.restoreStore(it) }
+        // New keys from the backup: a token got with the old ones mustn't be used with them.
+        if (restored.hasBank) tokenManager.clear()
         return restored
     }
 
