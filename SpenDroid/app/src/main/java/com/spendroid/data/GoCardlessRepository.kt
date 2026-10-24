@@ -141,39 +141,39 @@ class GoCardlessRepository private constructor(
         // A spend seen in a notification lives in its own table until the bank reports it.
         if (transactionId.startsWith(NotificationSpend.SEEN_PREFIX)) {
             val id = transactionId.removePrefix(NotificationSpend.SEEN_PREFIX)
-            seen.setCategory(id, category)
+            seenStore.setCategory(id, category)
             return
         }
         dao.setCategoryOverride(accountId, transactionId, category)
     }
 
     // --- Spending read from notifications: [SeenSpendStore] ---
-    private val seen = SeenSpendStore(dao, secrets)
+    private val seenStore = SeenSpendStore(dao, secrets)
 
-    val spendSources: Flow<List<NotificationSpend.Source>> = seen.spendSources
-    val spendReadingOn: Flow<Boolean> = seen.spendReadingOn
-    val spendLearned: Flow<List<NotificationSpend.Learned>> = seen.spendLearned
-    val seenSpends: Flow<List<SeenSpendEntity>> = seen.seenSpends
-    val notificationSamples: Flow<List<NotificationSampleEntity>> = seen.notificationSamples
-    val spendPlaces: Flow<Map<String, String>> = seen.spendPlaces
+    val spendSources: Flow<List<NotificationSpend.Source>> = seenStore.spendSources
+    val spendReadingOn: Flow<Boolean> = seenStore.spendReadingOn
+    val spendLearned: Flow<List<NotificationSpend.Learned>> = seenStore.spendLearned
+    val seenSpends: Flow<List<SeenSpendEntity>> = seenStore.seenSpends
+    val notificationSamples: Flow<List<NotificationSampleEntity>> = seenStore.notificationSamples
+    val spendPlaces: Flow<Map<String, String>> = seenStore.spendPlaces
 
-    suspend fun saveSpendSources(sources: List<NotificationSpend.Source>) = seen.saveSpendSources(sources)
-    suspend fun setSpendReadingOn(on: Boolean) = seen.setSpendReadingOn(on)
-    suspend fun watchedPackages() = seen.watchedPackages()
-    suspend fun questionFor(source: String, postedAt: Long) = seen.questionFor(source, postedAt)
-    suspend fun placeOf(spend: SeenSpendEntity) = seen.placeOf(spend)
-    suspend fun settledSince(since: Long) = seen.settledSince(since)
-    suspend fun onNotification(source: String, title: String?, text: String?, postedAt: Long) = seen.onNotification(source, title, text, postedAt)
-    suspend fun teachNotification(sampleId: Long, count: Boolean) = seen.teachNotification(sampleId, count)
-    suspend fun forgetLearned() = seen.forgetLearned()
-    suspend fun reconcileSeenSpends() = seen.reconcileSeenSpends()
-    suspend fun assignSeenSpend(id: String, accountId: String, always: Boolean = false) = seen.assignSeenSpend(id, accountId, always)
-    suspend fun repeatQuestionFor(postedAt: Long) = seen.repeatQuestionFor(postedAt)
-    suspend fun answerRepeat(spendId: String, twinId: String, once: Boolean) = seen.answerRepeat(spendId, twinId, once)
-    suspend fun dismissSeenSpend(id: String) = seen.dismissSeenSpend(id)
-    suspend fun answerCardCheck(id: String, check: Boolean) = seen.answerCardCheck(id, check)
-    suspend fun keepSeenSpend(id: String) = seen.keepSeenSpend(id)
-    suspend fun clearNotificationData() = seen.clearNotificationData()
+    suspend fun saveSpendSources(sources: List<NotificationSpend.Source>) = seenStore.saveSpendSources(sources)
+    suspend fun setSpendReadingOn(on: Boolean) = seenStore.setSpendReadingOn(on)
+    suspend fun watchedPackages() = seenStore.watchedPackages()
+    suspend fun questionFor(source: String, postedAt: Long) = seenStore.questionFor(source, postedAt)
+    suspend fun placeOf(spend: SeenSpendEntity) = seenStore.placeOf(spend)
+    suspend fun settledSince(since: Long) = seenStore.settledSince(since)
+    suspend fun onNotification(source: String, title: String?, text: String?, postedAt: Long) = seenStore.onNotification(source, title, text, postedAt)
+    suspend fun teachNotification(sampleId: Long, count: Boolean) = seenStore.teachNotification(sampleId, count)
+    suspend fun forgetLearned() = seenStore.forgetLearned()
+    suspend fun reconcileSeenSpends() = seenStore.reconcileSeenSpends()
+    suspend fun assignSeenSpend(id: String, accountId: String, always: Boolean = false) = seenStore.assignSeenSpend(id, accountId, always)
+    suspend fun repeatQuestionFor(postedAt: Long) = seenStore.repeatQuestionFor(postedAt)
+    suspend fun answerRepeat(spendId: String, twinId: String, once: Boolean) = seenStore.answerRepeat(spendId, twinId, once)
+    suspend fun dismissSeenSpend(id: String) = seenStore.dismissSeenSpend(id)
+    suspend fun answerCardCheck(id: String, check: Boolean) = seenStore.answerCardCheck(id, check)
+    suspend fun keepSeenSpend(id: String) = seenStore.keepSeenSpend(id)
+    suspend fun clearNotificationData() = seenStore.clearNotificationData()
 
     /** Rows the bank has stopped listing that the user has yet to answer for. */
     suspend fun duplicateQuestions(): List<DuplicateCheck.Question> =
@@ -345,7 +345,7 @@ class GoCardlessRepository private constructor(
      */
     suspend fun updateAccount(account: AccountEntity) {
         // "In Google Wallet" may have changed, which changes the apps whose notifications are read.
-        seen.forgetWatched()
+        seenStore.forgetWatched()
         val previous = dao.accounts().firstOrNull { it.id == account.id }
         if (previous == null || previous.accountType == account.accountType) {
             dao.updateAccount(account)
@@ -394,7 +394,7 @@ class GoCardlessRepository private constructor(
     }
 
     suspend fun clearAllData() {
-        seen.forgetWatched()
+        seenStore.forgetWatched()
         clearNotificationData()
         dao.deleteAllDuplicateChecks()
         dao.deleteAllTransactions()
@@ -564,7 +564,7 @@ class GoCardlessRepository private constructor(
     suspend fun allowanceFor(accountId: String, now: Long = System.currentTimeMillis()): SyncAllowance.Account? =
         SyncAllowance.forAccount(syncAllowances.first()[accountId].orEmpty(), now, generalAllowance.first())
 
-    private suspend fun cardDigits(): Set<String> = seen.cardDigits()
+    private suspend fun cardDigits(): Set<String> = seenStore.cardDigits()
 
     /**
      * Once, after card digits came off pending names (5.2.2): a rule made from one - "always
@@ -816,7 +816,7 @@ class GoCardlessRepository private constructor(
             anchorDate = balanceMinor?.let { LocalDate.now().toString() },
         )
         dao.upsertAccount(account)
-        seen.forgetWatched()
+        seenStore.forgetWatched()
         return account
     }
 
@@ -830,8 +830,10 @@ class GoCardlessRepository private constructor(
         secrets.saveSpendSources(spendSources.first().map { s ->
             s.copy(accountIds = s.accountIds - accountId, defaultAccountId = s.defaultAccountId?.takeIf { it != accountId })
         })
-        dao.seenSpends().filter { it.countedOn == accountId }.forEach { dao.upsertSeenSpend(it.copy(dismissed = true)) }
-        seen.forgetWatched()
+        seenStore.locked {
+            dao.seenSpends().filter { it.countedOn == accountId }.forEach { dao.upsertSeenSpend(it.copy(dismissed = true)) }
+        }
+        seenStore.forgetWatched()
         reanalyze()
     }
 
@@ -843,7 +845,7 @@ class GoCardlessRepository private constructor(
     }
 
     /** For each manual account, the last day an imported statement covers. */
-    suspend fun manualCoverage(): Map<String, LocalDate?> = seen.manualCoverage()
+    suspend fun manualCoverage(): Map<String, LocalDate?> = seenStore.manualCoverage()
 
     /**
      * Checks a manual account's balance against what the user's banking app shows - nothing is
@@ -970,12 +972,15 @@ class GoCardlessRepository private constructor(
         secrets.addIgnoredRules(restored.ignoredRules)
         secrets.addTransferGroups(restored.transferGroups)
         restored.ruleOverrides.forEach { dao.upsertRuleOverride(it) }
-        restored.seenSpends.forEach { dao.upsertSeenSpend(it) }
+        // Under the notifications' lock, so one arriving mid-restore can't undo a row or be undone.
+        seenStore.locked {
+            restored.seenSpends.forEach { dao.upsertSeenSpend(it) }
+            if (restored.notificationSamples.isNotEmpty()) dao.insertNotificationSamplesKeepingOurs(restored.notificationSamples)
+        }
         restored.primaryIncomeKey?.let { secrets.savePrimaryIncomeKey(it) }
         restored.budgetModel?.let { secrets.saveBudgetModel(it) }
         restored.cardTiming?.let { secrets.saveCardTiming(it) }
         if (restored.duplicateChecks.isNotEmpty()) dao.upsertDuplicateChecks(restored.duplicateChecks)
-        if (restored.notificationSamples.isNotEmpty()) dao.upsertNotificationSamples(restored.notificationSamples)
         restored.store?.let { secrets.restoreStore(it) }
         // New keys from the backup: a token got with the old ones mustn't be used with them.
         if (restored.hasBank) tokenManager.clear()

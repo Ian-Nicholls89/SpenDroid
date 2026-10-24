@@ -302,6 +302,9 @@ class SeenSpendStore(
         dao.seenSpends().firstOrNull { it.id == id }?.let { dao.upsertSeenSpend(it.copy(categoryOverride = category)) }
     }
 
+    /** [block] under [notificationLock]: for a write to seen spends made outside this store. */
+    suspend fun <T> locked(block: suspend () -> T): T = notificationLock.withLock { block() }
+
     /** Dropped when the bank apps picked, or the cards in Wallet, change. */
     fun forgetWatched() {
         watched = null
