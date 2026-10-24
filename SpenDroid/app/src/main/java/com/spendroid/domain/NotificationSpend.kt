@@ -194,12 +194,26 @@ object NotificationSpend {
                     out.append("\\s+")
                     continue
                 }
-                else -> out.append(Regex.escape(c.toString()))
+                else -> {
+                    // Whole characters: an emoji - NatWest's 💳 - is two halves, and quoted apart
+                    // they match nothing, so a wording taught from it never matched again.
+                    val end = i + Character.charCount(text.codePointAt(i))
+                    out.append(Regex.escape(text.substring(i, end)))
+                    i = end
+                    continue
+                }
             }
             i++
         }
         return out.toString()
     }
+
+    /**
+     * A wording taught before 0.6.2 with an emoji in it, its two halves quoted apart: put back
+     * together, so it matches as it was meant to.
+     */
+    fun repairPattern(pattern: String): String =
+        pattern.replace(Regex("""([\x{D800}-\x{DBFF}])\\E\\Q([\x{DC00}-\x{DFFF}])"""), "$1$2")
 
     private const val AMOUNT_GROUP = """(?:£|GBP\s?)(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d{2}))?"""
 

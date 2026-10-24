@@ -285,7 +285,7 @@ class SecretsStore(private val context: Context) {
             val array = prefs[Keys.SPEND_LEARNED]?.let { runCatching { JSONArray(it) }.getOrNull() } ?: JSONArray()
             (0 until array.length()).mapNotNull { i ->
                 val o = array.optJSONObject(i) ?: return@mapNotNull null
-                com.spendroid.domain.NotificationSpend.Learned(o.optString("source"), o.optString("pattern"), o.optBoolean("count"))
+                com.spendroid.domain.NotificationSpend.Learned(o.optString("source"), com.spendroid.domain.NotificationSpend.repairPattern(o.optString("pattern")), o.optBoolean("count"))
             }
         }
 
@@ -294,7 +294,7 @@ class SecretsStore(private val context: Context) {
             val array = prefs[Keys.SPEND_LEARNED]?.let { runCatching { JSONArray(it) }.getOrNull() } ?: JSONArray()
             val current = (0 until array.length()).mapNotNull { i ->
                 val o = array.optJSONObject(i) ?: return@mapNotNull null
-                com.spendroid.domain.NotificationSpend.Learned(o.optString("source"), o.optString("pattern"), o.optBoolean("count"))
+                com.spendroid.domain.NotificationSpend.Learned(o.optString("source"), com.spendroid.domain.NotificationSpend.repairPattern(o.optString("pattern")), o.optBoolean("count"))
             }
             prefs[Keys.SPEND_LEARNED] = JSONArray(
                 change(current).map { JSONObject().put("source", it.source).put("pattern", it.pattern).put("count", it.count) },

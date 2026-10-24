@@ -354,4 +354,24 @@ class NotificationSpendTest {
         val second = three[2].copy(id = "n2", seenAt = t + 4 * 3_600_000)
         assertEquals(listOf("w2", "n1"), NotificationSpend.repeats(three + second).map { it.id })
     }
+
+    /** 0.6.2: NatWest's 💳 is two halves of one character; taught apart, the wording never matched again. */
+    @Test
+    fun `a wording with an emoji in it, taught, matches itself`() {
+        val text = "💳 £3.00 at CAR PARK on your card ending 2291"
+        val ignore = NotificationSpend.learn(natwest, "NatWest", text, count = false)!!
+        assertNull(NotificationSpend.parse(natwest, "NatWest", text, listOf(ignore)))
+        val count = NotificationSpend.learn(natwest, "NatWest", "💳 Paid £7.50 to CORNER SHOP", count = true)!!
+        assertEquals(750L, NotificationSpend.parse(natwest, "NatWest", "💳 Paid £7.50 to CORNER SHOP", listOf(count))!!.amountMinor)
+    }
+
+    @Test
+    fun `a wording taught before the fix is repaired as it's read`() {
+        val text = "💳 £3.00 at CAR PARK on your card ending 2291"
+        val good = NotificationSpend.learn(natwest, "NatWest", text, count = false)!!.pattern
+        // As 0.6.1 and before saved it: the emoji's halves quoted apart.
+        val broken = good.replace("\\Q\uD83D\uDCB3\\E", "\\Q\uD83D\\E\\Q\uDCB3\\E")
+        assertTrue(broken != good)
+        assertEquals(good, NotificationSpend.repairPattern(broken))
+    }
 }
