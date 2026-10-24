@@ -35,6 +35,10 @@ object BackupImporter {
         val primaryIncomeKey: String? = null,
         val budgetModel: String? = null,
         val cardTiming: String? = null,
+        val duplicateChecks: List<com.spendroid.data.db.DuplicateCheckEntity> = emptyList(),
+        val notificationSamples: List<com.spendroid.data.db.NotificationSampleEntity> = emptyList(),
+        /** For [SecretsStore.restoreStore]; null in a backup from before format 6. */
+        val store: JSONObject? = null,
     ) {
         val isEmpty: Boolean
             get() = accounts.isEmpty() && transactions.isEmpty() && manualRules.isEmpty()
@@ -120,6 +124,7 @@ object BackupImporter {
                 anchorDay = o.optInt("anchorDay", 1),
                 startDate = o.optString("startDate"),
                 isActive = o.optBoolean("isActive", true),
+                accountId = o.nullableString("accountId"),
             )
         }
 
@@ -173,6 +178,26 @@ object BackupImporter {
                 confirmedSeparate = o.optBoolean("confirmedSeparate", false),
             )
         }
+        val duplicateChecks = root.optJSONArray("duplicateChecks").mapObjects { o ->
+            com.spendroid.data.db.DuplicateCheckEntity(
+                accountId = o.getString("accountId"),
+                transactionId = o.getString("transactionId"),
+                missedSyncs = o.getInt("missedSyncs"),
+                candidates = o.getString("candidates"),
+                state = o.getString("state"),
+            )
+        }
+        val notificationSamples = root.optJSONArray("notificationSamples").mapObjects { o ->
+            com.spendroid.data.db.NotificationSampleEntity(
+                id = o.getLong("id"),
+                source = o.getString("source"),
+                postedAt = o.getLong("postedAt"),
+                title = o.nullableString("title"),
+                text = o.nullableString("text"),
+                parsed = o.optBoolean("parsed", false),
+                outcome = o.nullableString("outcome"),
+            )
+        }
         val settings = root.optJSONObject("settings")
         val transferGroups = mutableSetOf<String>()
         root.optJSONArray("transferGroups")?.let { arr ->
@@ -193,6 +218,9 @@ object BackupImporter {
             primaryIncomeKey = settings?.nullableString("primaryIncomeKey"),
             budgetModel = settings?.nullableString("budgetModel"),
             cardTiming = settings?.nullableString("cardTiming"),
+            duplicateChecks = duplicateChecks,
+            notificationSamples = notificationSamples,
+            store = root.optJSONObject("store"),
         )
     }
 

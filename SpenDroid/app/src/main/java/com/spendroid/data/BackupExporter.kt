@@ -20,7 +20,7 @@ import org.json.JSONObject
 object BackupExporter {
 
     /** Bumped when the shape changes, so a future import can tell what it is reading. */
-    const val FORMAT_VERSION = 5
+    const val FORMAT_VERSION = 6
 
     fun toJson(
         accounts: List<AccountEntity>,
@@ -35,6 +35,12 @@ object BackupExporter {
         seenSpends: List<com.spendroid.data.db.SeenSpendEntity> = emptyList(),
         /** Payee names, contract dates and subscription choices: [BackupPrefs] (format 5). */
         preferences: JSONObject? = null,
+        /** Duplicates being followed, and the answers given about them (format 6). */
+        duplicateChecks: List<com.spendroid.data.db.DuplicateCheckEntity> = emptyList(),
+        /** The last thirty days' notifications, read or not (format 6). */
+        notificationSamples: List<com.spendroid.data.db.NotificationSampleEntity> = emptyList(),
+        /** The settings store: [SecretsStore.exportStore] (format 6). */
+        store: JSONObject? = null,
         /** The income chosen to set the cycle, and how the budget is worked out. */
         primaryIncomeKey: String? = null,
         budgetModel: String? = null,
@@ -129,7 +135,8 @@ object BackupExporter {
                             .put("cadence", rule.cadence)
                             .put("anchorDay", rule.anchorDay)
                             .put("startDate", rule.startDate)
-                            .put("isActive", rule.isActive),
+                            .put("isActive", rule.isActive)
+                            .put("accountId", rule.accountId ?: JSONObject.NULL),
                     )
                 }
             },
@@ -210,6 +217,39 @@ object BackupExporter {
                 }
             },
         )
+        root.put(
+            "duplicateChecks",
+            JSONArray().also { arr ->
+                duplicateChecks.forEach { d ->
+                    arr.put(
+                        JSONObject()
+                            .put("accountId", d.accountId)
+                            .put("transactionId", d.transactionId)
+                            .put("missedSyncs", d.missedSyncs)
+                            .put("candidates", d.candidates)
+                            .put("state", d.state),
+                    )
+                }
+            },
+        )
+        root.put(
+            "notificationSamples",
+            JSONArray().also { arr ->
+                notificationSamples.forEach { n ->
+                    arr.put(
+                        JSONObject()
+                            .put("id", n.id)
+                            .put("source", n.source)
+                            .put("postedAt", n.postedAt)
+                            .put("title", n.title ?: JSONObject.NULL)
+                            .put("text", n.text ?: JSONObject.NULL)
+                            .put("parsed", n.parsed)
+                            .put("outcome", n.outcome ?: JSONObject.NULL),
+                    )
+                }
+            },
+        )
+        store?.let { root.put("store", it) }
         preferences?.let { root.put("preferences", it) }
         root.put(
             "settings",

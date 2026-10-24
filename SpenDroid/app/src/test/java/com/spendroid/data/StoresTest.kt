@@ -22,8 +22,12 @@ class StoresTest {
     }
 
     @Test
-    fun `a backup carries what it carried before`() {
-        assertEquals(listOf("contracts", "subscriptions", "payee_names"), Stores.inBackup)
+    fun `a backup carries all the user's data, and the settings that mean the same on another phone`() {
+        assertTrue(Stores.clearedWithData.all { it in Stores.inBackup })
+        assertEquals(
+            setOf("privacy", "launcher_icon", "watch_chime", "web_import"),
+            Stores.inBackup.toSet() - Stores.clearedWithData.toSet(),
+        )
     }
 
     @Test

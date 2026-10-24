@@ -68,6 +68,19 @@ class BackupRoundTripTest {
         provisionalAccountId = "acc-2", pairedWithId = "wallet|0", confirmedSeparate = true,
     )
 
+    private val duplicate = com.spendroid.data.db.DuplicateCheckEntity(
+        accountId = "acc-1", transactionId = "tx-7", missedSyncs = 3, candidates = "tx-8\ntx-9", state = "ASKING",
+    )
+
+    private val sample = com.spendroid.data.db.NotificationSampleEntity(
+        id = 42, source = "uk.co.firstdirect", postedAt = 1_760_000_000_000, title = "Payment", text = "You spent £9.38 at Porton Stores",
+        parsed = true, outcome = "COUNTED",
+    )
+
+    private val store = org.json.JSONObject()
+        .put("accent", org.json.JSONObject().put("t", "s").put("v", "BLUE"))
+        .put("spend_reading_on", org.json.JSONObject().put("t", "b").put("v", true))
+
     private fun export() = BackupExporter.toJson(
         accounts = listOf(account),
         transactions = listOf(transaction),
@@ -82,6 +95,7 @@ class BackupRoundTripTest {
                 anchorDay = 26,
                 startDate = "2026-01-26",
                 isActive = true,
+                accountId = "acc-1",
             ),
         ),
         budgetGoals = listOf(BudgetGoalEntity("GROCERIES", 35000, "GBP")),
@@ -93,6 +107,9 @@ class BackupRoundTripTest {
         primaryIncomeKey = "IN|GBP|2500|acme ltd",
         budgetModel = "ROLLOVER",
         cardTiming = "AT_PURCHASE",
+        duplicateChecks = listOf(duplicate),
+        notificationSamples = listOf(sample, sample.copy(id = 43, title = null, text = null, outcome = null)),
+        store = store,
     )
 
     @Test
@@ -103,6 +120,7 @@ class BackupRoundTripTest {
         assertEquals(listOf(transaction), restored.transactions)
         assertEquals(1, restored.manualRules.size)
         assertEquals("Netflix", restored.manualRules.first().payee)
+        assertEquals("acc-1", restored.manualRules.first().accountId)
         assertEquals(setOf("OUT|GBP|15|netflix"), restored.ignoredRules)
         assertEquals(35000, restored.budgetGoals.first().limitMinor)
         assertEquals("GROCERIES", restored.categoryRules.first().category)
@@ -112,6 +130,41 @@ class BackupRoundTripTest {
         assertEquals("ROLLOVER", restored.budgetModel)
         assertEquals("AT_PURCHASE", restored.cardTiming)
         assertEquals(listOf(seen, seen.copy(id = "wallet|2", cardDigits = null, accountId = null, matchedTransactionId = null)), restored.seenSpends)
+        assertEquals(listOf(duplicate), restored.duplicateChecks)
+        assertEquals(listOf(sample, sample.copy(id = 43, title = null, text = null, outcome = null)), restored.notificationSamples)
+        assertEquals(store.toString(), restored.store.toString())
+    }
+
+    /**
+     * Every column of every table is in a backup - checked against Room's own schema, so a column
+     * added later and forgotten here fails this. Bank holidays aside: gov.uk's list, fetched again.
+     */
+    @Test
+    fun `a backup has every column of every table`() {
+        val root = org.json.JSONObject(export())
+        val sections = mapOf(
+            "accounts" to "accounts",
+            "transactions" to "transactions",
+            "manual_recurring_rules" to "manualRules",
+            "budget_goals" to "budgetGoals",
+            "category_rules" to "categoryRules",
+            "rule_overrides" to "ruleOverrides",
+            "seen_spends" to "seenSpends",
+            "duplicate_checks" to "duplicateChecks",
+            "notification_samples" to "notificationSamples",
+        )
+        val schema = java.io.File("schemas/com.spendroid.data.db.BudgetDb").listFiles()!!
+            .maxBy { it.nameWithoutExtension.toInt() }
+            .let { org.json.JSONObject(it.readText()).getJSONObject("database").getJSONArray("entities") }
+        val tables = (0 until schema.length()).map { schema.getJSONObject(it) }
+        assertEquals(tables.map { it.getString("tableName") }.toSet() - "bank_holidays", sections.keys)
+        tables.filter { it.getString("tableName") in sections }.forEach { table ->
+            val fields = table.getJSONArray("fields")
+            val columns = (0 until fields.length()).map { fields.getJSONObject(it).getString("columnName") }.toSet()
+            val section = sections.getValue(table.getString("tableName"))
+            val exported = root.getJSONArray(section).getJSONObject(0).keys().asSequence().toSet()
+            assertEquals("$section is missing columns", emptySet<String>(), columns - exported)
+        }
     }
 
     /** Settings missing from an older file are left alone on restore, not cleared. */

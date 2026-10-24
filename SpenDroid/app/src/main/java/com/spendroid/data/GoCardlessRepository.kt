@@ -1188,6 +1188,9 @@ class GoCardlessRepository private constructor(
     /** Full serialised copy of the local database, for backup. */
     suspend fun exportJson(preferences: org.json.JSONObject? = null): String = BackupExporter.toJson(
         preferences = preferences,
+        store = secrets.exportStore(),
+        duplicateChecks = dao.duplicateChecks(),
+        notificationSamples = dao.notificationSamples(),
         accounts = dao.accounts(),
         // Deliberately not transactions(), which joins through the accounts table and would
         // drop history belonging to an account row that has since gone.
@@ -1222,6 +1225,9 @@ class GoCardlessRepository private constructor(
         restored.primaryIncomeKey?.let { secrets.savePrimaryIncomeKey(it) }
         restored.budgetModel?.let { secrets.saveBudgetModel(it) }
         restored.cardTiming?.let { secrets.saveCardTiming(it) }
+        if (restored.duplicateChecks.isNotEmpty()) dao.upsertDuplicateChecks(restored.duplicateChecks)
+        if (restored.notificationSamples.isNotEmpty()) dao.upsertNotificationSamples(restored.notificationSamples)
+        restored.store?.let { secrets.restoreStore(it) }
         return restored
     }
 

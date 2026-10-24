@@ -314,6 +314,9 @@ interface BudgetDao {
     @Insert
     suspend fun insertNotificationSample(sample: NotificationSampleEntity): Long
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertNotificationSamples(samples: List<NotificationSampleEntity>)
+
     @Query("UPDATE notification_samples SET outcome = :outcome WHERE id = :id")
     suspend fun setNotificationOutcome(id: Long, outcome: String)
 

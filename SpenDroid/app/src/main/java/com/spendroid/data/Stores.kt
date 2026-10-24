@@ -23,7 +23,11 @@ object Stores {
     class Store(
         val name: String,
         val kind: Kind,
-        /** Carried in SpenDroid's own backup, and put back by a restore. */
+        /**
+         * Carried in SpenDroid's own backup, and put back by a restore: all the user's data, and
+         * the settings of this phone that mean the same on another (not widget ids, pairings,
+         * keys or anything sealed by this phone's keystore).
+         */
         val inBackup: Boolean = false,
         /** Left out of Android's own backup: it can't work on another phone, or mustn't leave this one. */
         val phoneOnly: Boolean = false,
@@ -56,25 +60,25 @@ object Stores {
     const val AUTO_BACKUP = "auto_backup"
 
     val ALL: List<Store> = listOf(
-        Store(FIRST_RUN, Kind.USER_DATA, holds = "Whether setup is finished"),
-        Store(MOMENTS, Kind.USER_DATA, holds = "Whether this cycle's payday moment has been shown"),
+        Store(FIRST_RUN, Kind.USER_DATA, inBackup = true, holds = "Whether setup is finished"),
+        Store(MOMENTS, Kind.USER_DATA, inBackup = true, holds = "Whether this cycle's payday moment has been shown"),
         Store(CONTRACTS, Kind.USER_DATA, inBackup = true, holds = "Contract end dates and accepted prices"),
         Store(SUBSCRIPTIONS, Kind.USER_DATA, inBackup = true, holds = "Subscription or household bill, reminders, cancelled"),
-        Store(MONEY_WATCH, Kind.USER_DATA, holds = "Money watch settings, and price rises already told or decided"),
-        Store(MANUAL_REMINDERS, Kind.USER_DATA, holds = "How often to remind about statements and balance checks"),
+        Store(MONEY_WATCH, Kind.USER_DATA, inBackup = true, holds = "Money watch settings, and price rises already told or decided"),
+        Store(MANUAL_REMINDERS, Kind.USER_DATA, inBackup = true, holds = "How often to remind about statements and balance checks"),
         Store(PAYEE_NAMES, Kind.USER_DATA, inBackup = true, holds = "Names given to payees"),
-        Store(PENNY_ASK, Kind.USER_DATA, holds = "Questions put off with \"Ask me later\""),
-        Store(PENNY_BILLS, Kind.USER_DATA, holds = "Answers to \"Is this a bill?\""),
-        Store(PENNY_NEWS, Kind.USER_DATA, holds = "Card digits Penny has already said she learnt"),
-        Store(PENNY_VOICE, Kind.USER_DATA, holds = "A count of visits to Home, to vary Penny's lines"),
+        Store(PENNY_ASK, Kind.USER_DATA, inBackup = true, holds = "Questions put off with \"Ask me later\""),
+        Store(PENNY_BILLS, Kind.USER_DATA, inBackup = true, holds = "Answers to \"Is this a bill?\""),
+        Store(PENNY_NEWS, Kind.USER_DATA, inBackup = true, holds = "Card digits Penny has already said she learnt"),
+        Store(PENNY_VOICE, Kind.USER_DATA, inBackup = true, holds = "A count of visits to Home, to vary Penny's lines"),
 
-        Store(PRIVACY, Kind.DEVICE, holds = "App lock, and where figures show (widgets, watch, notifications, recents)"),
-        Store(LAUNCHER_ICON, Kind.DEVICE, holds = "The chosen app icon"),
+        Store(PRIVACY, Kind.DEVICE, inBackup = true, holds = "App lock, and where figures show (widgets, watch, notifications, recents)"),
+        Store(LAUNCHER_ICON, Kind.DEVICE, inBackup = true, holds = "The chosen app icon"),
         Store(WATCH_INSTALL, Kind.DEVICE, holds = "Watch pairing and install"),
-        Store(WATCH_CHIME, Kind.DEVICE, holds = "The watch's chime"),
+        Store(WATCH_CHIME, Kind.DEVICE, inBackup = true, holds = "The watch's chime"),
         Store(THIS_PERIOD_WIDGET, Kind.DEVICE, holds = "Which accounts each This period widget shows"),
         Store(WIDGET_REFRESH, Kind.DEVICE, holds = "When the widgets were last drawn, and a refresh under way"),
-        Store(WEB_IMPORT, Kind.DEVICE, holds = "Statement layouts and batches sent from the computer link"),
+        Store(WEB_IMPORT, Kind.DEVICE, inBackup = true, holds = "Statement layouts and batches sent from the computer link"),
         Store(WEB_ACCESS, Kind.DEVICE, holds = "Computers the computer link remembers (hashed)"),
         Store(DB_ENCRYPTION, Kind.DEVICE, holds = "Database encryption: on, and its key sealed by this phone"),
         Store(AUTO_BACKUP, Kind.DEVICE, phoneOnly = true, holds = "Automatic backup: the folder, and the passphrase sealed by this phone"),

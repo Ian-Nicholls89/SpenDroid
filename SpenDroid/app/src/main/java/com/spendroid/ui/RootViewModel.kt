@@ -791,6 +791,11 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
                 repo.importJson(json).also { restored ->
                     com.spendroid.data.BackupPrefs.restore(getApplication(), restored.preferences)
                     com.spendroid.data.PayeeNames.load(getApplication())
+                    // The icon's colour, if it follows the app's: switched as it was.
+                    if (LauncherIcon.follows(getApplication())) {
+                        val accent = com.spendroid.ui.theme.Accent.entries.firstOrNull { it.name == repo.accent.first() }
+                        accent?.let { LauncherIcon.apply(getApplication(), it) }
+                    }
                 }
             }.fold(
                 onSuccess = { restored ->

@@ -39,6 +39,7 @@ data class Connection(
     }
 
     companion object {
+
         /** How long a bank's consent lasts under PSD2, and what GoCardless grants by default. */
         const val ACCESS_DAYS = 90L
     }
@@ -501,7 +502,70 @@ class SecretsStore(private val context: Context) {
         }
     }
 
+    // ---- in a backup ---------------------------------------------------------------------------
+
+    /** This store's settings for a backup, each with its type. Never the bank link: see [BANK]. */
+    suspend fun exportStore(): JSONObject {
+        val out = JSONObject()
+        context.dataStore.data.first().asMap().forEach { (key, value) ->
+            if (key.name !in IN_BACKUP) return@forEach
+            when (value) {
+                is String -> out.put(key.name, JSONObject().put("t", "s").put("v", value))
+                is Boolean -> out.put(key.name, JSONObject().put("t", "b").put("v", value))
+                is Int -> out.put(key.name, JSONObject().put("t", "i").put("v", value))
+                is Long -> out.put(key.name, JSONObject().put("t", "l").put("v", value))
+            }
+        }
+        return out
+    }
+
+    /**
+     * A backup's settings put back. Sets - rules ignored, transfers, alerts already sent - are
+     * added to, as a restore merges; everything else takes the backup's value.
+     */
+    suspend fun restoreStore(json: JSONObject) {
+        context.dataStore.edit { prefs ->
+            json.keys().forEach { name ->
+                if (name !in IN_BACKUP) return@forEach
+                val o = json.optJSONObject(name) ?: return@forEach
+                when (o.optString("t")) {
+                    "s" -> {
+                        val key = stringPreferencesKey(name)
+                        val value = o.optString("v")
+                        prefs[key] = when {
+                            name in MERGED -> JSONArray((parseStringSet(prefs[key]) + parseStringSet(value)).toList()).toString()
+                            else -> value
+                        }
+                    }
+                    "b" -> prefs[androidx.datastore.preferences.core.booleanPreferencesKey(name)] = o.optBoolean("v")
+                    "i" -> prefs[intPreferencesKey(name)] = o.optInt("v")
+                    "l" -> prefs[androidx.datastore.preferences.core.longPreferencesKey(name)] = o.optLong("v")
+                }
+            }
+        }
+    }
+
     companion object {
+        /** The bank link - GoCardless keys, token, connections: not in a backup; linked again after a restore. */
+        internal val BANK = setOf("secret_id", "secret_key", "refresh_token", "connections")
+
+        /** Sets, as JSON arrays: a restore adds to them, so it can't undo a choice or resend an alert. */
+        internal val MERGED = setOf("ignored_rules", "transfer_groups", "notified_goal_warnings", "notified_large_transactions", "notified_card_warnings", "notified_duplicates")
+
+        /** Carried in every backup. */
+        internal val IN_BACKUP = setOf(
+            "ignored_rules", "transfer_groups", "primary_income_key", "budget_model", "card_timing",
+            "notified_goal_warnings", "notified_large_transactions", "notified_card_warnings", "notified_duplicates",
+            "notification_time", "last_notified_version_code", "accent", "account_colours",
+            "spend_sources", "spend_learned", "spend_places", "spend_reading_on", "misdated_repaired",
+        )
+
+        /**
+         * Not carried: about today, not the user's data - how many syncs GoCardless allows
+         * today, and the last sync's failures. A new phone starts these afresh.
+         */
+        internal val NOT_CARRIED = setOf("sync_failures", "sync_allowances", "general_allowance")
+
         /**
          * The grant date is written out with the rest. It used not to be, so every read
          * stamped the connection "now" - always ninety days to go, and the reminder to
