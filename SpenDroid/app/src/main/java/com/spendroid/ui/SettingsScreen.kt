@@ -221,8 +221,9 @@ fun SettingsScreen(
             title = { Text("Clear all data?") },
             text = {
                 Text(
-                    "This removes all linked accounts, transactions, and manual rules. " +
-                        "You'll need to enter your GoCardless credentials and re-link your banks.",
+                    "This removes your accounts, transactions, bills, answers to Penny and bank link from this phone. " +
+                        "Your backups aren't touched: the welcome screen can restore one, bank link and all if it's an " +
+                        "automatic backup. Without one, it can't be undone.",
                 )
             },
             confirmButton = {
@@ -772,7 +773,8 @@ private fun DataSection(
         Text("Clear all data")
     }
     Text(
-        "Removes all linked accounts, transactions, and settings. You'll need to re-link your banks.",
+        "Removes your data and bank link from this phone; your backups stay where they are. Restore one from the " +
+            "welcome screen - an automatic backup brings the bank link back too.",
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
