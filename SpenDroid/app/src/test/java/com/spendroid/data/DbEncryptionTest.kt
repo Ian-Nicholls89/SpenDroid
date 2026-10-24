@@ -38,4 +38,11 @@ class DbEncryptionTest {
         assertTrue(db.parentFile!!.listFiles()!!.any { it.name.startsWith("${DbEncryption.NAME}.unreadable-") })
         assertTrue(DbEncryption.note(context)!!.contains("Restore from a SpenDroid backup"))
     }
+
+    @Test
+    fun `the database being converted is opened allowed to create the new one beside it`() {
+        // 0.5.8 on the phone: ATTACH couldn't create budget.db.converting - "unable to open database" (14).
+        val create = net.zetetic.database.sqlcipher.SQLiteDatabase.CREATE_IF_NECESSARY
+        assertTrue(DbEncryption.SOURCE_FLAGS and create == create)
+    }
 }

@@ -100,7 +100,9 @@ object DbEncryption {
         val fromKey = if (encrypt) ByteArray(0) else passphrase
         val toKey = if (encrypt) String(passphrase, Charsets.UTF_8) else ""
 
-        val source = open(db, fromKey)
+        // Allowed to create files: the ATTACH below makes the new database with the source's own
+        // permissions, and read-write alone can't create it (0.5.8: "unable to open database", 14).
+        val source = open(db, fromKey, SOURCE_FLAGS)
         val counts: Map<String, Long>
         val version: Int
         try {
@@ -138,10 +140,11 @@ object DbEncryption {
         prefs(context).edit().putBoolean(ON, encrypt).apply { if (!encrypt) remove(KEY) }.commit()
     }
 
-    private fun open(file: File, passphrase: ByteArray) =
-        net.zetetic.database.sqlcipher.SQLiteDatabase.openDatabase(
-            file.path, passphrase, null, net.zetetic.database.sqlcipher.SQLiteDatabase.OPEN_READWRITE, null, null,
-        )
+    internal const val SOURCE_FLAGS =
+        net.zetetic.database.sqlcipher.SQLiteDatabase.OPEN_READWRITE or net.zetetic.database.sqlcipher.SQLiteDatabase.CREATE_IF_NECESSARY
+
+    private fun open(file: File, passphrase: ByteArray, flags: Int = net.zetetic.database.sqlcipher.SQLiteDatabase.OPEN_READWRITE) =
+        net.zetetic.database.sqlcipher.SQLiteDatabase.openDatabase(file.path, passphrase, null, flags, null, null)
 
     private fun tableCounts(db: net.zetetic.database.sqlcipher.SQLiteDatabase): Map<String, Long> {
         val tables = db.rawQuery(
