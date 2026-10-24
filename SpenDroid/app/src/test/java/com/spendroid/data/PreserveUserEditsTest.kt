@@ -39,7 +39,7 @@ class PreserveUserEditsTest {
 
     @Test
     fun `a hand-set category survives the next sync`() {
-        val merged = GoCardlessRepository.preserveUserEdits(
+        val merged = SyncRules.preserveUserEdits(
             fetched = listOf(tx("tx-1")),
             existing = listOf(tx("tx-1", category = "WORK_LUNCH", transfer = true, recurring = true)),
         )
@@ -52,7 +52,7 @@ class PreserveUserEditsTest {
 
     @Test
     fun `the bank still wins on the facts it owns`() {
-        val merged = GoCardlessRepository.preserveUserEdits(
+        val merged = SyncRules.preserveUserEdits(
             fetched = listOf(tx("tx-1", payee = "TESCO STORES 3241")),
             existing = listOf(tx("tx-1", payee = "TESCO", category = "GROCERIES")),
         )
@@ -64,7 +64,7 @@ class PreserveUserEditsTest {
 
     @Test
     fun `a transaction seen for the first time keeps its defaults`() {
-        val merged = GoCardlessRepository.preserveUserEdits(
+        val merged = SyncRules.preserveUserEdits(
             fetched = listOf(tx("tx-new")),
             existing = listOf(tx("tx-old", category = "GROCERIES")),
         )
@@ -76,7 +76,7 @@ class PreserveUserEditsTest {
     @Test
     fun `nothing stored means nothing to carry`() {
         val fetched = listOf(tx("tx-1"), tx("tx-2"))
-        assertEquals(fetched, GoCardlessRepository.preserveUserEdits(fetched, emptyList()))
+        assertEquals(fetched, SyncRules.preserveUserEdits(fetched, emptyList()))
     }
 
     /**
@@ -86,7 +86,7 @@ class PreserveUserEditsTest {
      */
     @Test
     fun `a transfer the user decided for themselves is marked as theirs`() {
-        val merged = GoCardlessRepository.preserveUserEdits(
+        val merged = SyncRules.preserveUserEdits(
             fetched = listOf(tx("tx-1")),
             existing = listOf(tx("tx-1", transfer = false, overridden = true)),
         )
@@ -105,7 +105,7 @@ class PreserveUserEditsTest {
         )
         val stored = listOf(row("p1", pending = true, date = "2026-09-25", category = "EATING_OUT"))
         val fetched = listOf(row("b9", pending = false, date = "2026-09-26"))
-        val result = GoCardlessRepository.preserveUserEdits(fetched, stored).single()
+        val result = SyncRules.preserveUserEdits(fetched, stored).single()
         org.junit.Assert.assertEquals("b9", result.transactionId)
         org.junit.Assert.assertEquals("EATING_OUT", result.categoryOverride)
     }

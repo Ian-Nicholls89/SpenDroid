@@ -35,8 +35,8 @@ class TransferPairingTest {
     )
 
     private fun pairs(vararg txs: TransactionEntity) =
-        GoCardlessRepository.detectInternalTransfers(
-            GoCardlessRepository.transferCandidates(txs.toList(), excludedAccounts = emptySet()),
+        SyncRules.detectInternalTransfers(
+            SyncRules.transferCandidates(txs.toList(), excludedAccounts = emptySet()),
         )
 
     /**
@@ -110,7 +110,7 @@ class TransferPairingTest {
         val august = toSavings.copy(transactionId = "aug", bookingDate = "2026-08-01")
         val excepted = toSavings.copy(transactionId = "x", bookingDate = "2026-06-01", transferOverridden = true)
 
-        val covered = GoCardlessRepository.inTransferGroups(listOf(july, august, excepted, toJoint), setOf(group))
+        val covered = SyncRules.inTransferGroups(listOf(july, august, excepted, toJoint), setOf(group))
         assertEquals(setOf("jul", "aug"), covered.map { it.transactionId }.toSet())
     }
 }

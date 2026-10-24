@@ -22,10 +22,10 @@ class SyncFailureTest {
 
     @Test
     fun `a refusal says why`() {
-        assertEquals(SyncFailure.Reason.LIMIT, GoCardlessRepository.failureReason(http(429)))
-        assertEquals(SyncFailure.Reason.REAUTH, GoCardlessRepository.failureReason(http(401)))
-        assertEquals(SyncFailure.Reason.OFFLINE, GoCardlessRepository.failureReason(IOException()))
-        assertEquals(SyncFailure.Reason.ERROR, GoCardlessRepository.failureReason(http(500)))
+        assertEquals(SyncFailure.Reason.LIMIT, SyncRules.failureReason(http(429)))
+        assertEquals(SyncFailure.Reason.REAUTH, SyncRules.failureReason(http(401)))
+        assertEquals(SyncFailure.Reason.OFFLINE, SyncRules.failureReason(IOException()))
+        assertEquals(SyncFailure.Reason.ERROR, SyncRules.failureReason(http(500)))
     }
 
     private fun account(id: String, type: AccountType, hour: Int, minute: Int) = AccountEntity(

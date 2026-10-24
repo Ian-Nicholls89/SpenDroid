@@ -39,14 +39,14 @@ class SyncKeepsSettingsTest {
 
     @Test
     fun `the card's statement and payment days survive a sync`() {
-        val merged = GoCardlessRepository.refreshedAccount(stored, fetched)
+        val merged = SyncRules.refreshedAccount(stored, fetched)
         assertEquals(12, merged.statementDayOfMonth)
         assertEquals(5, merged.paymentDayOfMonth)
     }
 
     @Test
     fun `the user's type, name and link survive a sync`() {
-        val merged = GoCardlessRepository.refreshedAccount(stored, fetched)
+        val merged = SyncRules.refreshedAccount(stored, fetched)
         assertEquals(AccountType.CREDIT_CARD, merged.accountType)
         assertEquals("Tesco Card", merged.label)
         assertEquals("current", merged.linkedCreditCardAccountId)
@@ -54,7 +54,7 @@ class SyncKeepsSettingsTest {
 
     @Test
     fun `what the bank knows is refreshed`() {
-        val merged = GoCardlessRepository.refreshedAccount(stored, fetched)
+        val merged = SyncRules.refreshedAccount(stored, fetched)
         assertEquals(-25000L, merged.balanceMinor)
         assertEquals(99L, merged.lastSynced)
         assertEquals("{\"balances\":[]}", merged.rawBalancesJson)
@@ -62,7 +62,7 @@ class SyncKeepsSettingsTest {
 
     @Test
     fun `a new account is taken as fetched`() {
-        assertEquals(fetched, GoCardlessRepository.refreshedAccount(null, fetched))
+        assertEquals(fetched, SyncRules.refreshedAccount(null, fetched))
     }
 
     /**
@@ -71,8 +71,8 @@ class SyncKeepsSettingsTest {
      */
     @Test
     fun `identical purchases on the same day stay separate`() {
-        val first = GoCardlessRepository.fallbackTransactionId("2026-09-20", -320, "PRET", 1)
-        val second = GoCardlessRepository.fallbackTransactionId("2026-09-20", -320, "PRET", 2)
+        val first = SyncRules.fallbackTransactionId("2026-09-20", -320, "PRET", 1)
+        val second = SyncRules.fallbackTransactionId("2026-09-20", -320, "PRET", 2)
         assertNotEquals(first, second)
     }
 
@@ -81,7 +81,7 @@ class SyncKeepsSettingsTest {
     fun `the first of a kind keeps the id it always had`() {
         assertEquals(
             "2026-09-20|-320|PRET".hashCode().toString(),
-            GoCardlessRepository.fallbackTransactionId("2026-09-20", -320, "PRET", 1),
+            SyncRules.fallbackTransactionId("2026-09-20", -320, "PRET", 1),
         )
     }
 }

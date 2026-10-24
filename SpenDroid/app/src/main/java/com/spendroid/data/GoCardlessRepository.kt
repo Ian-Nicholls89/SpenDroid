@@ -141,287 +141,39 @@ class GoCardlessRepository private constructor(
         // A spend seen in a notification lives in its own table until the bank reports it.
         if (transactionId.startsWith(NotificationSpend.SEEN_PREFIX)) {
             val id = transactionId.removePrefix(NotificationSpend.SEEN_PREFIX)
-            notificationLock.withLock {
-                dao.seenSpends().firstOrNull { it.id == id }?.let { dao.upsertSeenSpend(it.copy(categoryOverride = category)) }
-            }
+            seen.setCategory(id, category)
             return
         }
         dao.setCategoryOverride(accountId, transactionId, category)
     }
 
-    // --- Spending read from notifications ---
+    // --- Spending read from notifications: [SeenSpendStore] ---
+    private val seen = SeenSpendStore(dao, secrets)
 
-    val spendSources: Flow<List<NotificationSpend.Source>> = secrets.spendSources
-    val spendReadingOn: Flow<Boolean> = secrets.spendReadingOn
-    val spendLearned: Flow<List<NotificationSpend.Learned>> = secrets.spendLearned
-    val seenSpends: Flow<List<SeenSpendEntity>> = dao.seenSpendsFlow()
-    val notificationSamples: Flow<List<NotificationSampleEntity>> = dao.notificationSamplesFlow()
+    val spendSources: Flow<List<NotificationSpend.Source>> = seen.spendSources
+    val spendReadingOn: Flow<Boolean> = seen.spendReadingOn
+    val spendLearned: Flow<List<NotificationSpend.Learned>> = seen.spendLearned
+    val seenSpends: Flow<List<SeenSpendEntity>> = seen.seenSpends
+    val notificationSamples: Flow<List<NotificationSampleEntity>> = seen.notificationSamples
+    val spendPlaces: Flow<Map<String, String>> = seen.spendPlaces
 
-    suspend fun saveSpendSources(sources: List<NotificationSpend.Source>) {
-        secrets.saveSpendSources(sources)
-        watched = null
-    }
-    suspend fun setSpendReadingOn(on: Boolean) = secrets.setSpendReadingOn(on)
-
-    /**
-     * Packages whose notifications are read: the bank apps picked, and Wallet if any card is in
-     * it. Asked for every notification the phone shows - every message, every app - so it is
-     * kept rather than read from settings and the database each time, and dropped when either
-     * of the things it comes from changes.
-     */
-    suspend fun watchedPackages(): Set<String> {
-        watched?.let { return it }
-        val apps = spendSources.first().map { it.packageName }.toSet()
-        val wallet = dao.accounts().any { it.walletLinked }
-        return (if (wallet) apps + NotificationSpend.GOOGLE_WALLET else apps).also { watched = it }
-    }
-
-    @Volatile private var watched: Set<String>? = null
-
-    /**
-     * A notification from a watched app: kept for thirty days as a sample, and when it reads as a
-     * card payment, counted - unless the same purchase was already seen, or the bank has already
-     * reported it. Returns true when the figures changed.
-     */
-    /**
-     * One notification at a time. Wallet and the bank announce a purchase within the same
-     * second, and handled side by side each checked for a duplicate before the others were
-     * saved - so one lunch could count three times.
-     */
-    private val notificationLock = kotlinx.coroutines.sync.Mutex()
-
-    /**
-     * A payment read from a notification that waits on the user to say which account, with the
-     * accounts it could be: for asking from a notification of SpenDroid's own.
-     */
-    suspend fun questionFor(source: String, postedAt: Long): Pair<SeenSpendEntity, List<AccountEntity>>? {
-        val spend = dao.seenSpends().firstOrNull { it.id == "$source|$postedAt" } ?: return null
-        if (spend.accountId != null || spend.dismissed || spend.matchedTransactionId != null) return null
-        val candidates = NotificationSpend.candidatesFor(source, spendSources.first(), dao.accounts()).orEmpty()
-        return if (candidates.size < 2) null else spend to candidates
-    }
-
-    /** Whether "always put this shop here" is set for [spend], and where. */
-    suspend fun placeOf(spend: SeenSpendEntity): String? = spendPlaces.first()[NotificationSpend.placeKey(spend.source, spend.merchant)]
-
-    /** Set when a Wallet announcement settled which account an earlier bank alert was on. */
-    @Volatile private var settledByPartner = false
-
-    /**
-     * Payments seen in the last day that no longer wait on an answer - so a "which account?"
-     * still showing for one can go.
-     */
-    suspend fun settledSince(since: Long): List<String> =
-        dao.seenSpends().filter { it.seenAt >= since && (it.accountId != null || it.dismissed || it.matchedTransactionId != null) }.map { it.id }
-
-    suspend fun onNotification(source: String, title: String?, text: String?, postedAt: Long): Boolean =
-        notificationLock.withLock {
-            val parsed = NotificationSpend.parse(source, title, text, spendLearned.first())
-            val sampleId = dao.insertNotificationSample(
-                NotificationSampleEntity(source = source, postedAt = postedAt, title = title, text = text, parsed = parsed != null),
-            )
-            dao.deleteNotificationSamplesBefore(postedAt - SAMPLE_DAYS_MS)
-            // A manual account's payments wait for the statement that lists them, however long.
-            NotificationSpend.forgettable(dao.seenSpends(), postedAt - SEEN_SPEND_DAYS_MS, manualCoverage())
-                .takeIf { it.isNotEmpty() }?.let { old -> dao.deleteSeenSpends(old.map { it.id }) }
-            val outcome = parsed?.let { countSeen(source, it, postedAt) } ?: NotificationSpend.Outcome.NOT_A_PAYMENT
-            dao.setNotificationOutcome(sampleId, outcome.name)
-            val settled = settledByPartner.also { settledByPartner = false }
-            outcome == NotificationSpend.Outcome.COUNTED || settled
-        }
-
-    /**
-     * Counts a payment read from a notification - unless it repeats one already seen, or the
-     * budget already accounts for it as a transfer or a regular bill.
-     */
-    private suspend fun countSeen(source: String, parsed: NotificationSpend.Parsed, postedAt: Long): NotificationSpend.Outcome {
-        if (!spendReadingOn.first()) return NotificationSpend.Outcome.PAUSED
-        val recent = dao.seenSpends()
-        val accounts = dao.accounts()
-        val setup = NotificationSpend.Setup(spendSources.first(), accounts)
-        NotificationSpend.duplicateOf(source, parsed.amountMinor, parsed.cardDigits, postedAt, recent, setup)?.let { first ->
-            // The banking app's alert came first and couldn't say which account - first direct
-            // never does - but Wallet's shows the card: that settles it.
-            if (first.accountId == null || first.accountGuessed) {
-                NotificationSpend.placementFor(source, parsed, setup.sources, accounts, emptyList())
-                    ?.takeIf { it.accountId != null && !it.guessed }
-                    ?.takeIf { placed -> NotificationSpend.candidatesFor(first.source, setup.sources, accounts).orEmpty().any { it.id == placed.accountId } }
-                    ?.let { placed ->
-                        dao.upsertSeenSpend(first.copy(accountId = placed.accountId, accountGuessed = false, provisionalAccountId = null))
-                        settledByPartner = true
-                    }
-            }
-            // Kept on record, not counted: it marks the first as having its partner.
-            dao.upsertSeenSpend(
-                SeenSpendEntity(
-                    id = "$source|$postedAt", source = source, seenAt = postedAt, amountMinor = -parsed.amountMinor,
-                    currency = first.currency, merchant = parsed.merchant, cardDigits = parsed.cardDigits,
-                    dismissed = true, pairedWithId = first.id,
-                ),
-            )
-            return NotificationSpend.Outcome.DUPLICATE
-        }
-        val history = accounts.flatMap { dao.transactionsFor(it.id) }
-        val rules = RecurringAnalyzer.analyze(history) + manualRules.first().mapNotNull { it.toRecurringRule() }
-        if (NotificationSpend.alreadyAccountedFor(parsed, history, rules)) return NotificationSpend.Outcome.ACCOUNTED_FOR
-        // What the user said before counts as much as what the bank did: their answers teach.
-        val answered = dao.seenSpends().filter { it.accountId != null && !it.accountGuessed && !it.dismissed && it.matchedTransactionId == null }
-            .map { NotificationSpend.asTransaction(it, "") }
-        val placement = NotificationSpend.placementFor(source, parsed, spendSources.first(), accounts, history + answered, spendPlaces.first())
-        val accountId = placement?.accountId
-        dao.upsertSeenSpend(
-            SeenSpendEntity(
-                id = "$source|$postedAt",
-                source = source,
-                seenAt = postedAt,
-                amountMinor = -parsed.amountMinor,
-                currency = accounts.firstOrNull { it.id == (accountId ?: placement?.provisionalAccountId) }?.currency ?: "GBP",
-                // A bank app's "GREGGS 4168" is Greggs, as its pending row will be.
-                merchant = CardDigits.trim(parsed.merchant, cardDigits() + listOfNotNull(parsed.cardDigits)),
-                cardDigits = parsed.cardDigits,
-                accountId = accountId,
-                accountGuessed = placement?.guessed == true,
-                provisionalAccountId = placement?.provisionalAccountId,
-            ),
-        )
-        reconcileSeenSpendsHeld()
-        return NotificationSpend.Outcome.COUNTED
-    }
-
-    /**
-     * Learns from one of the notifications seen: count ones worded like it, or ignore them. A
-     * "count" also counts that notification now, as it would have been had the app known.
-     * Returns false when there is nothing in it to learn around - no single amount.
-     */
-    suspend fun teachNotification(sampleId: Long, count: Boolean): Boolean {
-        val sample = dao.notificationSamples().firstOrNull { it.id == sampleId } ?: return false
-        val learned = NotificationSpend.learn(sample.source, sample.title, sample.text, count) ?: return false
-        secrets.updateSpendLearned { current -> current.filterNot { it.source == learned.source && it.pattern == learned.pattern } + learned }
-        dao.markNotificationSampleParsed(sampleId, count)
-        if (count) {
-            val outcome = notificationLock.withLock {
-                NotificationSpend.parse(sample.source, sample.title, sample.text, listOf(learned))
-                    ?.let { countSeen(sample.source, it, sample.postedAt) }
-            }
-            outcome?.let { dao.setNotificationOutcome(sampleId, it.name) }
-        } else {
-            dao.setNotificationOutcome(sampleId, NotificationSpend.Outcome.NOT_A_PAYMENT.name)
-            // Anything already counted from notifications worded like it goes.
-            val seen = dao.seenSpends().filter { it.source == sample.source && it.matchedTransactionId == null && !it.dismissed }
-            val ignored = dao.notificationSamples()
-                .filter { it.source == sample.source && Regex(learned.pattern).containsMatchIn(NotificationSpend.bodyOf(it.title, it.text)) }
-                .map { it.postedAt }
-                .toSet()
-            notificationLock.withLock {
-                dao.seenSpends().filter { s -> s.id in seen.map { it.id }.toSet() && s.seenAt in ignored }.forEach { dao.upsertSeenSpend(it.copy(dismissed = true)) }
-            }
-        }
-        return true
-    }
-
-    suspend fun forgetLearned() = secrets.updateSpendLearned { emptyList() }
-
-    /**
-     * Hands each seen spend over to the bank's row once one reports it, carrying a category set
-     * on the seen spend across. Run after every sync and every new notification.
-     */
-    suspend fun reconcileSeenSpends() = notificationLock.withLock { reconcileSeenSpendsHeld() }
-
-    /**
-     * [reconcileSeenSpends] with [notificationLock] already held: every change to a seen spend
-     * goes through the lock, or a sync's reconcile - reading them all, then writing back copies
-     * - could put back a row a notification or an answer had just changed.
-     */
-    private suspend fun reconcileSeenSpendsHeld() {
-        // Any purchase counted more than once - as the race before 3.2.1 could, or a bank app
-        // announcing it long after Wallet - is one again. Ones the bank already reported are
-        // looked at too, so the twin of a purchase the bank took over goes as well; only
-        // ones not yet reported are ever dropped.
-        NotificationSpend.toDrop(dao.seenSpends(), NotificationSpend.Setup(spendSources.first(), dao.accounts()))
-            .forEach { (spend, partner) -> dao.upsertSeenSpend(spend.copy(dismissed = true, pairedWithId = partner)) }
-        if (dao.seenSpends().isEmpty()) return
-        val bank = dao.accounts().flatMap { dao.transactionsFor(it.id) }
-        // Paired with a row dated before the purchase, as could happen before 5.5.3: counted
-        // again until the bank lists the purchase itself. Once only - after that, a pairing with
-        // a pending row the bank has since settled looks the same, and is right.
-        // Paired with a bank row that's no longer listed: counted again until the bank's row is back.
-        NotificationSpend.orphaned(dao.seenSpends(), bank, System.currentTimeMillis()).forEach { dao.upsertSeenSpend(it.copy(matchedTransactionId = null)) }
-        if (!secrets.misdatedRepaired.first()) {
-            NotificationSpend.misdated(dao.seenSpends(), bank).forEach { dao.upsertSeenSpend(it.copy(matchedTransactionId = null)) }
-            secrets.setMisdatedRepaired()
-        }
-        val seen = dao.seenSpends()
-        val sources = spendSources.first().associateBy { it.packageName }
-        val walletAccounts = dao.accounts().filter { it.walletLinked }.map { it.id }.toSet()
-        val alternatives = { spend: SeenSpendEntity ->
-            if (spend.source == NotificationSpend.GOOGLE_WALLET) walletAccounts
-            else sources[spend.source]?.accountIds?.toSet().orEmpty()
-        }
-        NotificationSpend.matches(seen, bank, alternatives = alternatives).forEach { (id, row) ->
-            val spend = seen.first { it.id == id }
-            // A guess the bank has now settled: the account is whichever it reported it on.
-            dao.upsertSeenSpend(spend.copy(matchedTransactionId = row.transactionId, accountId = row.accountId, accountGuessed = false))
-            if (spend.categoryOverride != null && row.categoryOverride == null) {
-                dao.setCategoryOverride(row.accountId, row.transactionId, spend.categoryOverride)
-            }
-        }
-        // Announced twice, listed once by the bank: the second announcement was a repeat.
-        val synced = dao.accounts().filter { !it.manual && it.lastSynced > 0L }.associate { it.id to it.lastSynced }
-        NotificationSpend.repeatsRuledOut(dao.seenSpends(), synced, manualCoverage()).forEach { (spend, twin) ->
-            dao.upsertSeenSpend(spend.copy(dismissed = true, pairedWithId = twin))
-        }
-    }
-
-    val spendPlaces: Flow<Map<String, String>> = secrets.spendPlaces
-
-    /**
-     * The user's answer to "which account?", or a change of mind about one already placed.
-     * Remembers the card's digits for next time, and with [always], the shop's account.
-     */
-    suspend fun assignSeenSpend(id: String, accountId: String, always: Boolean = false) = notificationLock.withLock {
-        val spend = dao.seenSpends().firstOrNull { it.id == id } ?: return@withLock
-        dao.upsertSeenSpend(spend.copy(accountId = accountId, accountGuessed = false, provisionalAccountId = null))
-        if (always) secrets.setSpendPlace(NotificationSpend.placeKey(spend.source, spend.merchant), accountId)
-        val digits = spend.cardDigits
-        val account = dao.accounts().firstOrNull { it.id == accountId }
-        if (digits != null && account != null && account.cardLastFour == null) {
-            dao.updateAccount(account.copy(cardLastFour = digits))
-        }
-        reconcileSeenSpendsHeld()
-    }
-
-    /** The question to ask now, if the payment just seen at [postedAt] may be one counted twice. */
-    suspend fun repeatQuestionFor(postedAt: Long): NotificationSpend.Repeat? =
-        NotificationSpend.possibleRepeats(dao.seenSpends()).firstOrNull { it.spend.seenAt == postedAt || it.twin.seenAt == postedAt }
-
-    /** The user's answer to "twice, or once?": [once] drops [spendId] as a repeat of [twinId]. */
-    suspend fun answerRepeat(spendId: String, twinId: String, once: Boolean) = notificationLock.withLock {
-        val spend = dao.seenSpends().firstOrNull { it.id == spendId } ?: return@withLock
-        // Either way round, so a wrong answer can be put right: once drops it as a repeat; twice
-        // brings it back if it was dropped, and keeps it from being dropped again.
-        dao.upsertSeenSpend(
-            if (once) spend.copy(dismissed = true, pairedWithId = twinId, confirmedSeparate = false)
-            else spend.copy(dismissed = false, pairedWithId = null, confirmedSeparate = true),
-        )
-    }
-
-    suspend fun dismissSeenSpend(id: String) = notificationLock.withLock {
-        dao.seenSpends().firstOrNull { it.id == id }?.let { dao.upsertSeenSpend(it.copy(dismissed = true)) }
-    }
-
-    /** "A card check, or a real payment?": a check isn't counted; a real one is, reported or not. Either way round. */
-    suspend fun answerCardCheck(id: String, check: Boolean) = notificationLock.withLock {
-        dao.seenSpends().firstOrNull { it.id == id }?.let { dao.upsertSeenSpend(it.copy(dismissed = check, keptByUser = !check)) }
-    }
-
-    suspend fun keepSeenSpend(id: String) = notificationLock.withLock {
-        dao.seenSpends().firstOrNull { it.id == id }?.let { dao.upsertSeenSpend(it.copy(keptByUser = true)) }
-    }
-
-    suspend fun clearNotificationData() = notificationLock.withLock {
-        dao.deleteAllSeenSpends()
-        dao.deleteAllNotificationSamples()
-    }
+    suspend fun saveSpendSources(sources: List<NotificationSpend.Source>) = seen.saveSpendSources(sources)
+    suspend fun setSpendReadingOn(on: Boolean) = seen.setSpendReadingOn(on)
+    suspend fun watchedPackages() = seen.watchedPackages()
+    suspend fun questionFor(source: String, postedAt: Long) = seen.questionFor(source, postedAt)
+    suspend fun placeOf(spend: SeenSpendEntity) = seen.placeOf(spend)
+    suspend fun settledSince(since: Long) = seen.settledSince(since)
+    suspend fun onNotification(source: String, title: String?, text: String?, postedAt: Long) = seen.onNotification(source, title, text, postedAt)
+    suspend fun teachNotification(sampleId: Long, count: Boolean) = seen.teachNotification(sampleId, count)
+    suspend fun forgetLearned() = seen.forgetLearned()
+    suspend fun reconcileSeenSpends() = seen.reconcileSeenSpends()
+    suspend fun assignSeenSpend(id: String, accountId: String, always: Boolean = false) = seen.assignSeenSpend(id, accountId, always)
+    suspend fun repeatQuestionFor(postedAt: Long) = seen.repeatQuestionFor(postedAt)
+    suspend fun answerRepeat(spendId: String, twinId: String, once: Boolean) = seen.answerRepeat(spendId, twinId, once)
+    suspend fun dismissSeenSpend(id: String) = seen.dismissSeenSpend(id)
+    suspend fun answerCardCheck(id: String, check: Boolean) = seen.answerCardCheck(id, check)
+    suspend fun keepSeenSpend(id: String) = seen.keepSeenSpend(id)
+    suspend fun clearNotificationData() = seen.clearNotificationData()
 
     /** Rows the bank has stopped listing that the user has yet to answer for. */
     suspend fun duplicateQuestions(): List<DuplicateCheck.Question> =
@@ -593,7 +345,7 @@ class GoCardlessRepository private constructor(
      */
     suspend fun updateAccount(account: AccountEntity) {
         // "In Google Wallet" may have changed, which changes the apps whose notifications are read.
-        watched = null
+        seen.forgetWatched()
         val previous = dao.accounts().firstOrNull { it.id == account.id }
         if (previous == null || previous.accountType == account.accountType) {
             dao.updateAccount(account)
@@ -610,7 +362,7 @@ class GoCardlessRepository private constructor(
 
         val repicked = parsed
             ?.let { balances ->
-                val chosen = selectBalance(balances, account.accountType)
+                val chosen = SyncRules.selectBalance(balances, account.accountType)
                 account.copy(
                     balanceMinor = chosen?.first ?: account.balanceMinor,
                     currency = chosen?.second ?: account.currency,
@@ -627,7 +379,7 @@ class GoCardlessRepository private constructor(
         val parsed = account.rawBalancesJson
             ?.let { runCatching { GSON.fromJson(it, BalancesDto::class.java) }.getOrNull() }
             ?: return emptyList()
-        val chosen = selectBalance(parsed, account.accountType)?.first
+        val chosen = SyncRules.selectBalance(parsed, account.accountType)?.first
         return parsed.balances.mapNotNull { balance ->
             val type = balance.balanceType ?: return@mapNotNull null
             val minor = balance.balanceAmount
@@ -642,7 +394,7 @@ class GoCardlessRepository private constructor(
     }
 
     suspend fun clearAllData() {
-        watched = null
+        seen.forgetWatched()
         clearNotificationData()
         dao.deleteAllDuplicateChecks()
         dao.deleteAllTransactions()
@@ -733,7 +485,7 @@ class GoCardlessRepository private constructor(
         val all = dao.accounts()
         val newIds = newConnection.accountIds.toSet()
         val otherConnections = connections.first().filter { it.requisitionId != newConnection.requisitionId }
-        val pairs = matchSuccessors(
+        val pairs = SyncRules.matchSuccessors(
             newAccounts = all.filter { it.id in newIds },
             others = all.filter { it.id !in newIds },
             otherConnections = otherConnections,
@@ -741,8 +493,8 @@ class GoCardlessRepository private constructor(
         if (pairs.isEmpty()) return
 
         for ((old, new) in pairs) {
-            val successor = refreshedAccount(old.copy(id = new.id), new)
-            val history = succeededHistory(dao.transactionsFor(old.id), dao.transactionsFor(new.id), new.id)
+            val successor = SyncRules.refreshedAccount(old.copy(id = new.id), new)
+            val history = SyncRules.succeededHistory(dao.transactionsFor(old.id), dao.transactionsFor(new.id), new.id)
             dao.replaceAccount(old.id, successor, history)
         }
 
@@ -792,7 +544,7 @@ class GoCardlessRepository private constructor(
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (e: Exception) {
-            secrets.setSyncFailure(accountId, SyncFailure(System.currentTimeMillis(), failureReason(e)))
+            secrets.setSyncFailure(accountId, SyncFailure(System.currentTimeMillis(), SyncRules.failureReason(e)))
             throw e
         } finally {
             // Whatever the bank said about the allowance on the way, success or refusal.
@@ -812,8 +564,7 @@ class GoCardlessRepository private constructor(
     suspend fun allowanceFor(accountId: String, now: Long = System.currentTimeMillis()): SyncAllowance.Account? =
         SyncAllowance.forAccount(syncAllowances.first()[accountId].orEmpty(), now, generalAllowance.first())
 
-    private suspend fun cardDigits(): Set<String> =
-        CardDigits.known(dao.accounts().map { it.cardLastFour }, dao.seenSpends().map { it.cardDigits })
+    private suspend fun cardDigits(): Set<String> = seen.cardDigits()
 
     /**
      * Once, after card digits came off pending names (5.2.2): a rule made from one - "always
@@ -881,10 +632,10 @@ class GoCardlessRepository private constructor(
         // never make a regular payment, so nothing kept is keyed on the old name. Their made-up
         // ids were worked out from the name as sent, so they stay the same from sync to sync.
         val cards = cardDigits()
-        val rows = booked + stillPendingOnly(booked, pending).map { it.copy(payee = CardDigits.trim(it.payee, cards)) }
+        val rows = booked + SyncRules.stillPendingOnly(booked, pending).map { it.copy(payee = CardDigits.trim(it.payee, cards)) }
         // Booked rows the bank has stopped listing, followed until the user says what they were.
         val checks = DuplicateCheck.afterSync(stored, booked, dao.duplicateChecksFor(accountId), LocalDate.now())
-        dao.replaceSync(accountId, preserveUserEdits(rows, stored), checks)
+        dao.replaceSync(accountId, SyncRules.preserveUserEdits(rows, stored), checks)
 
         // A sync refreshes the balance; it must not undo the user's own decisions. Rebuilding
         // the row from scratch reset the type, regenerated the label over any rename, and
@@ -899,9 +650,9 @@ class GoCardlessRepository private constructor(
             lastSynced = System.currentTimeMillis(),
             accountType = accountType,
             rawBalancesJson = GSON.toJson(balances),
-            identity = identityFor(metadata, info),
+            identity = SyncRules.identityFor(metadata, info),
         )
-        val entity = refreshedAccount(existing, fetched)
+        val entity = SyncRules.refreshedAccount(existing, fetched)
         dao.upsertAccount(entity)
 
         analyzeTransactions()
@@ -1065,7 +816,7 @@ class GoCardlessRepository private constructor(
             anchorDate = balanceMinor?.let { LocalDate.now().toString() },
         )
         dao.upsertAccount(account)
-        watched = null
+        seen.forgetWatched()
         return account
     }
 
@@ -1080,7 +831,7 @@ class GoCardlessRepository private constructor(
             s.copy(accountIds = s.accountIds - accountId, defaultAccountId = s.defaultAccountId?.takeIf { it != accountId })
         })
         dao.seenSpends().filter { it.countedOn == accountId }.forEach { dao.upsertSeenSpend(it.copy(dismissed = true)) }
-        watched = null
+        seen.forgetWatched()
         reanalyze()
     }
 
@@ -1092,10 +843,7 @@ class GoCardlessRepository private constructor(
     }
 
     /** For each manual account, the last day an imported statement covers. */
-    suspend fun manualCoverage(): Map<String, LocalDate?> {
-        val manual = dao.accounts().filter { it.manual }
-        return ManualAccounts.coverage(manual, manual.flatMap { dao.transactionsFor(it.id) })
-    }
+    suspend fun manualCoverage(): Map<String, LocalDate?> = seen.manualCoverage()
 
     /**
      * Checks a manual account's balance against what the user's banking app shows - nothing is
@@ -1152,7 +900,7 @@ class GoCardlessRepository private constructor(
             }
             .map { it.id }
             .toSet()
-        val internalPairs = detectInternalTransfers(transferCandidates(allTx, excluded))
+        val internalPairs = SyncRules.detectInternalTransfers(SyncRules.transferCandidates(allTx, excluded))
         val recurringFlags = RecurringAnalyzer.detectRecurring(allTx)
 
         // Re-run from scratch rather than only adding: detection used to set the flag and
@@ -1164,7 +912,7 @@ class GoCardlessRepository private constructor(
         }
         // Regular payments the user has said are transfers: every occurrence follows,
         // including ones that arrive later, so the choice is made once rather than monthly.
-        inTransferGroups(allTx, secrets.transferGroups.first()).forEach { tx ->
+        SyncRules.inTransferGroups(allTx, secrets.transferGroups.first()).forEach { tx ->
             dao.updateInternalTransfer(tx.accountId, tx.transactionId)
         }
         // The same from-scratch rule as transfers: a payment that stopped recurring stops
@@ -1275,7 +1023,7 @@ class GoCardlessRepository private constructor(
         // A pending row has no booking date yet, and often no id: the value date stands in for
         // the date, or every £11.35 lunch at one place got the same made-up id - and a card
         // alert matched to last week's lunch was taken to have claimed this week's too.
-        val txId = tx.transactionId ?: madeUpId(tx.bookingDate, tx.valueDate, minor, payee, seen)
+        val txId = tx.transactionId ?: SyncRules.madeUpId(tx.bookingDate, tx.valueDate, minor, payee, seen)
         val info = when (val riu = tx.remittanceInformationUnstructured) {
             is List<*> -> riu.firstOrNull()?.toString().orEmpty()
             null -> ""
@@ -1342,462 +1090,12 @@ class GoCardlessRepository private constructor(
      * exclusion of card spending from the budget, and the right choice of balance.
      */
     private fun detectAccountType(metadata: AccountDetailsDto, info: AccountInfoDto): AccountType =
-        detectAccountTypeFor(metadata, info)
+        SyncRules.detectAccountTypeFor(metadata, info)
 
     private fun pickBalance(balances: BalancesDto, info: AccountInfoDto, accountType: AccountType = AccountType.PERSONAL): Pair<Long?, String> =
-        selectBalance(balances, accountType) ?: (null to (info.currency ?: "GBP"))
+        SyncRules.selectBalance(balances, accountType) ?: (null to (info.currency ?: "GBP"))
 
     companion object {
-
-        /**
-         * Carries the user's own edits across a re-sync.
-         *
-         * The bank is the authority on what a transaction is - its amount, date and payee -
-         * but not on what the user decided about it. Those decisions exist nowhere else and
-         * cannot be re-derived, so they win over the freshly built row.
-         */
-        /**
-         * The stored account with what the bank knows brought up to date.
-         *
-         * Built the other way round - a fresh row with the user's settings copied in one by
-         * one - every setting added later had to be remembered here too, and the card's
-         * statement and payment days were not: a sync wiped them nightly. Starting from the
-         * stored row means anything not named below is kept.
-         */
-        internal fun refreshedAccount(existing: AccountEntity?, fetched: AccountEntity): AccountEntity =
-            existing?.copy(
-                institutionName = fetched.institutionName,
-                currency = fetched.currency,
-                balanceMinor = fetched.balanceMinor,
-                lastSynced = fetched.lastSynced,
-                rawBalancesJson = fetched.rawBalancesJson,
-                identity = fetched.identity ?: existing.identity,
-            ) ?: fetched
-
-        /**
-         * What the bank calls this account whichever consent it arrived under: the IBAN, the
-         * UK sort code and number, or a card's masked number, in that order of certainty.
-         * Formatting is stripped so "60-16-13" and "601613" agree.
-         */
-        internal fun identityFor(metadata: AccountDetailsDto, info: AccountInfoDto): String? {
-            fun clean(value: String?) = value?.filter { it.isLetterOrDigit() }?.uppercase()?.takeIf { it.isNotBlank() }
-            clean(info.iban ?: metadata.iban)?.let { return "iban:$it" }
-            val sortCode = clean(info.sortCode)
-            val number = clean(info.accountNumber)
-            if (sortCode != null && number != null) return "uk:$sortCode/$number"
-            clean(info.bban ?: metadata.bban)?.let { return "bban:$it" }
-            clean(info.maskedPan)?.let { return "pan:$it" }
-            return null
-        }
-
-        /**
-         * Pairs each newly linked account with the stored account it replaces, as (old, new).
-         *
-         * The same bank's identity is proof, provided exactly one stored account carries it.
-         * Failing that - cards often have no number the API will share - an identical name
-         * will do, but only among accounts no live consent still holds, or whose consent has
-         * just been shown to be the one being replaced. Anything less certain is left alone:
-         * a wrong merge would move one person's history onto another's account.
-         */
-        internal fun matchSuccessors(
-            newAccounts: List<AccountEntity>,
-            others: List<AccountEntity>,
-            otherConnections: List<Connection>,
-        ): List<Pair<AccountEntity, AccountEntity>> {
-            val pairs = mutableListOf<Pair<AccountEntity, AccountEntity>>()
-            val usedOld = mutableSetOf<String>()
-
-            for (new in newAccounts) {
-                val identity = new.identity ?: continue
-                val match = others
-                    .filter { it.institutionName == new.institutionName && it.identity == identity }
-                    .singleOrNull() ?: continue
-                // Two new accounts claiming one old one is as ambiguous as the reverse.
-                if (newAccounts.count { it.identity == identity } != 1) continue
-                pairs += match to new
-                usedOld += match.id
-            }
-
-            val superseded = otherConnections.filter { c -> c.accountIds.any { it in usedOld } }
-            val stillHeld = otherConnections.filter { it !in superseded }.flatMap { it.accountIds }.toSet()
-            val matchedNew = pairs.map { it.second.id }.toSet()
-
-            for (new in newAccounts.filter { it.id !in matchedNew }) {
-                val match = others
-                    .filter { old ->
-                        old.id !in usedOld &&
-                            old.id !in stillHeld &&
-                            old.institutionName == new.institutionName &&
-                            old.label == new.label &&
-                            // Two different numbers are two different accounts, whatever the name.
-                            (old.identity == null || new.identity == null || old.identity == new.identity)
-                    }
-                    .singleOrNull() ?: continue
-                pairs += match to new
-                usedOld += match.id
-            }
-            return pairs
-        }
-
-        /**
-         * The history an account carries into its successor. Before the new consent's first
-         * row, the old account is the only copy and moves across; from there on, the fresh
-         * fetch is the authority, keeping what the user decided about the rows the two share.
-         */
-        internal fun succeededHistory(
-            old: List<TransactionEntity>,
-            fresh: List<TransactionEntity>,
-            newId: String,
-        ): List<TransactionEntity> {
-            val rekeyed = old.map { it.copy(accountId = newId) }
-            val start = fresh.mapNotNull { runCatching { LocalDate.parse(it.bookingDate) }.getOrNull() }.minOrNull()
-                ?: return rekeyed + fresh
-            val before = rekeyed.filter { tx ->
-                runCatching { LocalDate.parse(tx.bookingDate) }.getOrNull()?.isBefore(start) == true
-            }
-            return before + preserveUserEdits(fresh, rekeyed)
-        }
-
-        /**
-         * An id for a row the bank sent without one, from what it contains. The first of a kind
-         * keeps the id rows have always been stored under, so nothing already stored is
-         * duplicated; a second identical row on the same day is numbered rather than dropped.
-         */
-        /** An id for a row the bank gave none, from its date - the value date while pending - amount and payee. */
-        internal fun madeUpId(bookingDate: String?, valueDate: String?, minor: Long, payee: String, seen: MutableMap<String, Int>): String {
-            val date = bookingDate ?: valueDate
-            val content = "$date|$minor|$payee"
-            val occurrence = (seen[content] ?: 0) + 1
-            seen[content] = occurrence
-            return fallbackTransactionId(date, minor, payee, occurrence)
-        }
-
-        internal fun fallbackTransactionId(
-            bookingDate: String?,
-            minor: Long,
-            payee: String,
-            occurrence: Int,
-        ): String {
-            val base = "$bookingDate|$minor|$payee".hashCode().toString()
-            return if (occurrence <= 1) base else "$base#$occurrence"
-        }
-
-        /**
-         * The transactions transfer detection may pair.
-         *
-         * A row the user said is *not* a transfer is theirs, and pairing it anyway marked only
-         * the other leg, leaving half a transfer counted and half hidden. A row they said *is*
-         * one stays in: it is still one half of a move, and without it its other half has
-         * nothing to pair with and is counted as spending. That was 2.24's mistake - it left
-         * out every row the user had ruled on, either way, and a £500 move to savings whose
-         * receiving side had been marked by hand turned into a £500 monthly commitment.
-         */
-        /**
-         * The transactions a marked group covers. A row the user individually said is not a
-         * transfer keeps their word: the narrower decision wins over the broader one.
-         */
-        internal fun inTransferGroups(
-            transactions: List<TransactionEntity>,
-            groups: Set<String>,
-        ): List<TransactionEntity> {
-            if (groups.isEmpty()) return emptyList()
-            return transactions.filter { tx ->
-                RecurringAnalyzer.groupKey(tx) in groups && !(tx.transferOverridden && !tx.isInternalTransfer)
-            }
-        }
-
-        internal fun transferCandidates(
-            transactions: List<TransactionEntity>,
-            excludedAccounts: Set<String>,
-        ): List<TransactionEntity> = transactions.filter {
-            it.accountId !in excludedAccounts && !(it.transferOverridden && !it.isInternalTransfer)
-        }
-
-        /**
-         * Pairs off the two halves of a move between the user's own accounts.
-         *
-         * The payee is deliberately not required to match. It names the *counterparty*, so the
-         * two legs of the same transfer are named differently by design - the money leaves as
-         * "JOINT ACCOUNT BILLS" and arrives as "BILLS NICHO". Insisting they agree meant genuine
-         * transfers were never paired, and the standing order into the joint account was read as
-         * a monthly salary.
-         *
-         * What is required instead is that the pairing be unambiguous. Only the user's own
-         * accounts are visible here, so an exact opposite amount within a day is already strong
-         * evidence; where more than one transaction could be the other half, the references
-         * break the tie, and if they cannot, nothing is paired. A wrong pair hides real spending,
-         * which is worse than leaving a transfer on show.
-         */
-        internal fun detectInternalTransfers(
-            transactions: List<TransactionEntity>,
-        ): List<Pair<TransactionEntity, TransactionEntity>> {
-            // A fixed order, whatever order the accounts arrived in. It used to follow the
-            // order they last synced, so the same data could pair one way at 16:26 and another
-            // at 16:50 - and did, turning a transfer into a £500 commitment.
-            val sorted = transactions.sortedWith(
-                compareBy<TransactionEntity>({ it.bookingDate }, { it.accountId }, { it.transactionId }),
-            )
-            val credits = sorted.filter { it.amountMinor > 0 }.groupBy { it.amountMinor }
-            val debits = sorted.filter { it.amountMinor < 0 }.groupBy { -it.amountMinor }
-
-            fun creditsFor(debit: TransactionEntity) = credits[-debit.amountMinor].orEmpty()
-                .filter { it.accountId != debit.accountId && couldOffset(debit, it) }
-            fun debitsFor(credit: TransactionEntity) = debits[credit.amountMinor].orEmpty()
-                .filter { it.accountId != credit.accountId && couldOffset(it, credit) }
-
-            val pairs = mutableListOf<Pair<TransactionEntity, TransactionEntity>>()
-            val used = mutableSetOf<String>()
-            fun open(list: List<TransactionEntity>) = list.filter { transferKey(it) !in used }
-
-            /**
-             * The credit this debit pairs with, when the pairing is certain from both ends.
-             *
-             * One-sided certainty was the old rule, and it is not enough: a credit that two
-             * debits could claim was taken by whichever came first, even when its reference
-             * named the other. So a pair needs each side to be the other's only match - or,
-             * failing that, the references to single out one pairing on both sides.
-             */
-            fun partner(debit: TransactionEntity): TransactionEntity? {
-                val options = open(creditsFor(debit))
-                options.singleOrNull()?.let { credit ->
-                    if (open(debitsFor(credit)).singleOrNull() == debit) return credit
-                }
-                val named = options.filter { referencesAgree(debit, it) }.singleOrNull() ?: return null
-                val namedBack = open(debitsFor(named)).filter { referencesAgree(it, named) }.singleOrNull()
-                return named.takeIf { namedBack == debit }
-            }
-
-            // Each pair made can settle another that was ambiguous only because of it.
-            var progress = true
-            while (progress) {
-                progress = false
-                for (debit in sorted) {
-                    if (debit.amountMinor >= 0 || transferKey(debit) in used) continue
-                    val credit = partner(debit) ?: continue
-                    pairs += debit to credit
-                    used += transferKey(debit)
-                    used += transferKey(credit)
-                    progress = true
-                }
-            }
-            return pairs
-        }
-
-        private fun transferKey(tx: TransactionEntity) = "${tx.accountId}|${tx.transactionId}"
-
-        /** Equal and opposite, same currency, close enough in time to be one movement. */
-        private fun couldOffset(tx1: TransactionEntity, tx2: TransactionEntity): Boolean {
-            if (tx1.amountMinor != -tx2.amountMinor || tx1.currency != tx2.currency) return false
-            val date1 = try { LocalDate.parse(tx1.bookingDate) } catch (_: Exception) { return false }
-            val date2 = try { LocalDate.parse(tx2.bookingDate) } catch (_: Exception) { return false }
-            return Math.abs(date1.toEpochDay() - date2.toEpochDay()) <= 1
-        }
-
-        /** Whether the two sides name the same movement, used only to break a tie. */
-        private fun referencesAgree(tx1: TransactionEntity, tx2: TransactionEntity): Boolean {
-            val ref1 = (tx1.description ?: "").trim().lowercase()
-            val ref2 = (tx2.description ?: "").trim().lowercase()
-            val payee1 = tx1.payee.trim().lowercase()
-            val payee2 = tx2.payee.trim().lowercase()
-
-            if (ref1.isNotBlank() && ref1 == ref2) return true
-            if (payee1.isNotBlank() && payee1 == payee2) return true
-            if (ref1.isNotBlank() && ref2.isNotBlank()) {
-                val a = ref1.split("[^a-z0-9]+".toRegex()).filter { it.length > 2 }.toSet()
-                val b = ref2.split("[^a-z0-9]+".toRegex()).filter { it.length > 2 }.toSet()
-                if (a.isNotEmpty() && a == b) return true
-            }
-            return false
-        }
-
-        /**
-         * The pending entries the bank has not also reported as booked.
-         *
-         * Some banks go on listing a payment as pending after it has booked. Under the same id,
-         * the pending copy was written after the booked one and replaced it, every sync - and,
-         * still being listed, it was never cleared: a salary the bank showed as landed stayed
-         * pending in the app. Under a new id, the stale copy sat beside the booked one for good.
-         * A booked entry wins. A pending one is dropped when it shares the booked one's id, or
-         * is the same amount from the same payee, booked on or within a few days of it.
-         */
-        internal fun stillPendingOnly(
-            booked: List<TransactionEntity>,
-            pending: List<TransactionEntity>,
-        ): List<TransactionEntity> {
-            val bookedIds = booked.mapTo(HashSet()) { it.transactionId }
-            val claimed = mutableSetOf<String>()
-            fun payee(tx: TransactionEntity) = tx.payee.lowercase().trim().replace(Regex("\\s+"), " ")
-            // The words a name is made of, less digits and short fragments: "GREGGS 4168" and
-            // "GREGGS PLC AMESBURY" share "greggs".
-            fun words(tx: TransactionEntity) = payee(tx).split(Regex("[^a-z]+")).filter { it.length >= 3 }.toSet()
-            fun inWindow(p: TransactionEntity, b: TransactionEntity): Boolean {
-                val pendingDate = runCatching { LocalDate.parse(p.bookingDate) }.getOrNull() ?: return true
-                val bookedOn = runCatching { LocalDate.parse(b.bookingDate) }.getOrNull() ?: return false
-                return !bookedOn.isBefore(pendingDate.minusDays(1)) && !bookedOn.isAfter(pendingDate.plusDays(PENDING_TWIN_DAYS))
-            }
-            return pending.filter { p ->
-                if (p.transactionId in bookedIds) return@filter false
-                val candidates = booked.filter { b -> b.transactionId !in claimed && b.amountMinor == p.amountMinor && inWindow(p, b) }
-                // The same name; else a name sharing a word - NatWest lists a card payment pending
-                // as "GREGGS 4168" and books it as "GREGGS PLC AMESBURY", and went on listing
-                // the pending one too, so a £4.25 counted twice; else the only pairing there is -
-                // one pending, one booked, same amount, in the window.
-                val twin = candidates.firstOrNull { payee(it) == payee(p) }
-                    ?: candidates.firstOrNull { (words(it) intersect words(p)).isNotEmpty() }
-                    ?: candidates.singleOrNull()?.takeIf {
-                        pending.count { other -> other.amountMinor == p.amountMinor && inWindow(other, it) } == 1
-                    }
-                if (twin != null) {
-                    claimed += twin.transactionId
-                    false
-                } else {
-                    true
-                }
-            }
-        }
-
-        /** Whether the user has decided anything about this row that a sync must not lose. */
-        private fun TransactionEntity.hasUserEdits(): Boolean =
-            categoryOverride != null || transferOverridden || isCardPayment
-
-        /** How long after a pending entry its booked version may be dated. */
-        private const val PENDING_TWIN_DAYS = 5L
-
-        /** What a refusal from the bank means, in the terms the account card uses. */
-        internal fun failureReason(e: Throwable): SyncFailure.Reason = when {
-            e is retrofit2.HttpException && e.code() == 429 -> SyncFailure.Reason.LIMIT
-            e is retrofit2.HttpException && e.code() in setOf(401, 403, 409) -> SyncFailure.Reason.REAUTH
-            e is IOException -> SyncFailure.Reason.OFFLINE
-            else -> SyncFailure.Reason.ERROR
-        }
-
-        internal fun preserveUserEdits(
-            fetched: List<TransactionEntity>,
-            existing: List<TransactionEntity>,
-        ): List<TransactionEntity> {
-            if (existing.isEmpty()) return fetched
-            val byId = existing.associateBy { it.transactionId }
-            // A pending row often books under a new id. Matched by id alone, a category set
-            // while it was pending was lost the moment it booked; its booked twin - same amount,
-            // same payee, dated within the pending window - inherits the edits instead.
-            val fetchedIds = fetched.mapTo(HashSet()) { it.transactionId }
-            val orphanedPending = existing
-                .filter { it.isPending && it.transactionId !in fetchedIds && it.hasUserEdits() }
-                .toMutableList()
-            fun normalised(tx: TransactionEntity) = tx.payee.lowercase().trim().replace(Regex("\\s+"), " ")
-            fun twinOf(row: TransactionEntity): TransactionEntity? {
-                if (row.isPending) return null
-                val bookedOn = runCatching { LocalDate.parse(row.bookingDate) }.getOrNull() ?: return null
-                val twin = orphanedPending.firstOrNull { p ->
-                    p.amountMinor == row.amountMinor && normalised(p) == normalised(row) &&
-                        runCatching { LocalDate.parse(p.bookingDate) }.getOrNull()?.let { pendingOn ->
-                            !bookedOn.isBefore(pendingOn.minusDays(1)) &&
-                                !bookedOn.isAfter(pendingOn.plusDays(PENDING_TWIN_DAYS))
-                        } ?: true
-                } ?: return null
-                orphanedPending.remove(twin)
-                return twin
-            }
-            return fetched.map { row ->
-                val prior = byId[row.transactionId] ?: twinOf(row) ?: return@map row
-                row.copy(
-                    isInternalTransfer = prior.isInternalTransfer,
-                    isRecurring = prior.isRecurring,
-                    categoryOverride = prior.categoryOverride,
-                    isCardPayment = prior.isCardPayment,
-                    transferOverridden = prior.transferOverridden,
-                )
-            }
-        }
-            internal fun detectAccountTypeFor(metadata: AccountDetailsDto, info: AccountInfoDto): AccountType {
-            // ISO 20022 cash account type: an outright answer where the bank sends one.
-            if (info.cashAccountType?.equals("CARD", ignoreCase = true) == true) {
-                return AccountType.CREDIT_CARD
-            }
-
-            val text = listOfNotNull(metadata.name, info.name, info.product, info.details)
-                .joinToString(" ")
-                .lowercase()
-
-            return when {
-                // Before the card rules: PayPal calls its product a "card" often enough to
-                // be mistaken for one, and it behaves nothing like a credit card here.
-                text.contains("paypal") -> AccountType.PAYPAL
-                text.contains("credit card") || text.contains("creditcard") -> AccountType.CREDIT_CARD
-                text.contains("credit") && !text.contains("credit union") -> AccountType.CREDIT_CARD
-                text.contains("joint") -> AccountType.JOINT
-                text.contains("saving") || text.contains("isa ") || text.endsWith(" isa") ->
-                    AccountType.SAVINGS
-                // Weakest signal last, so "card" does not outrank an explicit "joint".
-                text.contains("card") -> AccountType.CREDIT_CARD
-                else -> AccountType.PERSONAL
-            }
-        }
-
-        /**
-         * Picks which of a bank's several balances to show.
-         *
-         * For a current account the useful figure is what is available to spend. For a credit
-         * card it is the opposite: "available" means the unused part of the limit, so preferring
-         * it showed a card's headroom as though it were money. Banks differ in which types they
-         * return, which is why one card looked right and another did not - an issuer that omits
-         * interimAvailable fell through to the real balance by luck rather than by design.
-         */
-
-        /**
-         * Picks which of a bank's several balances to show.
-         *
-         * For a current account the useful figure is what is available to spend. For a credit
-         * card it is the opposite: "available" means the unused part of the limit, so
-         * preferring it showed a card's headroom as though it were money. Banks differ in
-         * which types they return, which is why one card looked right and another did not -
-         * an issuer that omits interimAvailable fell through to the real balance by luck.
-         */
-        fun selectBalance(balances: BalancesDto, accountType: AccountType): Pair<Long, String>? {
-            val preference = when (accountType) {
-                // Owed first, and never an "available" type, which is unused credit.
-                AccountType.CREDIT_CARD ->
-                    listOf("closingBooked", "interimBooked", "expected", "openingBooked")
-                else -> listOf("interimAvailable", "expected", "closingBooked")
-            }
-            for (type in preference) {
-                val balance = balances.balances.firstOrNull {
-                    it.balanceType == type &&
-                        it.balanceAmount != null &&
-                        // Whatever it is called, a figure carrying the credit limit is
-                        // headroom rather than a balance.
-                        it.creditLimitIncluded != true
-                } ?: continue
-                val amount = balance.balanceAmount ?: continue
-                return try {
-                    BigDecimal(amount.amount).toMinorLong() to amount.currency
-                } catch (e: Exception) {
-                    continue
-                }
-            }
-
-            // Nothing preferred was on offer. For a card, any figure the bank has not flagged
-            // as containing the limit beats showing the headroom as though it were a debt.
-            if (accountType == AccountType.CREDIT_CARD) {
-                balances.balances
-                    .firstOrNull {
-                        it.balanceAmount != null &&
-                            it.creditLimitIncluded != true &&
-                            it.balanceType?.contains("available", ignoreCase = true) != true
-                    }
-                    ?.balanceAmount
-                    ?.let { amount ->
-                        return runCatching {
-                            BigDecimal(amount.amount).toMinorLong() to amount.currency
-                        }.getOrNull()
-                    }
-            }
-            return null
-        }
-
-        private const val SAMPLE_DAYS_MS = 30L * 24 * 60 * 60_000L
-        // Long after the bank has reported them; kept until then only so a match can be made.
-        private const val SEEN_SPEND_DAYS_MS = 60L * 24 * 60 * 60_000L
 
         private const val BASE_URL = "https://bankaccountdata.gocardless.com/api/v2/"
         // A custom scheme MainActivity registers, so the bank hands control back to the

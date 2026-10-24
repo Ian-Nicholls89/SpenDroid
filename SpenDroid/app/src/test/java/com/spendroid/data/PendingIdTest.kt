@@ -13,20 +13,20 @@ class PendingIdTest {
 
     @Test
     fun `pending purchases on different days get different ids`() {
-        val lastWeek = GoCardlessRepository.madeUpId(null, "2026-10-03", -1_135, "FOUR ACRES SF CONNECT 4168", mutableMapOf())
-        val thisWeek = GoCardlessRepository.madeUpId(null, "2026-10-10", -1_135, "FOUR ACRES SF CONNECT 4168", mutableMapOf())
+        val lastWeek = SyncRules.madeUpId(null, "2026-10-03", -1_135, "FOUR ACRES SF CONNECT 4168", mutableMapOf())
+        val thisWeek = SyncRules.madeUpId(null, "2026-10-10", -1_135, "FOUR ACRES SF CONNECT 4168", mutableMapOf())
         assertNotEquals(lastWeek, thisWeek)
     }
 
     @Test
     fun `two on the same day are told apart, and a booked row's id is as it always was`() {
         val seen = mutableMapOf<String, Int>()
-        val first = GoCardlessRepository.madeUpId(null, "2026-10-10", -1_135, "FOUR ACRES", seen)
-        val second = GoCardlessRepository.madeUpId(null, "2026-10-10", -1_135, "FOUR ACRES", seen)
+        val first = SyncRules.madeUpId(null, "2026-10-10", -1_135, "FOUR ACRES", seen)
+        val second = SyncRules.madeUpId(null, "2026-10-10", -1_135, "FOUR ACRES", seen)
         assertNotEquals(first, second)
         assertEquals(
-            GoCardlessRepository.fallbackTransactionId("2026-10-10", -1_135, "FOUR ACRES", 1),
-            GoCardlessRepository.madeUpId("2026-10-10", "2026-10-09", -1_135, "FOUR ACRES", mutableMapOf()),
+            SyncRules.fallbackTransactionId("2026-10-10", -1_135, "FOUR ACRES", 1),
+            SyncRules.madeUpId("2026-10-10", "2026-10-09", -1_135, "FOUR ACRES", mutableMapOf()),
         )
     }
 }

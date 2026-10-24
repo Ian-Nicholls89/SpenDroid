@@ -18,7 +18,7 @@ class AccountTypeDetectionTest {
         name: String? = null,
         product: String? = null,
         cashAccountType: String? = null,
-    ) = GoCardlessRepository.detectAccountTypeFor(
+    ) = SyncRules.detectAccountTypeFor(
         AccountDetailsDto(name = metadataName),
         AccountInfoDto(name = name, product = product, cashAccountType = cashAccountType),
     )

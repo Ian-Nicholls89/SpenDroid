@@ -4,8 +4,8 @@ import android.content.Context
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.spendroid.BudgetApplication
-import com.spendroid.data.GoCardlessRepository
 import com.spendroid.data.SyncAllowance
+import com.spendroid.data.SyncRules
 import com.spendroid.data.SyncFailure
 import com.spendroid.widget.refreshWidgets
 import java.util.concurrent.TimeUnit
@@ -66,7 +66,7 @@ class DailySyncWorker(
                 runCatching { repo.syncAccount(connection.institutionName, accountId) }
                     .onFailure { e ->
                         failures++
-                        if (GoCardlessRepository.failureReason(e) == SyncFailure.Reason.LIMIT) refusals++
+                        if (SyncRules.failureReason(e) == SyncFailure.Reason.LIMIT) refusals++
                     }
             }
         }

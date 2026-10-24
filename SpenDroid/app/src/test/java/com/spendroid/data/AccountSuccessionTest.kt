@@ -41,7 +41,7 @@ class AccountSuccessionTest {
     fun `the same account under a new id is recognised by its identity`() {
         val old = account("old-1", "iban:GB00NWBK1234")
         val new = account("new-1", "iban:GB00NWBK1234")
-        val pairs = GoCardlessRepository.matchSuccessors(
+        val pairs = SyncRules.matchSuccessors(
             newAccounts = listOf(new),
             others = listOf(old),
             otherConnections = emptyList(),
@@ -54,7 +54,7 @@ class AccountSuccessionTest {
     fun `a different account at the same bank is left alone`() {
         val theirs = account("other-1", "iban:GB00NWBK9999")
         val mine = account("new-1", "iban:GB00NWBK1234")
-        val pairs = GoCardlessRepository.matchSuccessors(
+        val pairs = SyncRules.matchSuccessors(
             listOf(mine),
             listOf(theirs),
             listOf(connection("req-other", "other-1")),
@@ -65,7 +65,7 @@ class AccountSuccessionTest {
     @Test
     fun `another bank's account is never a successor`() {
         val elsewhere = account("old-1", "iban:GB00NWBK1234", institution = "Barclays")
-        val pairs = GoCardlessRepository.matchSuccessors(
+        val pairs = SyncRules.matchSuccessors(
             listOf(account("new-1", "iban:GB00NWBK1234")),
             listOf(elsewhere),
             emptyList(),
@@ -85,7 +85,7 @@ class AccountSuccessionTest {
         val newCard = account("new-card", null, label = "Credit Card")
         val oldConsent = connection("req-old", "old-1", "old-card")
 
-        val pairs = GoCardlessRepository.matchSuccessors(
+        val pairs = SyncRules.matchSuccessors(
             listOf(newCurrent, newCard),
             listOf(oldCurrent, oldCard),
             listOf(oldConsent),
@@ -96,7 +96,7 @@ class AccountSuccessionTest {
     @Test
     fun `a name shared by an account still in use is not enough`() {
         val stillLive = account("live-card", null, label = "Credit Card")
-        val pairs = GoCardlessRepository.matchSuccessors(
+        val pairs = SyncRules.matchSuccessors(
             listOf(account("new-card", null, label = "Credit Card")),
             listOf(stillLive),
             listOf(connection("req-live", "live-card")),
@@ -108,7 +108,7 @@ class AccountSuccessionTest {
     fun `two candidates is a guess, and guessing is declined`() {
         val a = account("old-a", "iban:GB00NWBK1234")
         val b = account("old-b", "iban:GB00NWBK1234")
-        val pairs = GoCardlessRepository.matchSuccessors(
+        val pairs = SyncRules.matchSuccessors(
             listOf(account("new-1", "iban:GB00NWBK1234")),
             listOf(a, b),
             emptyList(),
@@ -146,7 +146,7 @@ class AccountSuccessionTest {
             tx("new-1", "b", "2026-07-01"),
             tx("new-1", "d", "2026-09-01"),
         )
-        val merged = GoCardlessRepository.succeededHistory(old, fresh, "new-1")
+        val merged = SyncRules.succeededHistory(old, fresh, "new-1")
 
         assertEquals(listOf("a", "b", "d"), merged.map { it.transactionId }.sorted())
         assertTrue(merged.all { it.accountId == "new-1" })
@@ -157,19 +157,19 @@ class AccountSuccessionTest {
     fun `identity prefers the IBAN, then the UK number, then the card`() {
         assertEquals(
             "iban:GB29NWBK60161331926819",
-            GoCardlessRepository.identityFor(
+            SyncRules.identityFor(
                 AccountDetailsDto(),
                 AccountInfoDto(iban = "GB29 NWBK 6016 1331 9268 19", sortCode = "601613", accountNumber = "31926819"),
             ),
         )
         assertEquals(
             "uk:601613/31926819",
-            GoCardlessRepository.identityFor(AccountDetailsDto(), AccountInfoDto(sortCode = "60-16-13", accountNumber = "31926819")),
+            SyncRules.identityFor(AccountDetailsDto(), AccountInfoDto(sortCode = "60-16-13", accountNumber = "31926819")),
         )
         assertEquals(
             "pan:4929XXXXXXXX1234",
-            GoCardlessRepository.identityFor(AccountDetailsDto(), AccountInfoDto(maskedPan = "4929XXXXXXXX1234")),
+            SyncRules.identityFor(AccountDetailsDto(), AccountInfoDto(maskedPan = "4929XXXXXXXX1234")),
         )
-        assertNull(GoCardlessRepository.identityFor(AccountDetailsDto(), AccountInfoDto()))
+        assertNull(SyncRules.identityFor(AccountDetailsDto(), AccountInfoDto()))
     }
 }

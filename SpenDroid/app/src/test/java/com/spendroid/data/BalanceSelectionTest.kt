@@ -17,7 +17,7 @@ class BalanceSelectionTest {
         BalanceDto(type, AmountDto(amount, "GBP"), creditLimitIncluded)
 
     private fun pick(balances: List<BalanceDto>, type: AccountType) =
-        GoCardlessRepository.selectBalance(BalancesDto(balances), type)?.first
+        SyncRules.selectBalance(BalancesDto(balances), type)?.first
 
     @Test
     fun `a credit card reporting available credit shows what is owed, not the headroom`() {
