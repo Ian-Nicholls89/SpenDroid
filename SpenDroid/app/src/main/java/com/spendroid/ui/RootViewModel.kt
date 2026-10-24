@@ -1,10 +1,7 @@
 package com.spendroid.ui
 
 import android.app.Application
-import android.content.Intent
 import android.net.Uri
-import androidx.core.net.toUri
-import androidx.browser.customtabs.CustomTabsIntent
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
@@ -13,27 +10,18 @@ import com.spendroid.BudgetApplication
 import com.spendroid.BuildConfig
 import com.spendroid.data.Connection
 import com.spendroid.data.SyncAllowance
-import com.spendroid.data.ApkInstaller
-import com.spendroid.data.UpdateChecker
 import com.spendroid.data.GoCardlessRepository
 import com.spendroid.data.db.AccountEntity
-import com.spendroid.data.db.BudgetGoalEntity
-import com.spendroid.data.db.CategoryRuleEntity
 import com.spendroid.data.db.RuleOverrideEntity
 import com.spendroid.data.db.ManualRecurringRuleEntity
 import com.spendroid.data.db.TransactionEntity
 import com.spendroid.data.remote.InstitutionDto
-import com.spendroid.domain.BudgetEngine
 import com.spendroid.domain.BudgetModel
 import com.spendroid.domain.CardTiming
 import com.spendroid.domain.PaymentShift
-import com.spendroid.domain.WorkingDayCalendar
 import com.spendroid.domain.Category
 import com.spendroid.domain.CategoryEngine
-import com.spendroid.domain.BudgetSnapshot
 import com.spendroid.domain.RecurringAnalyzer
-import com.spendroid.domain.RecurringRule
-import com.spendroid.domain.toRecurringRule
 import com.spendroid.widget.refreshWidgets
 import com.spendroid.work.DailyRoundupScheduler
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -51,112 +39,6 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.SharingStarted
-
-sealed interface ImportStatus {
-    object Idle : ImportStatus
-    object Working : ImportStatus
-    data class Done(val message: String) : ImportStatus
-    data class Failed(val message: String) : ImportStatus
-
-    /** An encrypted backup: asked for its passphrase, then restored with [RootViewModel.importFrom]. */
-    data class NeedsPassphrase(val source: Uri, val wrong: Boolean = false) : ImportStatus
-}
-
-sealed interface ExportStatus {
-    object Idle : ExportStatus
-    object Working : ExportStatus
-    data class Done(val message: String) : ExportStatus
-    data class Failed(val message: String) : ExportStatus
-}
-
-sealed interface UpdateCheckStatus {
-    data class Checking(val message: String) : UpdateCheckStatus
-    data class Success(val message: String) : UpdateCheckStatus
-    data class Error(val message: String) : UpdateCheckStatus
-    /** Downloading the release the user asked for, 0-100. */
-    data class Downloading(val percent: Int) : UpdateCheckStatus
-    /** Android has been handed the package and is asking the user to confirm. */
-    object Installing : UpdateCheckStatus
-    /** The app may not install packages yet; the settings page is the way through. */
-    object NeedsInstallPermission : UpdateCheckStatus
-    object Idle : UpdateCheckStatus
-}
-
-data class RootUiState(
-    val hasCredentials: Boolean = false,
-    /** First-run setup finished, or skipped: the app opens with no bank link. */
-    val setupDone: Boolean = false,
-    val linkingBank: String? = null,
-    val error: String? = null,
-    val syncing: Boolean = false,
-    val institutions: List<InstitutionDto> = emptyList(),
-    val accounts: List<AccountEntity> = emptyList(),
-    val transactions: List<TransactionEntity> = emptyList(),
-    val budget: BudgetSnapshot? = null,
-    val rules: List<RecurringRule> = emptyList(),
-    val manualRules: List<ManualRecurringRuleEntity> = emptyList(),
-    val ignoredRules: Set<String> = emptySet(),
-    val reauthNeeded: List<Connection> = emptyList(),
-    val connections: List<Connection> = emptyList(),
-    val showRecurringOnly: Boolean = true,
-    val showInternalTransfers: Boolean = false,
-    val updateCheckStatus: UpdateCheckStatus = UpdateCheckStatus.Idle,
-    val exportStatus: ExportStatus = ExportStatus.Idle,
-    val importStatus: ImportStatus = ImportStatus.Idle,
-    val categoryRules: List<CategoryRuleEntity> = emptyList(),
-    val budgetGoals: List<BudgetGoalEntity> = emptyList(),
-    val transactionQuery: String = "",
-    /** Id of the only account being shown, or null for all of them. */
-    val accountFilter: String? = null,
-    val categoryFilter: Category? = null,
-    val primaryIncomeKey: String? = null,
-    val budgetModel: BudgetModel = BudgetModel.FRESH_START,
-    val cardTiming: CardTiming = CardTiming.AT_BILL,
-    /** Regular payments marked as transfers once for every occurrence. */
-    val transferGroups: Set<String> = emptySet(),
-    /** "accountId|transactionId" of rows that arrived with the latest load, for a brief highlight. */
-    val newTransactionKeys: Set<String> = emptySet(),
-    /** Each account's allowance for a full sync, as the bank last reported it. */
-    val syncAllowances: Map<String, com.spendroid.data.SyncAllowance.Account> = emptyMap(),
-    /** When the next scheduled sync is due, epoch millis. */
-    val nextSyncAt: Long? = null,
-    /** What the last refresh did about the bank's allowance, in a sentence or two. */
-    val syncNote: String? = null,
-    /** Accounts whose last sync failed, and why. */
-    val syncFailures: Map<String, com.spendroid.data.SyncFailure> = emptyMap(),
-    /** Card payments read from notifications, newest first. */
-    val seenSpends: List<com.spendroid.data.db.SeenSpendEntity> = emptyList(),
-    /** The banking apps read, and the accounts each covers: what a payment's account can be. */
-    val spendSources: List<com.spendroid.domain.NotificationSpend.Source> = emptyList(),
-    /** "Always put this shop here", by [com.spendroid.domain.NotificationSpend.placeKey]. */
-    val spendPlaces: Map<String, String> = emptyMap(),
-    /** Each account with no bank link, and the last day an imported statement covers it. */
-    val manualCoverage: Map<String, java.time.LocalDate?> = emptyMap(),
-    /** Rows the bank has stopped listing, put to the user. */
-    val duplicateQuestions: List<com.spendroid.domain.DuplicateCheck.Question> = emptyList(),
-    /** The forecast to payday, any dip below zero ahead, and bills' price changes. */
-    val outlook: com.spendroid.domain.Outlook = com.spendroid.domain.Outlook.EMPTY,
-    /** New rows held out of the budget until a question about them is answered. */
-    val heldDuplicateKeys: Set<String> = emptySet(),
-    /** How each payee has been filed by hand, for suggesting where a transaction belongs. */
-    val categoryHistory: Map<String, Map<Category, Int>> = emptyMap(),
-    val ruleOverrides: Map<String, RuleOverrideEntity> = emptyMap(),
-    val bankHolidays: Set<java.time.LocalDate> = emptySet(),
-    /** Name of today's bank holiday, when today is one. */
-    val bankHolidayToday: String? = null,
-    /** Step-by-step status while linking a bank. Not a failure. */
-    val linkProgress: String? = null,
-    /** Name of a bank just linked, while we ask whether another is wanted. */
-    val justLinked: String? = null,
-    val versionName: String = "",
-    val versionCode: Int = 0,
-)
-
-/** The app's colours: its accent, and whether each account has its own. */
-data class Look(
-    val accent: com.spendroid.ui.theme.Accent = com.spendroid.ui.theme.Accent.GREEN,
-    val accountColours: Boolean = true,
-)
 
 class RootViewModel(app: Application) : AndroidViewModel(app) {
 
@@ -177,6 +59,38 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
 
     private val _secretKey = MutableStateFlow("")
     val secretKeyValue: StateFlow<String> = _secretKey.asStateFlow()
+
+    // Areas in files of their own, before init: its first refresh lists the banks.
+    private val host = AreaHost(app, repo, _state, viewModelScope, loadLocal = { loadLocal() }, refreshConfig = { refreshConfig() })
+    private val updates = UpdateArea(host)
+    private val bankLink = BankLinkArea(host)
+    private val setup = SetupArea(host)
+    private val backups = BackupArea(host, forgetLink = {
+        _secretId.value = ""
+        _secretKey.value = ""
+        bankLink.forgetInstitutions()
+    })
+
+    fun finishSetup() = setup.finishSetup()
+    fun startFromToday(name: String, bank: String, balanceMinor: Long, payMinor: Long, cadence: com.spendroid.domain.Cadence, anchorDay: Int, lastPaid: java.time.LocalDate) =
+        setup.startFromToday(name, bank, balanceMinor, payMinor, cadence, anchorDay, lastPaid)
+    fun addPay(payMinor: Long, cadence: com.spendroid.domain.Cadence, anchorDay: Int, lastPaid: java.time.LocalDate, accountId: String?) =
+        setup.addPay(payMinor, cadence, anchorDay, lastPaid, accountId)
+    fun addManualAccount(label: String, bank: String, type: com.spendroid.data.db.AccountType, balanceMinor: Long?) =
+        setup.addManualAccount(label, bank, type, balanceMinor)
+    fun removeManualAccount(accountId: String) = setup.removeManualAccount(accountId)
+    fun setManualBalance(accountId: String, balanceMinor: Long) = setup.setManualBalance(accountId, balanceMinor)
+    fun applyBalanceCheck(accountId: String, typedMinor: Long, moveSpendId: String?) = setup.applyBalanceCheck(accountId, typedMinor, moveSpendId)
+    fun checkForUpdate() = updates.checkForUpdate()
+    fun openInstallPermissionSettings() = updates.openInstallPermissionSettings()
+    fun loadInstitutions(query: String) = bankLink.loadInstitutions(query)
+    fun link(institution: InstitutionDto) = bankLink.link(institution)
+    fun relink(connection: Connection) = bankLink.relink(connection)
+    fun dismissLinkPrompt() = bankLink.dismissLinkPrompt()
+    fun exportTo(destination: Uri) = backups.exportTo(destination)
+    fun importFrom(source: Uri, passphrase: CharArray? = null) = backups.importFrom(source, passphrase)
+    fun cancelRestore() = backups.cancelRestore()
+    fun clearData() = backups.clearData()
 
     val notificationTime: StateFlow<String> = repo.notificationTime
         .map { it ?: "21:00" }
@@ -223,116 +137,6 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
             repo.saveNotificationTime(time)
             // The time has changed, so every booking made for the old one is redone.
             DailyRoundupScheduler.schedule(getApplication(), reschedule = true)
-        }
-    }
-
-    /**
-     * Checks, and when the user asked for it, goes through with the update.
-     *
-     * A check the user started is a request to update; the weekly background check only
-     * raises a notification and never downloads anything on its own.
-     */
-    fun checkForUpdate() {
-        viewModelScope.launch {
-            _state.update { it.copy(updateCheckStatus = UpdateCheckStatus.Checking("Checking for updates…")) }
-
-            val latest = try {
-                UpdateChecker.latestRelease()
-            } catch (e: Exception) {
-                _state.update {
-                    it.copy(
-                        updateCheckStatus = UpdateCheckStatus.Error(
-                            "Error: ${e.message ?: e.javaClass.simpleName}",
-                        ),
-                    )
-                }
-                return@launch
-            }
-
-            if (latest == null) {
-                _state.update {
-                    it.copy(updateCheckStatus = UpdateCheckStatus.Error("Unable to check for updates"))
-                }
-                return@launch
-            }
-            if (!UpdateChecker.isNewer(latest)) {
-                _state.update {
-                    it.copy(
-                        updateCheckStatus = UpdateCheckStatus.Success(
-                            "You're up to date (v${latest.versionName}, build ${BuildConfig.VERSION_CODE})",
-                        ),
-                    )
-                }
-                return@launch
-            }
-
-            val context = getApplication<Application>()
-            if (!ApkInstaller.canInstall(context)) {
-                _state.update { it.copy(updateCheckStatus = UpdateCheckStatus.NeedsInstallPermission) }
-                return@launch
-            }
-
-            _state.update { it.copy(updateCheckStatus = UpdateCheckStatus.Downloading(0)) }
-            val result = ApkInstaller.downloadAndInstall(context, latest) { percent ->
-                _state.update { it.copy(updateCheckStatus = UpdateCheckStatus.Downloading(percent)) }
-            }
-            _state.update {
-                it.copy(
-                    updateCheckStatus = when (result) {
-                        is ApkInstaller.Result.Started -> UpdateCheckStatus.Installing
-                        ApkInstaller.Result.NeedsPermission -> UpdateCheckStatus.NeedsInstallPermission
-                        is ApkInstaller.Result.Failed -> UpdateCheckStatus.Error(result.message)
-                    },
-                )
-            }
-        }
-    }
-
-    /** Opens the settings page where installing from this app is allowed. */
-    fun openInstallPermissionSettings() {
-        val context = getApplication<Application>()
-        runCatching {
-            context.startActivity(
-                ApkInstaller.permissionIntent(context).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-            )
-        }
-    }
-
-    private var cachedInstitutions: List<InstitutionDto>? = null
-
-    fun loadInstitutions(query: String) {
-        viewModelScope.launch {
-            val all = runCatching {
-                cachedInstitutions?.takeIf { it.isNotEmpty() }
-                    ?: repo.institutions("GB").also { cachedInstitutions = it }
-            }.getOrElse { e ->
-                _state.update { it.copy(error = e.message) }
-                return@launch
-            }
-            val q = query.trim().lowercase()
-            val filtered =
-                if (q.isEmpty()) all else all.filter { it.name.lowercase().contains(q) }
-            _state.update { it.copy(institutions = filtered) }
-        }
-    }
-
-    fun link(institution: InstitutionDto) {
-        viewModelScope.launch {
-            doLink(institution)
-        }
-    }
-
-    fun relink(connection: Connection) {
-        viewModelScope.launch {
-            val institution = _state.value.institutions.firstOrNull { it.id == connection.institutionId }
-                ?: runCatching { repo.institutions("GB") }
-                    .getOrNull()
-                    ?.firstOrNull { it.id == connection.institutionId }
-            if (institution == null) {
-                _state.update { it.copy(error = "${connection.institutionName} is no longer available.") }
-                return@launch
-            }
-            doLink(institution, replacing = connection)
         }
     }
 
@@ -531,107 +335,9 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun setupPrefs() = getApplication<Application>().getSharedPreferences(com.spendroid.data.Stores.FIRST_RUN, android.content.Context.MODE_PRIVATE)
 
-    /** Setup is finished: from now on the app opens on Home. */
-    fun finishSetup() {
-        setupPrefs().edit().putBoolean("done", true).apply()
-        _state.update { it.copy(setupDone = true) }
-        viewModelScope.launch { loadLocal() }
-    }
-
-    /**
-     * "Start from today": an account with its balance now, and the pay that sets the cycle -
-     * [lastPaid] the day it last came, so the next is worked out from it.
-     */
-    fun startFromToday(
-        name: String,
-        bank: String,
-        balanceMinor: Long,
-        payMinor: Long,
-        cadence: com.spendroid.domain.Cadence,
-        anchorDay: Int,
-        lastPaid: java.time.LocalDate,
-    ) {
-        viewModelScope.launch {
-            val account = repo.addManualAccount(name, bank, com.spendroid.data.db.AccountType.PERSONAL, balanceMinor)
-            linkBankApp(account, bank)
-            val id = "manual-${System.currentTimeMillis()}"
-            repo.addManualRule(
-                ManualRecurringRuleEntity(
-                    id = id, payee = "Pay", direction = "IN", amountMinor = payMinor, currency = "GBP",
-                    cadence = cadence.name, anchorDay = anchorDay, startDate = lastPaid.toString(), accountId = account.id,
-                ),
-            )
-            repo.savePrimaryIncomeKey(com.spendroid.domain.MANUAL_KEY_PREFIX + id)
-            loadLocal()
-        }
-    }
-
-    /** The pay that sets the cycle, when the statements didn't show it. */
-    fun addPay(payMinor: Long, cadence: com.spendroid.domain.Cadence, anchorDay: Int, lastPaid: java.time.LocalDate, accountId: String?) {
-        viewModelScope.launch {
-            val id = "manual-${System.currentTimeMillis()}"
-            repo.addManualRule(
-                ManualRecurringRuleEntity(
-                    id = id, payee = "Pay", direction = "IN", amountMinor = payMinor, currency = "GBP",
-                    cadence = cadence.name, anchorDay = anchorDay, startDate = lastPaid.toString(), accountId = accountId,
-                ),
-            )
-            repo.savePrimaryIncomeKey(com.spendroid.domain.MANUAL_KEY_PREFIX + id)
-            loadLocal()
-        }
-    }
-
     // --- Accounts with no bank link ---
 
-    /**
-     * Adds an account by hand. If its bank's app is on the phone, that app's notifications are
-     * read for it - added to Card alerts, or the account added to the app already there.
-     */
-    fun addManualAccount(label: String, bank: String, type: com.spendroid.data.db.AccountType, balanceMinor: Long?) {
-        viewModelScope.launch {
-            val account = repo.addManualAccount(label, bank, type, balanceMinor)
-            linkBankApp(account, bank)
-            loadLocal()
-        }
-    }
-
-    /** If [bank]'s app is on the phone, its notifications are read for [account]. */
-    private suspend fun linkBankApp(account: AccountEntity, bank: String) {
-        val name = bank.trim().lowercase()
-        if (name.length < 3) return
-        val app = withContext(Dispatchers.IO) { runCatching { launcherApps(getApplication()) }.getOrDefault(emptyList()) }
-            .firstOrNull { val app = it.label.lowercase(); app.contains(name) || (app.length >= 5 && name.contains(app)) }
-            ?: return
-        val sources = repo.spendSources.first()
-        val existing = sources.firstOrNull { it.packageName == app.packageName }
-        repo.saveSpendSources(
-            if (existing != null) sources.map { if (it == existing) it.copy(accountIds = it.accountIds + account.id) else it }
-            else sources + com.spendroid.domain.NotificationSpend.Source(app.packageName, app.label, listOf(account.id), account.id),
-        )
-    }
-
-    fun removeManualAccount(accountId: String) {
-        viewModelScope.launch {
-            repo.deleteManualAccount(accountId)
-            loadLocal()
-        }
-    }
-
-    fun setManualBalance(accountId: String, balanceMinor: Long) {
-        viewModelScope.launch {
-            repo.setManualBalance(accountId, balanceMinor)
-            loadLocal()
-        }
-    }
-
     suspend fun previewBalanceCheck(accountId: String, typedMinor: Long) = repo.previewBalanceCheck(accountId, typedMinor)
-
-    fun applyBalanceCheck(accountId: String, typedMinor: Long, moveSpendId: String?) {
-        viewModelScope.launch {
-            repo.applyBalanceCheck(accountId, typedMinor, moveSpendId)
-            loadLocal()
-        }
-    }
 
     fun dismissSeenSpend(id: String) {
         com.spendroid.work.SpendQuestions.answered(getApplication(), id)
@@ -739,112 +445,6 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
         _state.update { it.copy(showInternalTransfers = !it.showInternalTransfers) }
     }
 
-    /** Writes a full backup to a location the user picked through the system file picker. */
-    fun exportTo(destination: Uri) {
-        viewModelScope.launch {
-            _state.update { it.copy(exportStatus = ExportStatus.Working) }
-            val status = runCatching {
-                val json = repo.exportJson(com.spendroid.data.BackupPrefs.export(getApplication()))
-                withContext(Dispatchers.IO) {
-                    getApplication<Application>().contentResolver
-                        .openOutputStream(destination)
-                        ?.use { out -> out.write(json.toByteArray()) }
-                        ?: error("Could not open the selected file for writing")
-                }
-                json.length
-            }.fold(
-                onSuccess = { ExportStatus.Done("Backup saved (${it / 1024} KB)") },
-                onFailure = { ExportStatus.Failed(it.message ?: it.javaClass.simpleName) },
-            )
-            _state.update { it.copy(exportStatus = status) }
-        }
-    }
-
-    /** Merges a backup file back into the database, then reloads what is on screen. */
-    /** A backup restored - an encrypted one (the automatic backups) needs its [passphrase]. */
-    fun importFrom(source: Uri, passphrase: CharArray? = null) {
-        viewModelScope.launch {
-            _state.update { it.copy(importStatus = ImportStatus.Working) }
-            val status = runCatching {
-                val bytes = withContext(Dispatchers.IO) {
-                    getApplication<Application>().contentResolver
-                        .openInputStream(source)
-                        ?.use { input -> input.readBytes() }
-                        ?: error("Could not open the selected file")
-                }
-                val json = if (com.spendroid.data.BackupCrypto.isEncrypted(bytes)) {
-                    if (passphrase == null) {
-                        _state.update { it.copy(importStatus = ImportStatus.NeedsPassphrase(source)) }
-                        return@launch
-                    }
-                    try {
-                        withContext(Dispatchers.Default) { com.spendroid.data.BackupCrypto.decrypt(bytes, passphrase) }
-                    } catch (e: com.spendroid.data.BackupCrypto.WrongPassphrase) {
-                        _state.update { it.copy(importStatus = ImportStatus.NeedsPassphrase(source, wrong = true)) }
-                        return@launch
-                    } finally {
-                        passphrase.fill(' ')
-                    }
-                } else {
-                    bytes.decodeToString()
-                }
-                repo.importJson(json).also { restored ->
-                    com.spendroid.data.BackupPrefs.restore(getApplication(), restored.preferences)
-                    com.spendroid.data.PayeeNames.load(getApplication())
-                    // The icon's colour, if it follows the app's: switched as it was.
-                    if (LauncherIcon.follows(getApplication())) {
-                        val accent = com.spendroid.ui.theme.Accent.entries.firstOrNull { it.name == repo.accent.first() }
-                        accent?.let { LauncherIcon.apply(getApplication(), it) }
-                    }
-                }
-            }.fold(
-                onSuccess = { restored ->
-                    if (restored.isEmpty) {
-                        ImportStatus.Failed("That backup contained no accounts or transactions.")
-                    } else {
-                        ImportStatus.Done(
-                            "Restored ${restored.transactions.size} transactions " +
-                                "across ${restored.accounts.size} accounts" +
-                                if (restored.hasBank) ", and your bank link." else ".",
-                        )
-                    }
-                },
-                onFailure = { ImportStatus.Failed(it.message ?: it.javaClass.simpleName) },
-            )
-            // The bank link came with it: linked again as it was, and its banks listed.
-            if (status is ImportStatus.Done) refreshConfig()
-            // Restored during setup: the data's all here, so a restart opens on Home, not the welcome
-            // screen again - while setup carries on to what this phone still needs.
-            if (status is ImportStatus.Done && !_state.value.setupDone) setupPrefs().edit().putBoolean("done", true).apply()
-            _state.update { it.copy(importStatus = status) }
-            if (status is ImportStatus.Done) loadLocal()
-        }
-    }
-
-    /** The passphrase asked for wasn't given: nothing restored. */
-    fun cancelRestore() {
-        _state.update { it.copy(importStatus = ImportStatus.Idle) }
-    }
-
-    fun clearData() {
-        viewModelScope.launch {
-            runCatching { repo.clearAllData() }
-                .onFailure { e -> _state.update { it.copy(error = e.message) } }
-            // What's kept outside the database about the data just deleted - and setup, so a
-            // fresh start starts at the beginning even after a restart. Device settings (the lock,
-            // the icon, the watch) and remembered file layouts stay.
-            val app = getApplication<Application>()
-            com.spendroid.data.Stores.clearedWithData.forEach { app.getSharedPreferences(it, android.content.Context.MODE_PRIVATE).edit().clear().commit() }
-            com.spendroid.data.PayeeNames.load(app)
-            _state.update { RootUiState(connections = emptyList(), manualRules = emptyList(), showRecurringOnly = true, showInternalTransfers = false, versionName = "", versionCode = 0) }
-            _secretId.value = ""
-            _secretKey.value = ""
-            cachedInstitutions = null
-            // Otherwise the widgets go on showing the figures that were just deleted.
-            refreshWidgets(getApplication())
-        }
-    }
-
     fun addManualRule(payee: String, direction: String, amountMinor: Long, currency: String, cadence: String, anchorDay: Int, startDate: String, accountId: String? = null) {
         viewModelScope.launch {
             val id = "manual-${System.currentTimeMillis()}"
@@ -889,70 +489,6 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
             repo.updateAccount(account)
             loadLocal()
         }
-    }
-
-    /** [replacing] is the consent being renewed, when this is a reauthorisation. */
-    private suspend fun doLink(institution: InstitutionDto, replacing: Connection? = null) {
-        _state.update { it.copy(linkingBank = institution.name, error = null) }
-        runCatching {
-            _state.update { it.copy(linkProgress = "Contacting GoCardless…") }
-            val req = repo.createRequisition(institution)
-            _state.update { it.copy(linkProgress = "Opening ${institution.name}…") }
-            val link = req.link ?: error("GoCardless did not return a link")
-            val appContext = getApplication<Application>().applicationContext
-            val customTabs = CustomTabsIntent.Builder().build()
-            customTabs.intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            customTabs.launchUrl(appContext, link.toUri())
-            _state.update { it.copy(linkProgress = "Waiting for you to approve access…") }
-            val done = repo.pollUntilAuthorised(req.id ?: error("Missing requisition id"))
-            _state.update { it.copy(linkProgress = "Approved. Fetching accounts…") }
-            if (done.accounts.isEmpty()) error("No accounts returned by ${institution.name}. Status: ${done.status}")
-            val connection = Connection(
-                institutionId = institution.id,
-                institutionName = institution.name,
-                requisitionId = done.id ?: req.id!!,
-                accountIds = done.accounts,
-            )
-            repo.saveConnection(connection, replacing)
-            _state.update { it.copy(linkProgress = "Importing ${done.accounts.size} account(s)…") }
-            done.accounts.forEach { repo.importAccount(institution.name, it) }
-            // A renewed consent reissues every account under a new id; fold them back into
-            // the accounts already here rather than counting them twice.
-            repo.adoptPredecessors(connection)
-        }
-            .onSuccess {
-                _state.update {
-                    it.copy(
-                        linkingBank = null,
-                        error = null,
-                        linkProgress = null,
-                        // Most people have more than one account, and this is the moment they
-                        // are already in the flow and have the bank's app to hand.
-                        justLinked = institution.name,
-                        reauthNeeded = it.reauthNeeded.filter { c ->
-                            c.requisitionId != replacing?.requisitionId && c.institutionId != institution.id
-                        },
-                    )
-                }
-                loadLocal()
-            }
-            .onFailure { e ->
-                // A DNS or connection failure is worth naming as such: the fix is to check
-                // the connection and retry, not to pick a different bank.
-                val message = when (e) {
-                    is java.net.UnknownHostException ->
-                        "Couldn't reach GoCardless. Check your connection and try again."
-                    is java.io.IOException ->
-                        e.message ?: "Network error while linking. Try again."
-                    else -> "Link failed: ${e.message}"
-                }
-                _state.update { it.copy(linkingBank = null, linkProgress = null, error = message) }
-            }
-        _state.update { it.copy(linkingBank = null) }
-    }
-
-    fun dismissLinkPrompt() {
-        _state.update { it.copy(justLinked = null) }
     }
 
     fun refresh() {
