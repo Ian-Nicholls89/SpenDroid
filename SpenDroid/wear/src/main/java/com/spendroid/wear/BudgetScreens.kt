@@ -139,25 +139,28 @@ fun BudgetScreens(
                     if (nav.currentDestination?.route != "roundup") nav.navigate("roundup")
                 }
             }
+            // Each screen reads the latest figures: the host keeps the screens it was first given, so
+            // figures captured there stayed as they were when new ones came from the phone.
+            val latest = androidx.compose.runtime.rememberUpdatedState(reading)
             SwipeDismissableNavHost(navController = nav, startDestination = "pages") {
                 composable("pages") {
                     Pages(
-                        reading,
+                        latest.value,
                         initialPage = initialPage,
                         onSeeRecent = { nav.navigate("recent") },
                         onSeeUpcoming = { nav.navigate("upcoming") },
                         onOpenPhone = onOpenPhone,
                     )
                 }
-                composable("recent") { RecentList(reading) { index -> nav.navigate("pick/$index") } }
-                composable("upcoming") { UpcomingList(reading) }
-                composable("roundup") { shownRoundup?.let { RoundupScreen(it, reading) } ?: nav.popBackStack() }
+                composable("recent") { RecentList(latest.value) { index -> nav.navigate("pick/$index") } }
+                composable("upcoming") { UpcomingList(latest.value) }
+                composable("roundup") { shownRoundup?.let { RoundupScreen(it, latest.value) } ?: nav.popBackStack() }
                 composable("pick/{index}") { entry ->
-                    val recent = entry.arguments?.getString("index")?.toIntOrNull()?.let { reading.recent.getOrNull(it) }
+                    val recent = entry.arguments?.getString("index")?.toIntOrNull()?.let { latest.value.recent.getOrNull(it) }
                     if (recent == null) {
                         nav.popBackStack()
                     } else {
-                        CategoryPicker(reading, recent, onDone = { nav.popBackStack() })
+                        CategoryPicker(latest.value, recent, onDone = { nav.popBackStack() })
                     }
                 }
             }

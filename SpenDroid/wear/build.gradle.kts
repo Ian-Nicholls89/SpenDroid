@@ -14,6 +14,8 @@ plugins {
 android {
     testOptions {
         unitTests.isIncludeAndroidResources = true
+        // The whole watch app, started in a test (WatchRunTest), needs more than the default 512 MB.
+        unitTests.all { it.maxHeapSize = "2g" }
     }
     namespace = "com.spendroid.wear"
     compileSdk = 36
