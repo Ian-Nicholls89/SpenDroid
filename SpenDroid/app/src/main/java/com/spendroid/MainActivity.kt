@@ -10,9 +10,6 @@ import android.os.Bundle
 import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.graphics.Color
@@ -31,14 +28,10 @@ import com.spendroid.ui.GlowState
 import com.spendroid.ui.LocalGlow
 import com.spendroid.ui.Wordmark
 import com.spendroid.ui.theme.Charcoal
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -48,41 +41,24 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
-import androidx.compose.ui.graphics.graphicsLayer
 import com.spendroid.ui.theme.Motion
 import com.spendroid.domain.Category
 import com.spendroid.widget.MAIN_EXTRA_CATEGORY
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AccountBalance
-import androidx.compose.material.icons.automirrored.filled.ReceiptLong
-import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -90,94 +66,11 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.spendroid.ui.AccountManagementScreen
-import com.spendroid.ui.HomeScreen
-import com.spendroid.ui.LinkBankDialog
-import com.spendroid.ui.ManualRuleDialog
 import com.spendroid.ui.OnboardingScreen
-import com.spendroid.ui.RecurringRulesScreen
 import com.spendroid.ui.RootViewModel
-import com.spendroid.ui.SettingsScreen
-import com.spendroid.ui.CardAlertsSection
-import com.spendroid.ui.SpendingScreen
 import com.spendroid.ui.theme.BudgetTheme
-
-enum class AppScreen(
-    val route: String,
-    val title: String,
-    /** Bottom-bar label, shorter where the title would not fit under an icon. */
-    val shortTitle: String,
-    val icon: ImageVector,
-) {
-    Home("home", "Dashboard", "Home", Icons.Filled.Home),
-    Spending("spending", "Spending", "Spending", Icons.AutoMirrored.Filled.ReceiptLong),
-    Accounts("accounts", "Accounts", "Accounts", Icons.Filled.AccountBalance),
-    Rules("rules", "Regular", "Regular", Icons.Filled.Repeat),
-    Settings("settings", "Settings", "Settings", Icons.Filled.Settings);
-
-    companion object {
-        fun from(route: String): AppScreen = entries.firstOrNull { it.route == route } ?: Home
-    }
-}
-
-/**
- * The tabs at the foot, nzb360's way: the chosen one's icon in a pill of the accent, every label
- * shown. Material's bar hid the labels and tinted the pill to its own scheme.
- */
-@Composable
-internal fun PillNavigationBar(screens: List<AppScreen>, selected: AppScreen, onSelect: (AppScreen) -> Unit) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(Color(0xFF1F2025))
-            .navigationBarsPadding()
-            .height(72.dp),
-        horizontalArrangement = Arrangement.SpaceAround,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        screens.forEach { destination ->
-            val on = destination == selected
-            val pill by animateColorAsState(
-                if (on) MaterialTheme.colorScheme.primary else Color.Transparent,
-                Motion.change(Motion.SHORT),
-                label = "pill",
-            )
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .clip(RoundedCornerShape(16.dp))
-                    .clickable { onSelect(destination) }
-                    .padding(vertical = 6.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                Box(
-                    Modifier
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(pill)
-                        .padding(horizontal = 18.dp, vertical = 4.dp),
-                ) {
-                    Icon(
-                        destination.icon,
-                        contentDescription = null,
-                        tint = if (on) Color(0xFF111111) else Color(0xFFAAB0BB),
-                        modifier = Modifier.size(22.dp),
-                    )
-                }
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    destination.shortTitle,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = if (on) Color.White else Color(0xFFAAB0BB),
-                )
-            }
-        }
-    }
-}
 
 class MainActivity : androidx.fragment.app.FragmentActivity() {
 
@@ -297,14 +190,16 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                 androidx.compose.runtime.SideEffect { com.spendroid.ui.DroidNow.face = face }
                 var screenRoute by rememberSaveable { mutableStateOf(AppScreen.Home.route) }
                 val screen = AppScreen.from(screenRoute)
-                var showLinkDialog by remember { mutableStateOf(false) }
+                val linkDialog = remember { mutableStateOf(false) }
+                var showLinkDialog by linkDialog
                 // Penny's questions: asked in a sheet as the app opens, unless put off for now.
                 val billsContext = androidx.compose.ui.platform.LocalContext.current
                 val billsAnswered = com.spendroid.ui.PennyBills.answered.intValue
                 val questions = remember(state.seenSpends, state.duplicateQuestions, state.manualCoverage, state.rules, state.ignoredRules, state.budget == null, billsAnswered) {
                     com.spendroid.ui.pennyQuestions(state, bills = com.spendroid.ui.PennyBills.toAsk(billsContext, state))
                 }
-                var asking by rememberSaveable { mutableStateOf(false) }
+                val askingState = rememberSaveable { mutableStateOf(false) }
+                var asking by askingState
                 // A payee said to be just spending stays so at a new amount, which is a new rule.
                 LaunchedEffect(state.rules, state.ignoredRules, billsAnswered) {
                     com.spendroid.ui.PennyBills.stillToIgnore(billsContext, state).forEach { viewModel.setRuleIgnored(it, true) }
@@ -316,7 +211,8 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                     if (news != null && screen == AppScreen.Home) com.spendroid.ui.PennyNews.know(newsContext, news.key)
                 }
                 // Today's allowance, the payday moment and the last cycle's review: shown over the app.
-                var showToday by rememberSaveable { mutableStateOf(false) }
+                val todayState = rememberSaveable { mutableStateOf(false) }
+                var showToday by todayState
                 var showReview by rememberSaveable { mutableStateOf(false) }
                 var showPayday by remember { mutableStateOf(false) }
                 var review by remember { mutableStateOf<com.spendroid.domain.CycleReview?>(null) }
@@ -337,9 +233,11 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                         reviewLoading = false
                     }
                 }
-                var showManualDialog by remember { mutableStateOf(false) }
+                val manualDialog = remember { mutableStateOf(false) }
+                var showManualDialog by manualDialog
                 // The forecast screen, for this account; "" for the budget's own.
-                var forecastFor by rememberSaveable { mutableStateOf<String?>(null) }
+                val forecastState = rememberSaveable { mutableStateOf<String?>(null) }
+                var forecastFor by forecastState
                 LaunchedEffect(openForecast.value) {
                     openForecast.value?.let { forecastFor = it; openForecast.value = null }
                 }
@@ -365,7 +263,8 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                 if (state.hasCredentials || state.setupDone) {
                     val drawer = rememberDrawerState(DrawerValue.Closed)
                     val scope = rememberCoroutineScope()
-                    var spendingTab by rememberSaveable { mutableIntStateOf(0) }
+                    val spendingTabState = rememberSaveable { mutableIntStateOf(0) }
+                    var spendingTab by spendingTabState
                     ModalNavigationDrawer(
                         drawerState = drawer,
                         drawerContent = {
@@ -457,148 +356,11 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                                 label = "tab",
                             ) { shown ->
                                 tabStates.SaveableStateProvider(shown.route) {
-                                    when (shown) {
-                                        AppScreen.Home -> HomeScreen(
-                                            state = state,
-                                            onRefresh = viewModel::refresh,
-                                            onRelink = viewModel::relink,
-                                            onSeeAllTransactions = { navigate(AppScreen.Spending) },
-                                            onSetBudgetGoal = viewModel::setBudgetGoal,
-                                            onLinkBank = { showLinkDialog = true },
-                                            onSeeAccount = { id ->
-                                                viewModel.setAccountFilter(id)
-                                                navigate(AppScreen.Spending)
-                                            },
-                                            onOpenForecast = { id -> forecastFor = id ?: "" },
-                                            onReload = viewModel::reloadLocal,
-                                            onOpenToday = { showToday = true },
-                                            news = news,
-                                            onNews = {},
-                                            prompts = {
-                                                // Accounts with no bank link: how current the figures are.
-                                                com.spendroid.ui.ManualFreshness(
-                                                    state,
-                                                    onCheck = { checkBalance.value = it },
-                                                    onImport = { importRequest.value = com.spendroid.ui.ImportRequest(accountId = it) },
-                                                )
-                                                // Penny's questions, put off: the way back to them.
-                                                com.spendroid.ui.PennyQuestionsStrip(questions.size, onOpen = { asking = true })
-                                            },
-                                        )
-
-                                        AppScreen.Spending -> SpendingScreen(
-                                            state = state,
-                                            onRefresh = viewModel::refresh,
-                                            onToggleRecurring = viewModel::toggleRecurringOnly,
-                                            onToggleInternal = viewModel::toggleInternalTransfers,
-                                            onQueryChange = viewModel::setTransactionQuery,
-                                            onAccountFilter = viewModel::setAccountFilter,
-                                            onOverrideCategory = viewModel::overrideCategory,
-                                            onAlwaysCategorise = viewModel::alwaysCategorise,
-                                            onMarkTransfer = viewModel::markAsTransfer,
-                                            onMarkTransferGroup = viewModel::markGroupAsTransfer,
-                                            onRestoreCategory = viewModel::restoreCategory,
-                                            onMarkCardPayment = viewModel::markAsCardPayment,
-                                            onCategoryFilter = viewModel::setCategoryFilter,
-                                            onSetBudgetGoal = viewModel::setBudgetGoal,
-                                            onTreatAsBill = viewModel::treatAsBill,
-                                            onAssignSeen = { id, account, always -> viewModel.assignSeenSpend(id, account, always) },
-                                            onAnswerRepeat = viewModel::answerRepeat,
-                                            onCardCheck = viewModel::answerCardCheck,
-                                            tabIndex = spendingTab,
-                                            onTabIndex = { spendingTab = it },
-                                            prompts = {
-                                                com.spendroid.ui.PennyQuestionsStrip(
-                                                    questions.size,
-                                                    onOpen = { asking = true },
-                                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                                                )
-                                            },
-                                        )
-
-                                        AppScreen.Accounts -> AccountManagementScreen(
-                                            state = state,
-                                            onLink = viewModel::link,
-                                            onRelink = viewModel::relink,
-                                            onUpdateAccount = viewModel::updateAccount,
-                                            balanceTypesFor = viewModel::balanceTypesFor,
-                                            onSeeTransactions = { account ->
-                                                viewModel.setAccountFilter(account.id)
-                                                navigate(AppScreen.Spending)
-                                            },
-                                            onUndoImport = viewModel::undoImport,
-                                            onMoveImport = viewModel::moveImport,
-                                            onImport = { accountId -> importRequest.value = com.spendroid.ui.ImportRequest(accountId = accountId) },
-                                            onAddManual = viewModel::addManualAccount,
-                                            onRemoveManual = { viewModel.removeManualAccount(it.id) },
-                                            onCheckBalance = { checkBalance.value = it.id },
-                                        )
-
-                                        AppScreen.Rules -> RecurringRulesScreen(
-                                            rules = state.rules,
-                                            manualRules = state.manualRules,
-                                            ignored = state.ignoredRules,
-                                            onToggle = viewModel::setRuleIgnored,
-                                            onAddManual = { showManualDialog = true },
-                                            primaryIncomeKey = state.primaryIncomeKey,
-                                            onSetPrimaryIncome = viewModel::setPrimaryIncome,
-                                            budget = state.budget,
-                                            overrides = state.ruleOverrides,
-                                            onSetOverride = viewModel::setRuleOverride,
-                                            holidays = state.bankHolidays,
-                                            accounts = state.accounts,
-                                            onSetManualPaidFrom = viewModel::setManualRulePaidFrom,
-                                            onDeleteManual = viewModel::deleteManualRule,
-                                            priceChanges = state.outlook.priceChanges,
-                                            openRuleKey = openRule.value,
-                                            onOpenedRule = { openRule.value = null },
-                                            subscriptions = state.outlook.subscriptions,
-                                            contracts = state.outlook.contracts,
-                                            transactions = state.transactions,
-                                            onReload = viewModel::reloadLocal,
-                                        )
-
-                                        AppScreen.Settings -> SettingsScreen(
-                                            state = state,
-                                            onSave = viewModel::saveSecret,
-                                            onSetBudgetModel = viewModel::setBudgetModel,
-                                            onSetCardTiming = viewModel::setCardTiming,
-                                            onExport = viewModel::exportTo,
-                                            onImport = { viewModel.importFrom(it) },
-                                            onClearData = viewModel::clearData,
-                                            onUnlockBackup = viewModel::importFrom,
-                                            onCancelRestore = viewModel::cancelRestore,
-                                            onCheckUpdate = viewModel::checkForUpdate,
-                                            onOpenInstallSettings = viewModel::openInstallPermissionSettings,
-                                            secretId = viewModel.secretIdValue.collectAsStateWithLifecycle().value,
-                                            secretKey = viewModel.secretKeyValue.collectAsStateWithLifecycle().value,
-                                            notificationTime = viewModel.notificationTime.collectAsStateWithLifecycle().value,
-                                            onSaveNotificationTime = viewModel::saveNotificationTime,
-                                            look = look,
-                                            onSetAccent = viewModel::setAccent,
-                                            onSetAccountColours = viewModel::setAccountColours,
-                                            onSetIconFollows = viewModel::setIconFollows,
-                                            onConfirmLock = { done -> authenticate("Confirm it's you") { ok -> done(ok); if (ok) com.spendroid.data.Privacy.unlocked = true } },
-                                            onHideInRecents = ::applyHideInRecents,
-                                            onReload = viewModel::reloadLocal,
-                                            cardAlerts = {
-                                                CardAlertsSection(
-                                                    accounts = state.accounts,
-                                                    sources = viewModel.spendSources.collectAsStateWithLifecycle().value,
-                                                    readingOn = viewModel.spendReadingOn.collectAsStateWithLifecycle().value,
-                                                    samples = viewModel.notificationSamples.collectAsStateWithLifecycle().value,
-                                                    onSaveSources = viewModel::saveSpendSources,
-                                                    onReadingOn = viewModel::setSpendReadingOn,
-                                                    onUpdateAccount = viewModel::updateAccount,
-                                                    onClear = viewModel::clearNotificationData,
-                                                    learned = viewModel.spendLearned.collectAsStateWithLifecycle().value,
-                                                    onTeach = viewModel::teachNotification,
-                                                    onForgetLearned = viewModel::forgetLearnedNotifications,
-                                                    fate = { com.spendroid.ui.notificationFate(it, state) },
-                                                )
-                                            },
-                                        )
-                                    }
+                                    MainTab(
+                                        shown, state, viewModel, look, navigate, news, questions,
+                                        linkDialog, forecastState, todayState, askingState, spendingTabState, manualDialog,
+                                        checkBalance, importRequest, openRule, ::authenticate, ::applyHideInRecents,
+                                    )
                                 }
                             }
                         }
@@ -686,122 +448,11 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                 // else over it, unless "Ask me later" was said in the last six hours. Her
                 // notification asks at once.
                 if (state.hasCredentials || state.setupDone) {
-                    val context = androidx.compose.ui.platform.LocalContext.current
-                    val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
-                    var opened by remember { mutableIntStateOf(0) }
-                    var offered by remember { mutableIntStateOf(-1) }
-                    androidx.compose.runtime.DisposableEffect(lifecycle) {
-                        val watch = androidx.lifecycle.LifecycleEventObserver { _, event ->
-                            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) opened++
-                        }
-                        lifecycle.addObserver(watch)
-                        onDispose { lifecycle.removeObserver(watch) }
-                    }
                     val clear = !showToday && !showReview && !showPayday && !showRoundup.value && forecastFor == null && importRequest.value == null
-                    LaunchedEffect(opened, questions.isNotEmpty(), clear, askPenny.value, state.budget == null) {
-                        // Her notification tapped once the question was already answered: nothing to
-                        // ask, and nothing left waiting to open the sheet at the next question.
-                        if (askPenny.value && questions.isEmpty() && state.budget != null) askPenny.value = false
-                        if (questions.isEmpty() || !clear) return@LaunchedEffect
-                        if (askPenny.value) {
-                            asking = true
-                            askPenny.value = false
-                        } else if (offered != opened && com.spendroid.ui.PennyAsk.due(context)) {
-                            asking = true
-                            offered = opened
-                        }
-                    }
-                    // Open until it closes itself: answering the last question empties the list at once,
-                    // and the "noted" page - and its Change - must still be seen.
-                    if (asking) {
-                        com.spendroid.ui.PennyQuestionSheet(
-                            questions = questions,
-                            accounts = state.accounts,
-                            sources = viewModel.spendSources.collectAsStateWithLifecycle().value,
-                            answers = com.spendroid.ui.PennyAnswers(
-                                onRepeat = viewModel::answerRepeat,
-                                onAssign = { id, account -> viewModel.assignSeenSpend(id, account, always = false) },
-                                onKeepSeen = viewModel::keepSeenSpend,
-                                onDismissSeen = viewModel::dismissSeenSpend,
-                                onSame = viewModel::confirmDuplicate,
-                                onKeepVanished = viewModel::keepVanished,
-                                onRemoveVanished = viewModel::removeVanished,
-                                onCardCheck = viewModel::answerCardCheck,
-                                onBill = { rule, isBill ->
-                                    com.spendroid.ui.PennyBills.answer(context, rule, isBill)
-                                    viewModel.setRuleIgnored(rule.key, !isBill)
-                                },
-                            ),
-                            onLater = {
-                                com.spendroid.ui.PennyAsk.later(context)
-                                asking = false
-                            },
-                            onDone = { asking = false },
-                        )
-                    }
+                    PennyAsking(state, viewModel, questions, askingState, clear, askPenny)
                 }
 
-                // A manual account's balance check, from Home, Accounts or a reminder.
-                checkBalance.value?.let { id -> state.accounts.firstOrNull { it.id == id } }?.let { account ->
-                    com.spendroid.ui.BalanceCheckSheet(
-                        account = account,
-                        accounts = state.accounts,
-                        onPreview = { typed -> viewModel.previewBalanceCheck(account.id, typed) },
-                        onApply = { typed, move ->
-                            viewModel.applyBalanceCheck(account.id, typed, move)
-                            checkBalance.value = null
-                        },
-                        onDismiss = { checkBalance.value = null },
-                    )
-                }
-
-                state.justLinked?.let { linkedName ->
-                    AlertDialog(
-                        onDismissRequest = viewModel::dismissLinkPrompt,
-                        title = { Text("$linkedName linked") },
-                        text = {
-                            Text(
-                                "Its accounts are syncing now. Would you like to link another " +
-                                    "bank while you are here?",
-                            )
-                        },
-                        confirmButton = {
-                            TextButton(onClick = {
-                                viewModel.dismissLinkPrompt()
-                                showLinkDialog = true
-                            }) { Text("Link another") }
-                        },
-                        dismissButton = {
-                            TextButton(onClick = viewModel::dismissLinkPrompt) { Text("Done") }
-                        },
-                    )
-                }
-
-                if (showLinkDialog) {
-                    LinkBankDialog(
-                        state = state,
-                        onDismiss = { showLinkDialog = false },
-                        onLink = { institution ->
-                            showLinkDialog = false
-                            viewModel.link(institution)
-                        },
-                    )
-                }
-
-                if (showManualDialog) {
-                    ManualRuleDialog(
-                        onDismiss = { showManualDialog = false },
-                        onAdd = { payee, direction, amountMinor, currency, cadence, anchorDay, startDate, accountId ->
-                            showManualDialog = false
-                            viewModel.addManualRule(payee, direction, amountMinor, currency, cadence, anchorDay, startDate, accountId)
-                        },
-                        onAddFromCandidate = { candidate ->
-                            showManualDialog = false
-                            viewModel.addManualRuleFromCandidate(candidate)
-                        },
-                        viewModel = viewModel,
-                    )
-                }
+                AppDialogs(state, viewModel, checkBalance, linkDialog, manualDialog)
             }
             }
         }
