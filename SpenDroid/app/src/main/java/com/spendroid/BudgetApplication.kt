@@ -10,7 +10,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 
-class BudgetApplication : Application() {
+open class BudgetApplication : Application() {
 
     lateinit var repository: GoCardlessRepository
         private set

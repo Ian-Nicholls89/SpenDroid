@@ -125,7 +125,8 @@ fun ManualRuleDialog(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                         Spacer(Modifier.height(8.dp))
-                        showManual = true
+                        // Set once it's known there's nothing to pick - not while drawing, which drew again.
+                        LaunchedEffect(Unit) { showManual = true }
                     }
                 } else {
                     Text("Scanning transactions…", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

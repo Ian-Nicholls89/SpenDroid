@@ -15,6 +15,8 @@ android {
     }
     testOptions {
         unitTests.isIncludeAndroidResources = true
+        // The whole app, started in a test (AppRunTest), needs more than the default 512 MB.
+        unitTests.all { it.maxHeapSize = "2g" }
     }
     namespace = "com.spendroid"
     compileSdk = 36
@@ -68,8 +70,8 @@ android {
         applicationId = "com.spendroid"
         minSdk = 26
         targetSdk = 35
-        versionCode = 193
-        versionName = "0.6.3"
+        versionCode = 194
+        versionName = "0.6.3.1"
         // Native code - the database's encryption - only for the processors phones have, not
         // emulators' x86: about half the size it would add.
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
