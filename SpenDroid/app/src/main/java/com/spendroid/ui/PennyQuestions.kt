@@ -112,10 +112,10 @@ internal object PennyAsk {
     const val LATER_MS = 6 * 60 * 60 * 1000L
 
     fun due(context: Context, now: Long = System.currentTimeMillis()): Boolean =
-        now >= context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getLong(LATER_UNTIL, 0L)
+        now >= com.spendroid.data.Stores.prefs(context, PREFS).getLong(LATER_UNTIL, 0L)
 
     fun later(context: Context, now: Long = System.currentTimeMillis()) {
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putLong(LATER_UNTIL, now + LATER_MS).apply()
+        com.spendroid.data.Stores.prefs(context, PREFS).edit().putLong(LATER_UNTIL, now + LATER_MS).apply()
     }
 }
 

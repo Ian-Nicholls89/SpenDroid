@@ -39,7 +39,7 @@ internal object PennyVisits {
     private const val VISIT = "visit"
 
     fun next(context: Context): Int {
-        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val prefs = com.spendroid.data.Stores.prefs(context, PREFS)
         val n = prefs.getInt(VISIT, 0) + 1
         prefs.edit().putInt(VISIT, n).apply()
         return n

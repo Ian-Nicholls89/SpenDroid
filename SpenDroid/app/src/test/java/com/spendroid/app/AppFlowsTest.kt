@@ -79,6 +79,9 @@ class AppFlowsTest {
         repo.saveSpendSources(listOf(NotificationSpend.Source(natwest, "NatWest", listOf(account.id), defaultAccountId = account.id)))
         repo.setSpendReadingOn(true)
         repo.onNotification(natwest, "NatWest", "💳 £4.25 at GREGGS on your card ending 2291", System.currentTimeMillis())
+        com.spendroid.data.MoneyWatch(app).decide("gym club", com.spendroid.data.MoneyWatch.Decision.EXPECTED)
+        Stores.prefs(app, Stores.PENNY_BILLS).edit().putBoolean("OUT|GBP|300|car park", false).commit()
+        Stores.prefs(app, Stores.MANUAL_REMINDERS).edit().putInt("statement_every_days", 14).commit()
         repo.saveAccent("BLUE")
         repo.saveNotificationTime("19:30")
         prefs(Stores.PRIVACY).edit().putBoolean("hide_recents", true).commit()
@@ -104,6 +107,8 @@ class AppFlowsTest {
         assertNull(PayeeNames.nameFor("VIS 4471 SQ *KTH"))
         assertTrue(ContractEnds(app).all().isEmpty())
         assertTrue(SubscriptionChoices(app).kinds().isEmpty())
+        assertTrue(Stores.prefs(app, Stores.PENNY_BILLS).all.isEmpty())
+        assertTrue(Stores.prefs(app, Stores.MONEY_WATCH).all.isEmpty())
         assertFalse(prefs(Stores.FIRST_RUN).getBoolean("done", false))
         assertTrue("the phone's own settings stay", prefs(Stores.PRIVACY).getBoolean("hide_recents", false))
         assertTrue(runBlocking { repo.seenSpends.first().isEmpty() })
@@ -120,6 +125,10 @@ class AppFlowsTest {
         assertEquals("Coffee by the station", PayeeNames.nameFor("VIS 4471 SQ *KTH"))
         assertEquals(LocalDate.of(2027, 3, 1), ContractEnds(app).all()["gym club"])
         assertEquals(Subscriptions.Kind.HOUSEHOLD, SubscriptionChoices(app).kinds()["OUT|GBP|2500|gym club"])
+        // Penny's answers, money watch's decisions and the reminders too (0.6.5).
+        assertTrue(Stores.prefs(app, Stores.PENNY_BILLS).contains("OUT|GBP|300|car park"))
+        assertEquals(com.spendroid.data.MoneyWatch.Decision.EXPECTED, com.spendroid.data.MoneyWatch(app).decision("gym club"))
+        assertEquals(14, Stores.prefs(app, Stores.MANUAL_REMINDERS).getInt("statement_every_days", 0))
     }
 
     @Test

@@ -98,4 +98,39 @@ class ChoicesTest {
         }
         assertFalse(Choices.encode(null) != null)
     }
+
+    @Test
+    fun `Penny's answers, money watch, reminders and moments move across too`() {
+        context.getSharedPreferences(Stores.PENNY_BILLS, Context.MODE_PRIVATE).edit().putBoolean("OUT|GBP|300|car park", false).commit()
+        context.getSharedPreferences(Stores.MONEY_WATCH, Context.MODE_PRIVATE).edit().putString("decision:gym", "EXPECTED").putBoolean("rise_alerts", false).commit()
+        context.getSharedPreferences(Stores.MANUAL_REMINDERS, Context.MODE_PRIVATE).edit().putInt("statement_every_days", 14).commit()
+        context.getSharedPreferences(Stores.MOMENTS, Context.MODE_PRIVATE).edit().putString("payday_seen", "2026-10-23").commit()
+        start()
+        assertEquals(MoneyWatch.Decision.EXPECTED, MoneyWatch(context).decision("gym"))
+        assertFalse(MoneyWatch(context).riseAlerts)
+        assertEquals(14, Stores.prefs(context, Stores.MANUAL_REMINDERS).getInt("statement_every_days", 0))
+        assertEquals("2026-10-23", Stores.prefs(context, Stores.MOMENTS).getString("payday_seen", null))
+        assertTrue(Stores.prefs(context, Stores.PENNY_BILLS).contains("OUT|GBP|300|car park"))
+        rows(Stores.MONEY_WATCH, 2)
+        rows(Stores.PENNY_BILLS, 1)
+        assertTrue(context.getSharedPreferences(Stores.MONEY_WATCH, Context.MODE_PRIVATE).all.isEmpty())
+    }
+
+    @Test
+    fun `flush waits until every write is in the database`() = runBlocking {
+        start()
+        repeat(20) { MoneyWatch(context).decide("bill $it", MoneyWatch.Decision.EXPECTED) }
+        Choices.flush()
+        assertEquals(20, db.budgetDao().choices().count { it.store == Stores.MONEY_WATCH })
+    }
+
+    /** "That's expected" on a notification: saved before the receiver lets the app go. */
+    @Test
+    fun `an answer from a notification is saved`() {
+        start()
+        val intent = android.content.Intent(com.spendroid.work.MoneyWatchAlerts.ACTION_EXPECTED)
+            .putExtra(com.spendroid.work.MoneyWatchAlerts.EXTRA_KEY, "gym").putExtra(com.spendroid.work.MoneyWatchAlerts.EXTRA_ID, 1)
+        runBlocking { com.spendroid.work.MoneyWatchAlerts.answer(context, intent) }
+        assertEquals(1, runBlocking { db.budgetDao().choices() }.count { it.store == Stores.MONEY_WATCH && it.key == "decision:gym" })
+    }
 }

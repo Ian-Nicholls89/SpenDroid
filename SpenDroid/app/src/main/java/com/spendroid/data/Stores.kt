@@ -64,16 +64,16 @@ object Stores {
         // Not in a backup: setup is this phone's - restored onto a new one, setup carries on to what
         // that phone still needs (notification access), and is marked finished after.
         Store(FIRST_RUN, Kind.USER_DATA, holds = "Whether setup is finished on this phone"),
-        Store(MOMENTS, Kind.USER_DATA, inBackup = true, holds = "Whether this cycle's payday moment has been shown"),
+        Store(MOMENTS, Kind.USER_DATA, inBackup = true, holds = "Whether this cycle's payday moment has been shown (in the database)"),
         Store(CONTRACTS, Kind.USER_DATA, inBackup = true, holds = "Contract end dates and accepted prices (in the database)"),
         Store(SUBSCRIPTIONS, Kind.USER_DATA, inBackup = true, holds = "Subscription or household bill, reminders, cancelled (in the database)"),
-        Store(MONEY_WATCH, Kind.USER_DATA, inBackup = true, holds = "Money watch settings, and price rises already told or decided"),
-        Store(MANUAL_REMINDERS, Kind.USER_DATA, inBackup = true, holds = "How often to remind about statements and balance checks"),
+        Store(MONEY_WATCH, Kind.USER_DATA, inBackup = true, holds = "Money watch settings, and price rises already told or decided (in the database)"),
+        Store(MANUAL_REMINDERS, Kind.USER_DATA, inBackup = true, holds = "How often to remind about statements and balance checks (in the database)"),
         Store(PAYEE_NAMES, Kind.USER_DATA, inBackup = true, holds = "Names given to payees (in the database)"),
-        Store(PENNY_ASK, Kind.USER_DATA, inBackup = true, holds = "Questions put off with \"Ask me later\""),
-        Store(PENNY_BILLS, Kind.USER_DATA, inBackup = true, holds = "Answers to \"Is this a bill?\""),
-        Store(PENNY_NEWS, Kind.USER_DATA, inBackup = true, holds = "Card digits Penny has already said she learnt"),
-        Store(PENNY_VOICE, Kind.USER_DATA, inBackup = true, holds = "A count of visits to Home, to vary Penny's lines"),
+        Store(PENNY_ASK, Kind.USER_DATA, inBackup = true, holds = "Questions put off with \"Ask me later\" (in the database)"),
+        Store(PENNY_BILLS, Kind.USER_DATA, inBackup = true, holds = "Answers to \"Is this a bill?\" (in the database)"),
+        Store(PENNY_NEWS, Kind.USER_DATA, inBackup = true, holds = "Card digits Penny has already said she learnt (in the database)"),
+        Store(PENNY_VOICE, Kind.USER_DATA, inBackup = true, holds = "A count of visits to Home, to vary Penny's lines (in the database)"),
 
         Store(PRIVACY, Kind.DEVICE, inBackup = true, holds = "App lock, and where figures show (widgets, watch, notifications, recents)"),
         Store(LAUNCHER_ICON, Kind.DEVICE, inBackup = true, holds = "The chosen app icon"),
@@ -107,7 +107,7 @@ object Stores {
      * database ([Choices.NAMES]), the same read and written there.
      */
     fun prefs(context: android.content.Context, name: String): android.content.SharedPreferences =
-        if (name in Choices.NAMES) Choices.prefs(name) else context.getSharedPreferences(name, android.content.Context.MODE_PRIVATE)
+        if (name in Choices.NAMES) Choices.prefs(context, name) else context.getSharedPreferences(name, android.content.Context.MODE_PRIVATE)
 
     /** Left out of Android's backup and device transfer, as res/xml's rules say. */
     val phoneOnly: List<String> get() = ALL.filter { it.phoneOnly }.map { it.name }

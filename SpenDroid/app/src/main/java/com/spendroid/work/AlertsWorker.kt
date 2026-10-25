@@ -30,7 +30,8 @@ class AlertsWorker(
     parameters: WorkerParameters,
 ) : CoroutineWorker(app, parameters) {
 
-    override suspend fun doWork(): Result = daily(DailyRoundupScheduler.Daily.ALERTS) { runDay() }
+    // Alerts sent are noted in the user's choices: saved before the job ends, so none goes twice.
+    override suspend fun doWork(): Result = daily(DailyRoundupScheduler.Daily.ALERTS) { runDay().also { com.spendroid.data.Choices.flush() } }
 
     private suspend fun runDay(): Result {
         // Contract dates and subscription choices decide what's said: in before anything is.

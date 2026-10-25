@@ -24,7 +24,7 @@ object PennyNews {
     fun next(context: Context, state: RootUiState): News? {
         // Only once the figures are in, or everything would look new while they load.
         if (state.budget == null || state.rules.isEmpty()) return null
-        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val prefs = com.spendroid.data.Stores.prefs(context, PREFS)
         val all = of(state)
         if (!prefs.getBoolean(STARTED, false)) {
             prefs.edit().putStringSet(KNOWN, all.map { it.key }.toSet()).putBoolean(STARTED, true).apply()
@@ -36,7 +36,7 @@ object PennyNews {
 
     /** Said, or not worth saying - typed in by the user, say. */
     fun know(context: Context, key: String) {
-        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val prefs = com.spendroid.data.Stores.prefs(context, PREFS)
         prefs.edit().putStringSet(KNOWN, prefs.getStringSet(KNOWN, emptySet()).orEmpty() + key).apply()
     }
 
@@ -83,7 +83,7 @@ object PennyBills {
     /** The bills to ask about now. */
     fun toAsk(context: Context, state: RootUiState): List<RecurringRule> {
         if (state.budget == null || state.rules.isEmpty()) return emptyList()
-        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val prefs = com.spendroid.data.Stores.prefs(context, PREFS)
         val all = candidates(state)
         if (!prefs.getBoolean(STARTED, false)) {
             prefs.edit().putStringSet(CONFIRMED, all.filterNot(::weak).map(::id).toSet()).putBoolean(STARTED, true).apply()
@@ -97,7 +97,7 @@ object PennyBills {
      * rule's key carries its amount: the car park at a new price is a new rule, and still not a bill.
      */
     fun answer(context: Context, rule: RecurringRule, isBill: Boolean = true) {
-        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val prefs = com.spendroid.data.Stores.prefs(context, PREFS)
         val notBills = prefs.getStringSet(NOT_BILLS, emptySet()).orEmpty()
         prefs.edit()
             .putStringSet(CONFIRMED, prefs.getStringSet(CONFIRMED, emptySet()).orEmpty() + id(rule))
@@ -108,7 +108,7 @@ object PennyBills {
 
     /** Rules for a payee said to be just spending that aren't ignored yet - a new amount, say. */
     fun stillToIgnore(context: Context, state: RootUiState): List<String> {
-        val notBills = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getStringSet(NOT_BILLS, emptySet()).orEmpty()
+        val notBills = com.spendroid.data.Stores.prefs(context, PREFS).getStringSet(NOT_BILLS, emptySet()).orEmpty()
         if (notBills.isEmpty()) return emptyList()
         return state.rules.filter { !it.isManual && it.direction == Direction.OUT && it.key !in state.ignoredRules && id(it) in notBills }.map { it.key }
     }

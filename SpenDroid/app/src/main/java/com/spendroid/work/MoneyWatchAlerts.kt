@@ -6,6 +6,7 @@ import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import kotlinx.coroutines.launch
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.spendroid.data.MoneyWatch
@@ -27,9 +28,9 @@ object MoneyWatchAlerts {
     const val EXTRA_OPEN_RULE = "com.spendroid.OPEN_RULE"
     const val EXTRA_OPEN_FORECAST = "com.spendroid.OPEN_FORECAST"
     private const val CHANNEL = "bills_and_balances"
-    private const val ACTION_EXPECTED = "com.spendroid.PRICE_EXPECTED"
-    private const val EXTRA_KEY = "key"
-    private const val EXTRA_ID = "id"
+    internal const val ACTION_EXPECTED = "com.spendroid.PRICE_EXPECTED"
+    internal const val EXTRA_KEY = "key"
+    internal const val EXTRA_ID = "id"
     private val SHORT = DateTimeFormatter.ofPattern("d MMM")
     private val MONTH = DateTimeFormatter.ofPattern("MMMM")
 
@@ -140,14 +141,27 @@ object MoneyWatchAlerts {
     }
 
     /** "That's expected", from the notification. */
-    internal fun answer(context: Context, intent: Intent) {
+    internal suspend fun answer(context: Context, intent: Intent) {
         if (intent.action != ACTION_EXPECTED) return
         val key = intent.getStringExtra(EXTRA_KEY) ?: return
+        // The app may have been started just for this: the answer in the database before it's let go.
+        com.spendroid.data.Choices.awaitLoaded()
         MoneyWatch(context).decide(key, MoneyWatch.Decision.EXPECTED)
+        com.spendroid.data.Choices.flush()
         NotificationManagerCompat.from(context).cancel(intent.getIntExtra(EXTRA_ID, 0))
     }
 }
 
 class MoneyWatchReceiver : BroadcastReceiver() {
-    override fun onReceive(context: Context, intent: Intent) = MoneyWatchAlerts.answer(context, intent)
+    override fun onReceive(context: Context, intent: Intent) {
+        // Kept going until the answer is saved: a receiver alone is let go as soon as it returns.
+        val pending = goAsync()
+        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+            try {
+                MoneyWatchAlerts.answer(context.applicationContext, intent)
+            } finally {
+                pending.finish()
+            }
+        }
+    }
 }

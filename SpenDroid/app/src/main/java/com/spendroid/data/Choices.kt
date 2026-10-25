@@ -14,7 +14,8 @@ import org.json.JSONObject
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * What the user has decided - payee names, contract dates, subscription choices - kept in the
+ * What the user has decided - payee names, contract dates, subscription choices, Penny's answers,
+ * money watch, reminders - kept in the
  * database ([ChoiceEntity]) rather than files of their own: encrypted with it when it is, written
  * with it, and gone with it.
  *
@@ -31,15 +32,48 @@ object Choices {
     private val stores = ConcurrentHashMap<String, ChoicePrefs>()
     private var dao: BudgetDao? = null
     @Volatile private var loaded = CompletableDeferred<Unit>()
+    /** The app these belong to: a phone has one; tests start one each, and each starts afresh. */
+    @Volatile private var owner: Any? = null
 
-    /** One writer, so writes land in the order they were made. */
-    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
-    private val writer = CoroutineScope(SupervisorJob() + Dispatchers.IO.limitedParallelism(1))
+    /**
+     * Writes, done one after another, each finished before the next starts - in the order they
+     * were made. (One thread wasn't enough: a write paused on the database let the next one by.)
+     */
+    private val queue = kotlinx.coroutines.channels.Channel<suspend () -> Unit>(kotlinx.coroutines.channels.Channel.UNLIMITED)
+
+    init {
+        CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
+            for (write in queue) runCatching { write() }
+        }
+    }
+
+    private fun enqueue(write: suspend () -> Unit) {
+        queue.trySend(write)
+    }
+
+    /** A different app than before - a new test - starts with nothing remembered. */
+    private fun ownedBy(context: Context) {
+        val app = context.applicationContext
+        if (owner !== app) {
+            owner = app
+            stores.values.forEach { it.reset() }
+        }
+    }
 
     /** The stores kept here rather than in files: by [Stores] name. */
-    val NAMES: Set<String> = setOf(Stores.PAYEE_NAMES, Stores.CONTRACTS, Stores.SUBSCRIPTIONS)
+    val NAMES: Set<String> = setOf(
+        Stores.PAYEE_NAMES, Stores.CONTRACTS, Stores.SUBSCRIPTIONS,
+        // 0.6.5: Penny's answers, money watch, reminders, moments.
+        Stores.PENNY_ASK, Stores.PENNY_BILLS, Stores.PENNY_NEWS, Stores.PENNY_VOICE,
+        Stores.MONEY_WATCH, Stores.MANUAL_REMINDERS, Stores.MOMENTS,
+    )
 
-    fun prefs(name: String): SharedPreferences {
+    fun prefs(context: Context, name: String): SharedPreferences {
+        ownedBy(context)
+        return prefs(name)
+    }
+
+    private fun prefs(name: String): SharedPreferences {
         require(name in NAMES) { "$name isn't kept in the database" }
         return stores.getOrPut(name) { ChoicePrefs(name) }
     }
@@ -49,8 +83,10 @@ object Choices {
         this.dao = dao
         // Once per process on a phone; afresh each time a test starts the app.
         loaded = CompletableDeferred()
+        owner = context.applicationContext
         stores.values.forEach { it.reset() }
-        writer.launch {
+        val loading = loaded
+        enqueue {
             runCatching {
                 val rows = dao.choices().groupBy { it.store }
                 NAMES.forEach { name ->
@@ -71,12 +107,23 @@ object Choices {
                     }
                 }
             }.onFailure { CrashLog.record(context, "phone · choices didn't load", CrashLog.stackOf(it)) }
-            loaded.complete(Unit)
+            loading.complete(Unit)
             then()
         }
     }
 
     suspend fun awaitLoaded() = loaded.await()
+
+    /**
+     * Once every write so far is in the database: for work that may end before the writer gets to
+     * it - a notification's button, a job in the background - after which the app can be closed.
+     */
+    suspend fun flush() {
+        awaitLoaded()
+        val done = CompletableDeferred<Unit>()
+        enqueue { done.complete(Unit) }
+        done.await()
+    }
 
     val isLoaded: Boolean get() = loaded.isCompleted
 
@@ -107,13 +154,11 @@ object Choices {
 
     private fun persist(store: String, changes: Map<String, Any?>, cleared: Boolean) {
         val dao = dao ?: return
-        writer.launch {
-            runCatching {
-                if (cleared) dao.deleteChoices(store)
-                changes.forEach { (key, value) ->
-                    val encoded = encode(value)
-                    if (encoded == null) dao.deleteChoice(store, key) else dao.upsertChoice(ChoiceEntity(store, key, encoded))
-                }
+        enqueue {
+            if (cleared) dao.deleteChoices(store)
+            changes.forEach { (key, value) ->
+                val encoded = encode(value)
+                if (encoded == null) dao.deleteChoice(store, key) else dao.upsertChoice(ChoiceEntity(store, key, encoded))
             }
         }
     }
