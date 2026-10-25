@@ -94,7 +94,7 @@ private sealed interface Page {
     data object Week : Page
     data class Card(val card: BudgetReading.Card) : Page
     data object Upcoming : Page
-    data class Update(val name: String, val url: String) : Page
+    data class Update(val name: String, val url: String, val code: Int) : Page
     data object Phone : Page
 }
 
@@ -187,7 +187,7 @@ private fun Pages(
         reading.cards.forEach { add(Page.Card(it)) }
         add(Page.Upcoming)
         // A newer watch app, when the phone knows of one: installed from here, not over ADB.
-        WatchUpdater.available(context, reading)?.let { (name, url) -> add(Page.Update(name, url)) }
+        WatchUpdater.available(context, reading)?.let { (name, url) -> add(Page.Update(name, url, reading.map.getInt("wearLatestCode", 0))) }
         add(Page.Phone)
     }
     val state = rememberPagerState(initialPage = initialPage, pageCount = { pages.size })
@@ -203,7 +203,7 @@ private fun Pages(
                         Page.Week -> Week(reading)
                         is Page.Card -> CardScreen(page.card)
                         Page.Upcoming -> UpcomingSummary(reading, onSeeUpcoming)
-                        is Page.Update -> UpdatePage(page.name, page.url)
+                        is Page.Update -> UpdatePage(page.name, page.url, page.code)
                         Page.Phone -> Box(Modifier.fillMaxSize().padding(8.dp), contentAlignment = Alignment.Center) {
                             // Only the button, as asked: a circle filling the screen, its label centred.
                             Box(
@@ -675,7 +675,7 @@ private fun RoundupScreen(r: Roundup, reading: BudgetReading?) {
 
 /** A newer watch app: downloaded here, and installed once the system's prompt is confirmed. */
 @Composable
-private fun UpdatePage(name: String, url: String) {
+private fun UpdatePage(name: String, url: String, code: Int) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var status by remember { mutableStateOf<String?>(null) }
@@ -689,7 +689,7 @@ private fun UpdatePage(name: String, url: String) {
             onClick = {
                 busy = true
                 scope.launch {
-                    status = when (val result = WatchUpdater.install(context, url) { status = it }) {
+                    status = when (val result = WatchUpdater.install(context, url, code, name) { status = it }) {
                         WatchUpdater.Result.Started -> "Confirm the install on the next screen"
                         WatchUpdater.Result.NeedsPermission ->
                             if (WatchUpdater.openPermission(context)) {

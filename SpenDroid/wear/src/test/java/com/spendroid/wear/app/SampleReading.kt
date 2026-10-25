@@ -5,7 +5,7 @@ import com.spendroid.wear.BudgetReading
 
 /** Made-up figures, as the phone sends them: the watch screenshots' own. */
 object SampleReading {
-    fun reading(available: String = "£312") = BudgetReading(
+    fun reading(available: String = "£312", extra: DataMap.() -> Unit = {}) = BudgetReading(
         DataMap().apply {
             putString("available", available); putString("availableFull", "$available.40"); putFloat("budgetLeft", 0.62f)
             putFloat("cycleLeft", 0.75f); putString("pace", "ON_TRACK"); putInt("accent", 0xFFF5A623.toInt())
@@ -36,6 +36,7 @@ object SampleReading {
                 putString("name", "Nectar Card"); putString("since", "£138.69"); putString("capShort", "£580"); putFloat("capShare", 0.24f)
                 putFloat("statementGone", 0.3f); putString("closes", "closes 23 Oct"); putString("nextBill", "bill £212.08 · 17 Oct"); putInt("colour", 0xFF9B5DE5.toInt())
             }))
+                    extra()
         },
     )
 }

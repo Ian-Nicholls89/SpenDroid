@@ -76,6 +76,18 @@ internal class UpdateArea(host: AreaHost) : ViewModelArea(host) {
         }
     }
 
+    /** Installs the update already downloaded - its prompt missed, or cancelled - without downloading it again. */
+    fun installDownloaded() {
+        viewModelScope.launch {
+            val status = when (val result = ApkInstaller.installDownloaded(getApplication())) {
+                is ApkInstaller.Result.Started -> UpdateCheckStatus.Installing
+                ApkInstaller.Result.NeedsPermission -> UpdateCheckStatus.NeedsInstallPermission
+                is ApkInstaller.Result.Failed -> UpdateCheckStatus.Error(result.message)
+            }
+            _state.update { it.copy(updateCheckStatus = status) }
+        }
+    }
+
     /** Opens the settings page where installing from this app is allowed. */
     fun openInstallPermissionSettings() {
         val context = getApplication<Application>()

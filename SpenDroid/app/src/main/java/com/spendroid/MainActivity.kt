@@ -104,6 +104,11 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
     private val askPenny = mutableStateOf(false)
 
     private fun takeOpeners(intent: Intent?) {
+        // "Wasn't installed - tap to install it": the kept download, to Android's prompt again.
+        if (intent?.getBooleanExtra(com.spendroid.data.UpdateNotice.EXTRA_INSTALL, false) == true) {
+            intent.removeExtra(com.spendroid.data.UpdateNotice.EXTRA_INSTALL)
+            viewModel.installDownloadedUpdate()
+        }
         intent?.getStringExtra(com.spendroid.work.MoneyWatchAlerts.EXTRA_OPEN_RULE)?.let { openRule.value = it }
         intent?.getStringExtra(com.spendroid.work.MoneyWatchAlerts.EXTRA_OPEN_FORECAST)?.let { openForecast.value = it }
         intent?.getStringExtra(com.spendroid.work.ContractAlerts.EXTRA_OPEN_CONTRACT)?.let { openRule.value = it }

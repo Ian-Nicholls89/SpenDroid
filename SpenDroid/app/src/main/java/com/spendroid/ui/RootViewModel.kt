@@ -83,6 +83,7 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
     fun applyBalanceCheck(accountId: String, typedMinor: Long, moveSpendId: String?) = setup.applyBalanceCheck(accountId, typedMinor, moveSpendId)
     fun checkForUpdate() = updates.checkForUpdate()
     fun openInstallPermissionSettings() = updates.openInstallPermissionSettings()
+    fun installDownloadedUpdate() = updates.installDownloaded()
     fun loadInstitutions(query: String) = bankLink.loadInstitutions(query)
     fun link(institution: InstitutionDto) = bankLink.link(institution)
     fun relink(connection: Connection) = bankLink.relink(connection)

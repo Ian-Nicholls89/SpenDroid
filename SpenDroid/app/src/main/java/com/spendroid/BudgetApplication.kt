@@ -61,6 +61,8 @@ open class BudgetApplication : Application() {
         com.spendroid.data.Choices.start(this, db.budgetDao()) { com.spendroid.data.PayeeNames.load(this) }
         DailyRoundupScheduler.schedule(this)
         com.spendroid.data.AutoBackup.schedule(this)
+        // An update kept to install, now installed: the file and its notification go.
+        com.spendroid.data.ApkInstaller.tidy(this)
         // Credentials saved before 3.6 were in the clear; seal them. A failure leaves them
         // readable as they were, and it tries again next start.
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {

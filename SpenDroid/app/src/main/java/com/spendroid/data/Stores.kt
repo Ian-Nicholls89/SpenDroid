@@ -58,6 +58,7 @@ object Stores {
     const val WEB_ACCESS = "web_access"
     const val DB_ENCRYPTION = "db_encryption"
     const val AUTO_BACKUP = "auto_backup"
+    const val APP_UPDATE = "app_update"
 
     val ALL: List<Store> = listOf(
         // Not in a backup: setup is this phone's - restored onto a new one, setup carries on to what
@@ -83,6 +84,7 @@ object Stores {
         Store(WEB_IMPORT, Kind.DEVICE, inBackup = true, holds = "Statement layouts and batches sent from the computer link"),
         Store(WEB_ACCESS, Kind.DEVICE, holds = "Computers the computer link remembers (hashed)"),
         Store(DB_ENCRYPTION, Kind.DEVICE, holds = "Database encryption: on, and its key sealed by this phone"),
+        Store(APP_UPDATE, Kind.DEVICE, holds = "An update downloaded and waiting to install: its version"),
         Store(AUTO_BACKUP, Kind.DEVICE, phoneOnly = true, holds = "Automatic backup: the folder, and the passphrase sealed by this phone"),
     )
 

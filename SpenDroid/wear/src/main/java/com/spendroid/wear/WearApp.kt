@@ -21,6 +21,8 @@ class WearApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        // An update kept to install, now installed: the file and its notification go.
+        runCatching { WatchUpdater.tidy(this) }
         val dir = File(filesDir, "crashes").apply { mkdirs() }
         val before = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, error ->

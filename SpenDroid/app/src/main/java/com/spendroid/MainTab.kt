@@ -164,6 +164,7 @@ internal fun MainTab(
             onCancelRestore = viewModel::cancelRestore,
             onCheckUpdate = viewModel::checkForUpdate,
             onOpenInstallSettings = viewModel::openInstallPermissionSettings,
+            onInstallDownloaded = viewModel::installDownloadedUpdate,
             secretId = viewModel.secretIdValue.collectAsStateWithLifecycle().value,
             secretKey = viewModel.secretKeyValue.collectAsStateWithLifecycle().value,
             notificationTime = viewModel.notificationTime.collectAsStateWithLifecycle().value,

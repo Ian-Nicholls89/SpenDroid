@@ -98,6 +98,7 @@ fun SettingsScreen(
     onCancelRestore: () -> Unit = {},
     onCheckUpdate: () -> Unit,
     onOpenInstallSettings: () -> Unit,
+    onInstallDownloaded: () -> Unit = {},
     secretId: String,
     secretKey: String,
     notificationTime: String,
@@ -208,6 +209,7 @@ fun SettingsScreen(
                         versionCode = state.versionCode,
                         onCheckUpdate = onCheckUpdate,
                         onOpenInstallSettings = onOpenInstallSettings,
+                        onInstallDownloaded = onInstallDownloaded,
                     ) }
                     Panel { CrashSection() }
                 }
@@ -437,6 +439,7 @@ private fun UpdatesSection(
     versionCode: Int,
     onCheckUpdate: () -> Unit,
     onOpenInstallSettings: () -> Unit,
+    onInstallDownloaded: () -> Unit = {},
 ) {
     Text("App updates", style = MaterialTheme.typography.titleMedium)
     Spacer(Modifier.height(4.dp))
@@ -467,6 +470,15 @@ private fun UpdatesSection(
                 Spacer(Modifier.width(8.dp))
             }
             Text(if (isChecking) "Checking…" else "Check now")
+        }
+    }
+    // Downloaded, and its install prompt missed or cancelled: installed from here, not downloaded again.
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val waiting = androidx.compose.runtime.remember(state.updateCheckStatus) { com.spendroid.data.ApkInstaller.downloaded(context) }
+    waiting?.let { update ->
+        Spacer(Modifier.height(8.dp))
+        OutlinedButton(onClick = onInstallDownloaded, modifier = Modifier.fillMaxWidth()) {
+            Text("Install SpenDroid ${update.versionName} (downloaded)")
         }
     }
     when (state.updateCheckStatus) {
