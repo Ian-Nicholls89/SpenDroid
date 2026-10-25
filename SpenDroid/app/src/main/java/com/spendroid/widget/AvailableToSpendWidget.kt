@@ -582,6 +582,8 @@ suspend fun refreshWidgetsIfStale(context: Context, maxAgeMs: Long = 15 * 60 * 1
 }
 
 suspend fun refreshWidgets(context: Context) {
+    // Payee names in first, so a widget row shows the user's name for it.
+    com.spendroid.data.Choices.awaitLoaded()
     lastRefreshAt = System.currentTimeMillis()
     // "widget 10:30" on each, beside when the bank's figures came.
     WidgetRefresh.drawn(context, lastRefreshAt)

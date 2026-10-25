@@ -31,7 +31,7 @@ object PayeeNames {
     fun key(bankName: String): String = bankName.trim().replace(Regex("\\s+"), " ").lowercase()
 
     fun load(context: Context) {
-        val p = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).also { prefs = it }
+        val p = Stores.prefs(context, PREFS).also { prefs = it }
         val json = runCatching { JSONObject(p.getString(KEY, null) ?: "{}") }.getOrDefault(JSONObject())
         names = json.keys().asSequence().associateWith { json.optString(it) }.filterValues { it.isNotBlank() }
     }

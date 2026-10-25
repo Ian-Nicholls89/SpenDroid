@@ -47,12 +47,23 @@ class MigrationTest {
         db.query("SELECT COUNT(*) FROM accounts").use { c -> c.moveToFirst(); assertEquals(1, c.getInt(0)) }
     }
 
+    @Test
+    fun `23 to 24 adds the user's decisions, and keeps everything`() {
+        helper.createDatabase(name, 23).apply {
+            execSQL("INSERT INTO accounts (id, institutionName, label, currency, lastSynced, accountType, walletLinked, manual) VALUES ('a', 'First Direct', 'Current', 'GBP', 0, 'PERSONAL', 0, 0)")
+            close()
+        }
+        val db = helper.runMigrationsAndValidate(name, 24, true, BudgetDb.MIGRATION_23_24)
+        db.query("SELECT COUNT(*) FROM accounts").use { c -> c.moveToFirst(); assertEquals(1, c.getInt(0)) }
+        db.query("SELECT COUNT(*) FROM choices").use { c -> c.moveToFirst(); assertEquals(0, c.getInt(0)) }
+    }
+
     /** The app opens a database the migrations built exactly as it would a new one: the same tables. */
     @Test
     fun `the app opens a migrated database, and every table reads`() {
         helper.createDatabase(name, 22).close()
         val db = Room.databaseBuilder(ApplicationProvider.getApplicationContext(), BudgetDb::class.java, name)
-            .addMigrations(BudgetDb.MIGRATION_22_23)
+            .addMigrations(BudgetDb.MIGRATION_22_23, BudgetDb.MIGRATION_23_24)
             .allowMainThreadQueries()
             .build()
         runBlocking {
@@ -66,6 +77,8 @@ class MigrationTest {
             dao.categoryRules()
             dao.ruleOverrides()
             dao.budgetGoals()
+            dao.upsertChoice(ChoiceEntity("payee_names", "names", "{}"))
+            assertEquals(1, dao.choices().size)
         }
         db.close()
     }

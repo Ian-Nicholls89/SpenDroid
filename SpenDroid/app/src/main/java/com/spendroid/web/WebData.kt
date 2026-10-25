@@ -32,6 +32,7 @@ object WebData {
     private fun Color.hex(): String = "#%06X".format(toArgb() and 0xFFFFFF)
 
     suspend fun json(context: Context): String {
+        com.spendroid.data.Choices.awaitLoaded()
         val app = context.applicationContext as BudgetApplication
         val repo = app.repository
         val s = repo.budgetSnapshot()

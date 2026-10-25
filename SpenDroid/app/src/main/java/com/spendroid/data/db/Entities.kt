@@ -244,3 +244,14 @@ data class DuplicateCheckEntity(
     /** A [com.spendroid.domain.DuplicateCheck.State] name. */
     val state: String,
 )
+
+/**
+ * A decision of the user's, by store and key - a payee's name, a contract's end, a subscription's
+ * kind: what [com.spendroid.data.Choices] keeps, its value with its type as JSON.
+ */
+@Entity(tableName = "choices", primaryKeys = ["store", "key"])
+data class ChoiceEntity(
+    val store: String,
+    val key: String,
+    val value: String,
+)

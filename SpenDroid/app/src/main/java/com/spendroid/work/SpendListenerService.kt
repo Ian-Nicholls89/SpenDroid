@@ -38,6 +38,8 @@ class SpendListenerService : NotificationListenerService() {
             if (source !in repo.watchedPackages()) return@launch
             val changed = runCatching { repo.onNotification(source, title, text, sbn.postTime) }.getOrDefault(false)
             if (changed) {
+                // Payee names name the question: in before it's asked.
+                com.spendroid.data.Choices.awaitLoaded()
                 refreshWidgets(applicationContext)
                 // Wallet may have just said which account an earlier alert was on.
                 runCatching { repo.settledSince(sbn.postTime - 24 * 60 * 60_000L) }.getOrDefault(emptyList())

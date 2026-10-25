@@ -1,0 +1,175 @@
+package com.spendroid.data
+
+import android.content.Context
+import android.content.SharedPreferences
+import com.spendroid.data.db.BudgetDao
+import com.spendroid.data.db.ChoiceEntity
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+import org.json.JSONArray
+import org.json.JSONObject
+import java.util.concurrent.ConcurrentHashMap
+
+/**
+ * What the user has decided - payee names, contract dates, subscription choices - kept in the
+ * database ([ChoiceEntity]) rather than files of their own: encrypted with it when it is, written
+ * with it, and gone with it.
+ *
+ * Read as they always were, as preferences ([prefs]), and answered at once from memory - payee
+ * names are looked up for every row drawn. Loaded at start before anything shows; anything that
+ * reads them away from the screens waits for that first ([awaitLoaded]). Written to memory at
+ * once and to the database in order, one at a time.
+ *
+ * On the first start with the database holding none, what the old files held is moved across,
+ * and the files emptied.
+ */
+object Choices {
+
+    private val stores = ConcurrentHashMap<String, ChoicePrefs>()
+    private var dao: BudgetDao? = null
+    @Volatile private var loaded = CompletableDeferred<Unit>()
+
+    /** One writer, so writes land in the order they were made. */
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    private val writer = CoroutineScope(SupervisorJob() + Dispatchers.IO.limitedParallelism(1))
+
+    /** The stores kept here rather than in files: by [Stores] name. */
+    val NAMES: Set<String> = setOf(Stores.PAYEE_NAMES, Stores.CONTRACTS, Stores.SUBSCRIPTIONS)
+
+    fun prefs(name: String): SharedPreferences {
+        require(name in NAMES) { "$name isn't kept in the database" }
+        return stores.getOrPut(name) { ChoicePrefs(name) }
+    }
+
+    /** Loads every choice, moving any still in the old files across; [then] once they're in. */
+    fun start(context: Context, dao: BudgetDao, then: () -> Unit = {}) {
+        this.dao = dao
+        // Once per process on a phone; afresh each time a test starts the app.
+        loaded = CompletableDeferred()
+        stores.values.forEach { it.reset() }
+        writer.launch {
+            runCatching {
+                val rows = dao.choices().groupBy { it.store }
+                NAMES.forEach { name ->
+                    val store = prefs(name) as ChoicePrefs
+                    val held = rows[name].orEmpty()
+                    if (held.isEmpty()) {
+                        // The first start since they moved: what the file held comes across.
+                        val legacy = context.getSharedPreferences(name, Context.MODE_PRIVATE)
+                        val old = legacy.all
+                        if (old.isNotEmpty()) {
+                            val moved = old.mapNotNull { (key, value) -> encode(value)?.let { ChoiceEntity(name, key, it) } }
+                            dao.upsertChoices(moved)
+                            store.fill(old)
+                            legacy.edit().clear().commit()
+                        }
+                    } else {
+                        store.fill(held.associate { it.key to decode(it.value) })
+                    }
+                }
+            }.onFailure { CrashLog.record(context, "phone · choices didn't load", CrashLog.stackOf(it)) }
+            loaded.complete(Unit)
+            then()
+        }
+    }
+
+    suspend fun awaitLoaded() = loaded.await()
+
+    val isLoaded: Boolean get() = loaded.isCompleted
+
+    // ---- in the database: each value with its type, as the backup writes them -------------------
+
+    internal fun encode(value: Any?): String? = when (value) {
+        is String -> JSONObject().put("t", "s").put("v", value)
+        is Boolean -> JSONObject().put("t", "b").put("v", value)
+        is Int -> JSONObject().put("t", "i").put("v", value)
+        is Long -> JSONObject().put("t", "l").put("v", value)
+        is Float -> JSONObject().put("t", "f").put("v", value.toDouble())
+        is Set<*> -> JSONObject().put("t", "set").put("v", JSONArray(value.filterIsInstance<String>()))
+        else -> null
+    }?.toString()
+
+    internal fun decode(stored: String): Any? = runCatching {
+        val o = JSONObject(stored)
+        when (o.optString("t")) {
+            "s" -> o.optString("v")
+            "b" -> o.optBoolean("v")
+            "i" -> o.optInt("v")
+            "l" -> o.optLong("v")
+            "f" -> o.optDouble("v").toFloat()
+            "set" -> o.optJSONArray("v")?.let { a -> (0 until a.length()).map { a.optString(it) }.toSet() }
+            else -> null
+        }
+    }.getOrNull()
+
+    private fun persist(store: String, changes: Map<String, Any?>, cleared: Boolean) {
+        val dao = dao ?: return
+        writer.launch {
+            runCatching {
+                if (cleared) dao.deleteChoices(store)
+                changes.forEach { (key, value) ->
+                    val encoded = encode(value)
+                    if (encoded == null) dao.deleteChoice(store, key) else dao.upsertChoice(ChoiceEntity(store, key, encoded))
+                }
+            }
+        }
+    }
+
+    /** One store, as preferences: answered from memory, written through to the database. */
+    private class ChoicePrefs(private val name: String) : SharedPreferences {
+        private val values = ConcurrentHashMap<String, Any>()
+        /** Changed before the load finished: the load mustn't put back what was there. */
+        private val touched = ConcurrentHashMap.newKeySet<String>()
+        private val listeners = java.util.Collections.newSetFromMap(ConcurrentHashMap<SharedPreferences.OnSharedPreferenceChangeListener, Boolean>())
+
+        fun reset() {
+            values.clear()
+            touched.clear()
+        }
+
+        fun fill(from: Map<String, Any?>) {
+            from.forEach { (key, value) -> if (value != null && key !in touched) values.putIfAbsent(key, value) }
+        }
+
+        override fun getAll(): Map<String, *> = HashMap(values)
+        override fun getString(key: String, defValue: String?): String? = values[key] as? String ?: defValue
+        @Suppress("UNCHECKED_CAST")
+        override fun getStringSet(key: String, defValues: Set<String>?): Set<String>? = (values[key] as? Set<String>)?.toSet() ?: defValues
+        override fun getInt(key: String, defValue: Int): Int = values[key] as? Int ?: defValue
+        override fun getLong(key: String, defValue: Long): Long = values[key] as? Long ?: defValue
+        override fun getFloat(key: String, defValue: Float): Float = values[key] as? Float ?: defValue
+        override fun getBoolean(key: String, defValue: Boolean): Boolean = values[key] as? Boolean ?: defValue
+        override fun contains(key: String): Boolean = values.containsKey(key)
+        override fun registerOnSharedPreferenceChangeListener(listener: SharedPreferences.OnSharedPreferenceChangeListener) { listeners += listener }
+        override fun unregisterOnSharedPreferenceChangeListener(listener: SharedPreferences.OnSharedPreferenceChangeListener) { listeners -= listener }
+
+        override fun edit(): SharedPreferences.Editor = object : SharedPreferences.Editor {
+            private val changes = LinkedHashMap<String, Any?>()
+            private var clear = false
+            override fun putString(key: String, value: String?) = apply { changes[key] = value }
+            override fun putStringSet(key: String, values: Set<String>?) = apply { changes[key] = values?.toSet() }
+            override fun putInt(key: String, value: Int) = apply { changes[key] = value }
+            override fun putLong(key: String, value: Long) = apply { changes[key] = value }
+            override fun putFloat(key: String, value: Float) = apply { changes[key] = value }
+            override fun putBoolean(key: String, value: Boolean) = apply { changes[key] = value }
+            override fun remove(key: String) = apply { changes[key] = null }
+            override fun clear() = apply { clear = true }
+
+            override fun commit(): Boolean {
+                if (!isLoaded) touched += changes.keys
+                if (clear) { if (!isLoaded) touched += values.keys; values.clear() }
+                changes.forEach { (key, value) -> if (value == null) values.remove(key) else values[key] = value }
+                persist(name, changes.toMap(), clear)
+                changes.keys.forEach { key -> listeners.forEach { it.onSharedPreferenceChanged(this@ChoicePrefs, key) } }
+                return true
+            }
+
+            override fun apply() {
+                commit()
+            }
+        }
+    }
+}

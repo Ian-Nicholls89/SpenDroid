@@ -21,6 +21,8 @@ class AutoBackupWorker(context: Context, params: WorkerParameters) : CoroutineWo
         val app = applicationContext as? BudgetApplication ?: return Result.success()
         return runCatching {
             val passphrase = AutoBackup.passphrase(applicationContext) ?: error("The passphrase isn't on this phone any more - set it again")
+            // Payee names, contracts and subscriptions loaded first, or the backup would go without them.
+            Choices.awaitLoaded()
             val json = app.repository.exportJson(BackupPrefs.export(applicationContext), includeBank = true)
             // Nothing here - just after "Delete all data", or a new phone before its restore: an empty
             // backup would push a good one out of the last seven, so none is made.

@@ -23,8 +23,9 @@ import kotlinx.coroutines.flow.Flow
         SeenSpendEntity::class,
         NotificationSampleEntity::class,
         DuplicateCheckEntity::class,
+        ChoiceEntity::class,
     ],
-    version = 23,
+    version = 24,
     // Each version's tables written to app/schemas, kept in the repository: the record a
     // migration is tested against (see MigrationTest). Never edit one by hand.
     exportSchema = true,
@@ -63,6 +64,13 @@ abstract class BudgetDb : RoomDatabase() {
             }
         }
         /** 5.3: "both were real", for two payments alike on one day. */
+        /** The user's decisions, moved out of preference files into the database (0.6.4). */
+        val MIGRATION_23_24 = object : Migration(23, 24) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS `choices` (`store` TEXT NOT NULL, `key` TEXT NOT NULL, `value` TEXT NOT NULL, PRIMARY KEY(`store`, `key`))")
+            }
+        }
+
         val MIGRATION_22_23 = object : Migration(22, 23) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE seen_spends ADD COLUMN confirmedSeparate INTEGER NOT NULL DEFAULT 0")
@@ -338,6 +346,23 @@ interface BudgetDao {
 
     @Query("SELECT * FROM duplicate_checks")
     suspend fun duplicateChecks(): List<DuplicateCheckEntity>
+
+    // ---- the user's decisions: [com.spendroid.data.Choices] ----
+
+    @Query("SELECT * FROM choices")
+    suspend fun choices(): List<ChoiceEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertChoice(choice: ChoiceEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertChoices(choices: List<ChoiceEntity>)
+
+    @Query("DELETE FROM choices WHERE store = :store AND `key` = :key")
+    suspend fun deleteChoice(store: String, key: String)
+
+    @Query("DELETE FROM choices WHERE store = :store")
+    suspend fun deleteChoices(store: String)
 
     @Query("SELECT * FROM duplicate_checks WHERE accountId = :accountId")
     suspend fun duplicateChecksFor(accountId: String): List<DuplicateCheckEntity>

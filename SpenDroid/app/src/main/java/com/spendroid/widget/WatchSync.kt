@@ -82,6 +82,7 @@ internal object WatchSync {
     private const val WATCH_APP = "spendroid_watch_app"
 
     suspend fun sendRoundup(context: Context, s: com.spendroid.domain.BudgetSnapshot, toCheck: Int) {
+        com.spendroid.data.Choices.awaitLoaded()
         runCatching {
             val money = { minor: Long -> if (hide) com.spendroid.data.Privacy.HIDDEN else formatMoney(minor, s.baseCurrency) }
             val lines = roundupLines(s, toCheck, java.time.LocalDate.now())
@@ -98,6 +99,7 @@ internal object WatchSync {
     }
 
     suspend fun push(context: Context) {
+        com.spendroid.data.Choices.awaitLoaded()
         hide = !com.spendroid.data.Privacy(context).watchFigures
         runCatching {
             val app = context.applicationContext as? BudgetApplication ?: return

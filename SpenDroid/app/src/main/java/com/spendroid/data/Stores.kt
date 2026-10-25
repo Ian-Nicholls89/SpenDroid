@@ -64,11 +64,11 @@ object Stores {
         // that phone still needs (notification access), and is marked finished after.
         Store(FIRST_RUN, Kind.USER_DATA, holds = "Whether setup is finished on this phone"),
         Store(MOMENTS, Kind.USER_DATA, inBackup = true, holds = "Whether this cycle's payday moment has been shown"),
-        Store(CONTRACTS, Kind.USER_DATA, inBackup = true, holds = "Contract end dates and accepted prices"),
-        Store(SUBSCRIPTIONS, Kind.USER_DATA, inBackup = true, holds = "Subscription or household bill, reminders, cancelled"),
+        Store(CONTRACTS, Kind.USER_DATA, inBackup = true, holds = "Contract end dates and accepted prices (in the database)"),
+        Store(SUBSCRIPTIONS, Kind.USER_DATA, inBackup = true, holds = "Subscription or household bill, reminders, cancelled (in the database)"),
         Store(MONEY_WATCH, Kind.USER_DATA, inBackup = true, holds = "Money watch settings, and price rises already told or decided"),
         Store(MANUAL_REMINDERS, Kind.USER_DATA, inBackup = true, holds = "How often to remind about statements and balance checks"),
-        Store(PAYEE_NAMES, Kind.USER_DATA, inBackup = true, holds = "Names given to payees"),
+        Store(PAYEE_NAMES, Kind.USER_DATA, inBackup = true, holds = "Names given to payees (in the database)"),
         Store(PENNY_ASK, Kind.USER_DATA, inBackup = true, holds = "Questions put off with \"Ask me later\""),
         Store(PENNY_BILLS, Kind.USER_DATA, inBackup = true, holds = "Answers to \"Is this a bill?\""),
         Store(PENNY_NEWS, Kind.USER_DATA, inBackup = true, holds = "Card digits Penny has already said she learnt"),
@@ -99,6 +99,13 @@ object Stores {
 
     /** Carried in SpenDroid's backup. */
     val inBackup: List<String> get() = ALL.filter { it.inBackup }.map { it.name }
+
+    /**
+     * A store opened: the preferences file - or, for the user's decisions now kept in the
+     * database ([Choices.NAMES]), the same read and written there.
+     */
+    fun prefs(context: android.content.Context, name: String): android.content.SharedPreferences =
+        if (name in Choices.NAMES) Choices.prefs(name) else context.getSharedPreferences(name, android.content.Context.MODE_PRIVATE)
 
     /** Left out of Android's backup and device transfer, as res/xml's rules say. */
     val phoneOnly: List<String> get() = ALL.filter { it.phoneOnly }.map { it.name }

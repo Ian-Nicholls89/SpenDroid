@@ -157,7 +157,8 @@ class BackupRoundTripTest {
             .maxBy { it.nameWithoutExtension.toInt() }
             .let { org.json.JSONObject(it.readText()).getJSONObject("database").getJSONArray("entities") }
         val tables = (0 until schema.length()).map { schema.getJSONObject(it) }
-        assertEquals(tables.map { it.getString("tableName") }.toSet() - "bank_holidays", sections.keys)
+        // Choices are in a backup too, as they always were: in "preferences", by store (AppFlowsTest).
+        assertEquals(tables.map { it.getString("tableName") }.toSet() - "bank_holidays" - "choices", sections.keys)
         tables.filter { it.getString("tableName") in sections }.forEach { table ->
             val fields = table.getJSONArray("fields")
             val columns = (0 until fields.length()).map { fields.getJSONObject(it).getString("columnName") }.toSet()

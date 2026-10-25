@@ -599,6 +599,8 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
      * thread, where it held up drawing as the history grew.
      */
     private suspend fun loadLocal() = withContext(Dispatchers.Default) {
+        // Payee names, contracts and subscriptions in first: no row shows a bank's name for a moment.
+        com.spendroid.data.Choices.awaitLoaded()
         val all = repo.transactions()
         // What this load brought that the last one did not. Empty on the first load, which is
         // everything and so nothing worth pointing at.

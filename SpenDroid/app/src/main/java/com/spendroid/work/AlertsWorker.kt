@@ -33,6 +33,8 @@ class AlertsWorker(
     override suspend fun doWork(): Result = daily(DailyRoundupScheduler.Daily.ALERTS) { runDay() }
 
     private suspend fun runDay(): Result {
+        // Contract dates and subscription choices decide what's said: in before anything is.
+        com.spendroid.data.Choices.awaitLoaded()
         val repo = (applicationContext as BudgetApplication).repository
         val transactions = repo.transactions()
         if (transactions.isEmpty()) return Result.success()

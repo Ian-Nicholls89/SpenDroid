@@ -19,7 +19,6 @@ open class BudgetApplication : Application() {
         super.onCreate()
         // First, so a crash anywhere after is kept for the user to send.
         com.spendroid.data.CrashLog.install(this, BuildConfig.VERSION_NAME)
-        com.spendroid.data.PayeeNames.load(this)
         // PDF statements: the reader finds its fonts and glyph lists through the app.
         com.tom_roush.pdfbox.android.PDFBoxResourceLoader.init(this)
         // Encrypted, or plain - and a change the user asked for made now, before anything opens it.
@@ -48,6 +47,7 @@ open class BudgetApplication : Application() {
                 BudgetDb.MIGRATION_20_21,
                 BudgetDb.MIGRATION_21_22,
                 BudgetDb.MIGRATION_22_23,
+                BudgetDb.MIGRATION_23_24,
             )
             .apply {
                 if (passphrase != null) {
@@ -57,6 +57,8 @@ open class BudgetApplication : Application() {
             }
             .build()
         repository = GoCardlessRepository.create(this, db.budgetDao())
+        // The user's decisions, from the database - payee names once they're in.
+        com.spendroid.data.Choices.start(this, db.budgetDao()) { com.spendroid.data.PayeeNames.load(this) }
         DailyRoundupScheduler.schedule(this)
         com.spendroid.data.AutoBackup.schedule(this)
         // Credentials saved before 3.6 were in the clear; seal them. A failure leaves them

@@ -22,6 +22,7 @@ internal class BackupArea(host: AreaHost,
         viewModelScope.launch {
             _state.update { it.copy(exportStatus = ExportStatus.Working) }
             val status = runCatching {
+                com.spendroid.data.Choices.awaitLoaded()
                 val json = repo.exportJson(com.spendroid.data.BackupPrefs.export(getApplication()))
                 withContext(Dispatchers.IO) {
                     getApplication<Application>().contentResolver
@@ -112,7 +113,7 @@ internal class BackupArea(host: AreaHost,
             // fresh start starts at the beginning even after a restart. Device settings (the lock,
             // the icon, the watch) and remembered file layouts stay.
             val app = getApplication<Application>()
-            com.spendroid.data.Stores.clearedWithData.forEach { app.getSharedPreferences(it, android.content.Context.MODE_PRIVATE).edit().clear().commit() }
+            com.spendroid.data.Stores.clearedWithData.forEach { com.spendroid.data.Stores.prefs(app, it).edit().clear().commit() }
             com.spendroid.data.PayeeNames.load(app)
             _state.update { RootUiState(connections = emptyList(), manualRules = emptyList(), showRecurringOnly = true, showInternalTransfers = false, versionName = "", versionCode = 0) }
             forgetLink()

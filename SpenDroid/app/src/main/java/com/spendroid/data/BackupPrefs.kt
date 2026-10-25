@@ -19,7 +19,7 @@ object BackupPrefs {
     fun export(context: Context): JSONObject = JSONObject().also { root ->
         FILES.forEach { file ->
             val entries = JSONObject()
-            context.getSharedPreferences(file, Context.MODE_PRIVATE).all.forEach { (key, value) ->
+            Stores.prefs(context, file).all.forEach { (key, value) ->
                 when (value) {
                     is String -> entries.put(key, JSONObject().put("t", "s").put("v", value))
                     is Boolean -> entries.put(key, JSONObject().put("t", "b").put("v", value))
@@ -37,7 +37,7 @@ object BackupPrefs {
         prefs ?: return
         FILES.forEach { file ->
             val entries = prefs.optJSONObject(file) ?: return@forEach
-            context.getSharedPreferences(file, Context.MODE_PRIVATE).edit(commit = true) {
+            Stores.prefs(context, file).edit(commit = true) {
                 entries.keys().forEach { key ->
                     val o = entries.optJSONObject(key) ?: return@forEach
                     when (o.optString("t")) {
