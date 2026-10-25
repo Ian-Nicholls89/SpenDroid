@@ -60,7 +60,9 @@ object Stores {
     const val AUTO_BACKUP = "auto_backup"
 
     val ALL: List<Store> = listOf(
-        Store(FIRST_RUN, Kind.USER_DATA, inBackup = true, holds = "Whether setup is finished"),
+        // Not in a backup: setup is this phone's - restored onto a new one, setup carries on to what
+        // that phone still needs (notification access), and is marked finished after.
+        Store(FIRST_RUN, Kind.USER_DATA, holds = "Whether setup is finished on this phone"),
         Store(MOMENTS, Kind.USER_DATA, inBackup = true, holds = "Whether this cycle's payday moment has been shown"),
         Store(CONTRACTS, Kind.USER_DATA, inBackup = true, holds = "Contract end dates and accepted prices"),
         Store(SUBSCRIPTIONS, Kind.USER_DATA, inBackup = true, holds = "Subscription or household bill, reminders, cancelled"),

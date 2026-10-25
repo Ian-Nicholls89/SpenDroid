@@ -22,8 +22,9 @@ class StoresTest {
     }
 
     @Test
-    fun `a backup carries all the user's data, and the settings that mean the same on another phone`() {
-        assertTrue(Stores.clearedWithData.all { it in Stores.inBackup })
+    fun `a backup carries the user's data, and the settings that mean the same on another phone`() {
+        // All of it, but whether setup's finished: that's the phone's (0.6.3.2).
+        assertEquals(Stores.clearedWithData.toSet() - Stores.FIRST_RUN, Stores.clearedWithData.toSet() intersect Stores.inBackup.toSet())
         assertEquals(
             setOf("privacy", "launcher_icon", "watch_chime", "web_import"),
             Stores.inBackup.toSet() - Stores.clearedWithData.toSet(),
