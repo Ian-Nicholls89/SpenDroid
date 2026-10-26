@@ -105,7 +105,7 @@ object PennyVoice {
             payday -> Unit
             available <= 0L -> say(
                 Kind.PACE, 95,
-                "Nothing left to spend before payday" + (budget.nextIncomeDate?.let { " on ${it.dayOfWeek.getDisplayName(TextStyle.FULL, Locale.UK)}" } ?: "") + ". Anything from here comes out of next cycle.",
+                "Nothing left to spend before payday" + (budget.nextIncomeDate?.let { " " + paydayOn(it, today) } ?: "") + ". Anything from here comes out of next cycle.",
             )
             pace == BudgetPace.Pace.OVER -> say(
                 Kind.PACE, 85,
@@ -282,7 +282,11 @@ object PennyVoice {
             val diff = t.lastMinor - usual
             if (kotlin.math.abs(diff) < 500L) null else t to diff
         }
-        moves.filter { it.second < 0 }.minByOrNull { it.second }?.let { (t, diff) ->
+        // "Under usual" only in the last days before payday: earlier, a cycle part-spent is under any
+        // whole one - and a category of regular bills most of all, its bills not yet out (26 Oct
+        // 2026: savings "under usual" on day 4, its £250 due that morning).
+        val cycleNearlyDone = budget.daysUntilNextIncome?.let { it <= 3 } == true
+        moves.filter { it.second < 0 && cycleNearlyDone }.minByOrNull { it.second }?.let { (t, diff) ->
             if (bad) {
                 say(Kind.BRIGHT_SIDE, 75, "${t.category.label} has been quieter - ${money(-diff)} under usual. That's helping.")
             } else {
@@ -322,6 +326,12 @@ object PennyVoice {
     }
 
     private val DAY_MONTH = DateTimeFormatter.ofPattern("d MMM", Locale.UK)
+    private val WEEKDAY_DAY_MONTH = DateTimeFormatter.ofPattern("EEE d MMM", Locale.UK)
+
+    /** Payday: "on Wednesday" within the week; further off, the date - "on Wednesday" read as this one. */
+    internal fun paydayOn(date: LocalDate, today: LocalDate): String =
+        if (!date.isAfter(today.plusDays(6))) "on ${date.dayOfWeek.getDisplayName(TextStyle.FULL, Locale.UK)}"
+        else "on ${date.format(WEEKDAY_DAY_MONTH)}"
 
     private fun name(payee: String): String = ShopName.clean(payee) ?: payee.trim()
 

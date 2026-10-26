@@ -252,4 +252,36 @@ class CycleArithmeticTest {
         val raised = tx("UKHSA", 195000, LocalDate.of(2026, 9, 24))
         assertEquals(LocalDate.of(2026, 9, 24), onPayday(listOf(raised)).cycleStart)
     }
+
+    /**
+     * The user's 26 Oct 2026, made up: paid on the 25th - October's on Friday the 23rd, the 25th a
+     * Sunday - with £200 of savings on the 25th that came out today, the Monday. The next is due on
+     * payday itself, 25 Nov, and comes out of November's money; counted in this cycle as well, the
+     * £200 just taken was taken twice, and what was left went to nothing.
+     */
+    @Test
+    fun `a bill due on payday is the next cycle's`() {
+        val day = LocalDate.of(2026, 10, 26)
+        val salary = listOf(LocalDate.of(2026, 7, 24), LocalDate.of(2026, 8, 25), LocalDate.of(2026, 9, 25), LocalDate.of(2026, 10, 23))
+            .map { tx("ACME LTD", 200_000, it) }
+        val savings = listOf(LocalDate.of(2026, 7, 27), LocalDate.of(2026, 8, 25), LocalDate.of(2026, 9, 25), day)
+            .map { tx("HELP TO SAVE", -20_000, it) }
+        val phone = (7..10).map { tx("PHONE CO", -3_250, LocalDate.of(2026, it, 24)) }
+        val all = salary + savings + phone
+        val snapshot = BudgetEngine.snapshot(
+            transactions = all,
+            rules = RecurringAnalyzer.analyze(all),
+            accounts = listOf(account.copy(balanceMinor = 159_838)),
+            referenceTime = day.atTime(8, 42),
+            // The user's: "balance carried over".
+            budgetModel = BudgetModel.ROLLOVER,
+        )
+        assertEquals(LocalDate.of(2026, 11, 25), snapshot.nextIncomeDate)
+        val upcoming = snapshot.upcomingFixed.map { it.rule.payee to it.dueDate }
+        // The day before payday is this cycle's; payday itself is the next one's.
+        assertTrue(upcoming.toString(), "PHONE CO" to LocalDate.of(2026, 11, 24) in upcoming)
+        assertTrue(upcoming.toString(), upcoming.none { it.first == "HELP TO SAVE" })
+        // What's in the account, less the phone bill still to come - not the payday savings too.
+        assertEquals(159_838L - 3_250L, snapshot.availableToSpend)
+    }
 }

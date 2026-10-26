@@ -30,4 +30,21 @@ class PennyVoiceTest {
         }
         java.io.File("build/penny-voice.txt").writeText(out.toString())
     }
+
+    /** 26 Oct 2026: "before payday on Wednesday", with payday a month off - read as this Wednesday. */
+    @Test
+    fun `payday is named by its day within the week, and by its date further off`() {
+        val monday = java.time.LocalDate.of(2026, 10, 26)
+        assertTrue(com.spendroid.domain.PennyVoice.paydayOn(java.time.LocalDate.of(2026, 10, 28), monday) == "on Wednesday")
+        assertTrue(com.spendroid.domain.PennyVoice.paydayOn(java.time.LocalDate.of(2026, 11, 25), monday) == "on Wed 25 Nov")
+    }
+
+    /** 26 Oct 2026: savings "under usual" on day 4 of 33, their bills not yet out. Not until the end. */
+    @Test
+    fun `a category isn't under usual until the cycle's nearly over`() {
+        val state = Sample.state()
+        val early = state.copy(budget = state.budget!!.copy(daysUntilNextIncome = 20))
+        val lines = pennyLines(early, early.budget!!.asOf.atTime(8, 5))
+        assertTrue(lines.joinToString { it.text }, lines.none { "under usual" in it.text || "quieter" in it.text })
+    }
 }

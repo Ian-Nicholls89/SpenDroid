@@ -305,7 +305,12 @@ object BudgetEngine {
         }
         val cardBills = cardAnalysis.bills.map { bill -> withToCome(bill, cardRules, transactions, today, ::nextFor) }
 
-        val upcomingFixed = if (nextIncomeDate != null) {
+        // What's still to come is this cycle's: up to the day before payday. A bill due on payday
+        // itself comes out of the new pay - counted here too, it was taken from both cycles (26 Oct
+        // 2026: £200 of savings on payday, the 25th, left nothing). Waiting on a late salary, the
+        // old money is still what pays today's bills.
+        val lastDayToCome = nextIncomeDate?.let { if (it.isAfter(today)) it.minusDays(1) else today }
+        val upcomingFixed = if (nextIncomeDate != null && lastDayToCome != null) {
             val fromRules = fixedRules.mapNotNull { rule ->
                 // A payment due today is still to come until it shows. Asking only for the next
                 // date after today dropped it in the morning, before the bank had taken it.
@@ -324,7 +329,7 @@ object BudgetEngine {
                         RecurringAnalyzer.parseBookingDate(tx.bookingDate)
                             ?.let { !it.isBefore(due.minusDays(CANDIDATE_WINDOW_DAYS)) && !it.isAfter(today) } == true
                 }
-                if (!takenEarly && !due.isBefore(today) && !due.isAfter(nextIncomeDate)) {
+                if (!takenEarly && !due.isBefore(today) && !due.isAfter(lastDayToCome)) {
                     UpcomingPayment(rule, due, abs(rule.amountMinor))
                 } else {
                     null
@@ -338,7 +343,7 @@ object BudgetEngine {
             val fromCards = cardBills.mapNotNull { bill ->
                 val due = bill.dueDate ?: return@mapNotNull null
                 if (bill.dueMinor <= 0L) return@mapNotNull null
-                if (due.isAfter(nextIncomeDate)) return@mapNotNull null
+                if (due.isAfter(lastDayToCome)) return@mapNotNull null
                 if (due.isBefore(today) || due == today) {
                     if (bill.statementPaid) return@mapNotNull null
                 }
@@ -381,7 +386,8 @@ object BudgetEngine {
         } else {
             cardBills.sumOf { bill ->
                 CreditCardEngine.expectedPayments(bill)
-                    .filter { (date, _) -> date.isAfter(nextIncomeDate) && !date.isAfter(followingIncomeDate) }
+                    // From payday - a bill on payday is the new pay's - to the day before the one after.
+                    .filter { (date, _) -> !date.isBefore(nextIncomeDate) && date.isBefore(followingIncomeDate) }
                     .sumOf { it.second }
             }
         }
@@ -466,7 +472,8 @@ object BudgetEngine {
         val setAside = if (budgetModel == BudgetModel.ROLLOVER && nextIncomeDate != null) {
             fixedRules.filter { it.cadence == Cadence.QUARTERLY || it.cadence == Cadence.ANNUAL }.mapNotNull { rule ->
                 val next = nextFor(rule, today)
-                if (!next.isAfter(nextIncomeDate)) return@mapNotNull null
+                // Due before payday, it's in what's to come in full; on payday or after, set aside.
+                if (next.isBefore(nextIncomeDate)) return@mapNotNull null
                 val previous = if (rule.cadence == Cadence.ANNUAL) next.minusYears(1) else next.minusMonths(3)
                 val period = ChronoUnit.DAYS.between(previous, next).toFloat()
                 val byPayday = ChronoUnit.DAYS.between(previous, nextIncomeDate).toFloat()
