@@ -58,7 +58,17 @@ open class BudgetApplication : Application() {
             .build()
         repository = GoCardlessRepository.create(this, db.budgetDao())
         // The user's decisions, from the database - payee names once they're in.
-        com.spendroid.data.Choices.start(this, db.budgetDao()) { com.spendroid.data.PayeeNames.load(this) }
+        val settings = com.spendroid.data.SecretsStore(this)
+        com.spendroid.data.Choices.start(
+            this, db.budgetDao(),
+            // The user's decisions the settings store held, on the first start since 0.6.6.
+            imports = mapOf(
+                com.spendroid.data.Stores.DECISIONS to com.spendroid.data.Choices.Import(
+                    read = { settings.decisionsToMove() },
+                    done = { settings.forgetMovedDecisions() },
+                ),
+            ),
+        ) { com.spendroid.data.PayeeNames.load(this) }
         DailyRoundupScheduler.schedule(this)
         com.spendroid.data.AutoBackup.schedule(this)
         // An update kept to install, now installed: the file and its notification go.

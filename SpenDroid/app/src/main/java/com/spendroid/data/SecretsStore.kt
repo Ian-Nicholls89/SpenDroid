@@ -13,6 +13,7 @@ import java.time.ZoneId
 import java.time.temporal.ChronoUnit
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import org.json.JSONArray
@@ -59,6 +60,9 @@ data class SyncFailure(val at: Long, val reason: Reason) {
 }
 
 class SecretsStore(private val context: Context) {
+
+    /** The user's decisions, kept in the database since 0.6.6: see [Decisions]. First, as the flows below read them. */
+    private val decisions: Flow<Decisions> = Choices.flow(context, Stores.DECISIONS).map { Decisions(it) }
 
     private object Keys {
         val SECRET_ID = stringPreferencesKey("secret_id")
@@ -109,7 +113,7 @@ class SecretsStore(private val context: Context) {
     }
 
     /** Which income the user chose to drive the pay cycle. */
-    val primaryIncomeKey: Flow<String?> = stringFlow(Keys.PRIMARY_INCOME_KEY)
+    val primaryIncomeKey: Flow<String?> = decisions.map { it[Keys.PRIMARY_INCOME_KEY] }.distinctUntilChanged()
     val budgetModel: Flow<String?> = stringFlow(Keys.BUDGET_MODEL)
     val cardTiming: Flow<String?> = stringFlow(Keys.CARD_TIMING)
 
@@ -134,7 +138,7 @@ class SecretsStore(private val context: Context) {
     }
 
     suspend fun savePrimaryIncomeKey(key: String?) {
-        context.dataStore.edit { prefs ->
+        decide { prefs ->
             if (key == null) prefs.remove(Keys.PRIMARY_INCOME_KEY) else prefs[Keys.PRIMARY_INCOME_KEY] = key
         }
     }
@@ -143,9 +147,9 @@ class SecretsStore(private val context: Context) {
         context.dataStore.edit { prefs -> prefs[Keys.BUDGET_MODEL] = name }
     }
 
-    val ignoredRules: Flow<Set<String>> = context.dataStore.data
-        .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
+    val ignoredRules: Flow<Set<String>> = decisions
         .map { prefs -> parseStringSet(prefs[Keys.IGNORED_RULES]) }
+        .distinctUntilChanged()
 
     /**
      * Budget-cap warnings already sent, as "category|threshold|cycleStart".
@@ -153,18 +157,18 @@ class SecretsStore(private val context: Context) {
      * A cap that has been passed stays passed for the rest of the cycle, so without a record
      * of what has been said the same warning would arrive every day until payday.
      */
-    val notifiedGoalWarnings: Flow<Set<String>> = context.dataStore.data
-        .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
+    val notifiedGoalWarnings: Flow<Set<String>> = decisions
         .map { prefs -> parseStringSet(prefs[Keys.NOTIFIED_GOAL_WARNINGS]) }
+        .distinctUntilChanged()
 
     /** "accountId|transactionId" of large transactions already announced. */
-    val notifiedLargeTransactions: Flow<Set<String>> = context.dataStore.data
-        .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
+    val notifiedLargeTransactions: Flow<Set<String>> = decisions
         .map { prefs -> parseStringSet(prefs[Keys.NOTIFIED_LARGE_TRANSACTIONS]) }
+        .distinctUntilChanged()
 
     /** Replaces the record wholesale, so keys outside the alert window fall away. */
     suspend fun saveNotifiedLargeTransactions(keys: Set<String>) {
-        context.dataStore.edit { prefs ->
+        decide { prefs ->
             prefs[Keys.NOTIFIED_LARGE_TRANSACTIONS] = JSONArray(keys.toList()).toString()
         }
     }
@@ -173,9 +177,9 @@ class SecretsStore(private val context: Context) {
      * Regular payments the user has said are moves between their own accounts, by the same
      * key recurring detection groups them under. Every occurrence, past and future, follows.
      */
-    val transferGroups: Flow<Set<String>> = context.dataStore.data
-        .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
+    val transferGroups: Flow<Set<String>> = decisions
         .map { prefs -> parseStringSet(prefs[Keys.TRANSFER_GROUPS]) }
+        .distinctUntilChanged()
 
     suspend fun setTransferGroup(key: String, isTransfer: Boolean) =
         updateStringSet(Keys.TRANSFER_GROUPS) { if (isTransfer) it + key else it - key }
@@ -194,7 +198,7 @@ class SecretsStore(private val context: Context) {
         key: androidx.datastore.preferences.core.Preferences.Key<String>,
         change: (Set<String>) -> Set<String>,
     ) {
-        context.dataStore.edit { prefs ->
+        decide { prefs ->
             prefs[key] = JSONArray(change(parseStringSet(prefs[key])).toList()).toString()
         }
     }
@@ -221,12 +225,12 @@ class SecretsStore(private val context: Context) {
     }
 
     /** The bank apps whose notifications are read, and the accounts each speaks for. */
-    val spendSources: Flow<List<com.spendroid.domain.NotificationSpend.Source>> = context.dataStore.data
-        .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
+    val spendSources: Flow<List<com.spendroid.domain.NotificationSpend.Source>> = decisions
         .map { prefs -> parseSpendSources(prefs[Keys.SPEND_SOURCES]) }
+        .distinctUntilChanged()
 
     suspend fun saveSpendSources(sources: List<com.spendroid.domain.NotificationSpend.Source>) {
-        context.dataStore.edit { prefs ->
+        decide { prefs ->
             prefs[Keys.SPEND_SOURCES] = JSONArray(
                 sources.map { s ->
                     JSONObject()
@@ -263,15 +267,15 @@ class SecretsStore(private val context: Context) {
      * Where the user said a shop's payments go, by [com.spendroid.domain.NotificationSpend.placeKey]:
      * "Always put Tesco here".
      */
-    val spendPlaces: Flow<Map<String, String>> = context.dataStore.data
-        .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
+    val spendPlaces: Flow<Map<String, String>> = decisions
         .map { prefs ->
             val o = prefs[Keys.SPEND_PLACES]?.let { runCatching { JSONObject(it) }.getOrNull() } ?: JSONObject()
             o.keys().asSequence().associateWith { o.getString(it) }
         }
+        .distinctUntilChanged()
 
     suspend fun setSpendPlace(key: String, accountId: String?) {
-        context.dataStore.edit { prefs ->
+        decide { prefs ->
             val o = prefs[Keys.SPEND_PLACES]?.let { runCatching { JSONObject(it) }.getOrNull() } ?: JSONObject()
             if (accountId == null) o.remove(key) else o.put(key, accountId)
             prefs[Keys.SPEND_PLACES] = o.toString()
@@ -279,8 +283,7 @@ class SecretsStore(private val context: Context) {
     }
 
     /** Wordings the user taught from their own notifications. */
-    val spendLearned: Flow<List<com.spendroid.domain.NotificationSpend.Learned>> = context.dataStore.data
-        .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
+    val spendLearned: Flow<List<com.spendroid.domain.NotificationSpend.Learned>> = decisions
         .map { prefs ->
             val array = prefs[Keys.SPEND_LEARNED]?.let { runCatching { JSONArray(it) }.getOrNull() } ?: JSONArray()
             (0 until array.length()).mapNotNull { i ->
@@ -288,9 +291,10 @@ class SecretsStore(private val context: Context) {
                 com.spendroid.domain.NotificationSpend.Learned(o.optString("source"), com.spendroid.domain.NotificationSpend.repairPattern(o.optString("pattern")), o.optBoolean("count"))
             }
         }
+        .distinctUntilChanged()
 
     suspend fun updateSpendLearned(change: (List<com.spendroid.domain.NotificationSpend.Learned>) -> List<com.spendroid.domain.NotificationSpend.Learned>) {
-        context.dataStore.edit { prefs ->
+        decide { prefs ->
             val array = prefs[Keys.SPEND_LEARNED]?.let { runCatching { JSONArray(it) }.getOrNull() } ?: JSONArray()
             val current = (0 until array.length()).mapNotNull { i ->
                 val o = array.optJSONObject(i) ?: return@mapNotNull null
@@ -303,21 +307,21 @@ class SecretsStore(private val context: Context) {
     }
 
     /** Whether spending read from notifications is counted. On once set up; the user can pause it. */
-    val spendReadingOn: Flow<Boolean> = context.dataStore.data
-        .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
+    val spendReadingOn: Flow<Boolean> = decisions
         .map { prefs -> prefs[Keys.SPEND_READING_ON] ?: true }
+        .distinctUntilChanged()
 
     suspend fun setSpendReadingOn(on: Boolean) {
-        context.dataStore.edit { prefs -> prefs[Keys.SPEND_READING_ON] = on }
+        decide { prefs -> prefs[Keys.SPEND_READING_ON] = on }
     }
 
     /** Whether 5.5.3's repair - seen spends paired with a row dated before them - has been run. */
-    val misdatedRepaired: Flow<Boolean> = context.dataStore.data
-        .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
+    val misdatedRepaired: Flow<Boolean> = decisions
         .map { prefs -> prefs[Keys.MISDATED_REPAIRED] ?: false }
+        .distinctUntilChanged()
 
     suspend fun setMisdatedRepaired() {
-        context.dataStore.edit { prefs -> prefs[Keys.MISDATED_REPAIRED] = true }
+        decide { prefs -> prefs[Keys.MISDATED_REPAIRED] = true }
     }
 
     /** GoCardless's own limit on all calls, as last reported. */
@@ -383,21 +387,21 @@ class SecretsStore(private val context: Context) {
     }
 
     /** Card warnings already sent, as "card|what|statementClose". */
-    val notifiedCardWarnings: Flow<Set<String>> = context.dataStore.data
-        .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
+    val notifiedCardWarnings: Flow<Set<String>> = decisions
         .map { prefs -> parseStringSet(prefs[Keys.NOTIFIED_CARD_WARNINGS]) }
+        .distinctUntilChanged()
 
     /** "Same transaction?" questions already announced, as "accountId|transactionId". */
-    val notifiedDuplicates: Flow<Set<String>> = context.dataStore.data
-        .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
+    val notifiedDuplicates: Flow<Set<String>> = decisions
         .map { prefs -> parseStringSet(prefs[Keys.NOTIFIED_DUPLICATES]) }
+        .distinctUntilChanged()
 
     suspend fun saveNotifiedDuplicates(keys: Set<String>) {
-        context.dataStore.edit { prefs -> prefs[Keys.NOTIFIED_DUPLICATES] = JSONArray(keys.toList()).toString() }
+        decide { prefs -> prefs[Keys.NOTIFIED_DUPLICATES] = JSONArray(keys.toList()).toString() }
     }
 
     suspend fun saveNotifiedCardWarnings(keys: Set<String>) {
-        context.dataStore.edit { prefs ->
+        decide { prefs ->
             prefs[Keys.NOTIFIED_CARD_WARNINGS] = JSONArray(keys.toList()).toString()
         }
     }
@@ -448,7 +452,7 @@ class SecretsStore(private val context: Context) {
 
     /** Replaces the record wholesale, so keys from finished cycles fall away with it. */
     suspend fun saveNotifiedGoalWarnings(keys: Set<String>) {
-        context.dataStore.edit { prefs ->
+        decide { prefs ->
             prefs[Keys.NOTIFIED_GOAL_WARNINGS] = JSONArray(keys.toList()).toString()
         }
     }
@@ -462,14 +466,16 @@ class SecretsStore(private val context: Context) {
      * data, so it survives.
      */
     suspend fun clearAll() {
+        decide { prefs ->
+            prefs.remove(Keys.IGNORED_RULES)
+            prefs.remove(Keys.TRANSFER_GROUPS)
+            prefs.remove(Keys.PRIMARY_INCOME_KEY)
+        }
         context.dataStore.edit { prefs ->
             prefs.remove(Keys.SECRET_ID)
             prefs.remove(Keys.SECRET_KEY)
             prefs.remove(Keys.REFRESH_TOKEN)
             prefs.remove(Keys.CONNECTIONS)
-            prefs.remove(Keys.IGNORED_RULES)
-            prefs.remove(Keys.TRANSFER_GROUPS)
-            prefs.remove(Keys.PRIMARY_INCOME_KEY)
             // About accounts that are gone; left behind, they described nothing.
             prefs.remove(Keys.SYNC_ALLOWANCES)
             prefs.remove(Keys.GENERAL_ALLOWANCE)
@@ -502,6 +508,70 @@ class SecretsStore(private val context: Context) {
         }
     }
 
+    // ---- the user's decisions, in the database since 0.6.6 ----------------------------------------
+
+    /**
+     * What this store held that's the user's - [MOVED] - read as the store's own values are, by
+     * the same keys and in the same form; kept in the database ([Choices]), encrypted with it.
+     */
+    class Decisions(private val values: Map<String, Any?>) {
+        @Suppress("UNCHECKED_CAST")
+        operator fun <T> get(key: androidx.datastore.preferences.core.Preferences.Key<T>): T? = values[key.name] as T?
+    }
+
+    /** The same, to change: as a store edit, made all at once. */
+    class DecisionsEdit(private val values: MutableMap<String, Any?>) {
+        @Suppress("UNCHECKED_CAST")
+        operator fun <T> get(key: androidx.datastore.preferences.core.Preferences.Key<T>): T? = values[key.name] as T?
+        operator fun <T> set(key: androidx.datastore.preferences.core.Preferences.Key<T>, value: T) { values[key.name] = value }
+        fun remove(key: androidx.datastore.preferences.core.Preferences.Key<*>) { values[key.name] = null }
+    }
+
+
+    private fun decisionsNow(): Map<String, Any?> = Stores.prefs(context, Stores.DECISIONS).all
+
+    /** Read, changed and written in one step - as a store edit was - so two at once can't undo each other. */
+    private suspend fun decide(change: (DecisionsEdit) -> Unit) {
+        Choices.awaitLoaded()
+        synchronized(DECIDING) {
+            val prefs = Stores.prefs(context, Stores.DECISIONS)
+            val before = prefs.all
+            val after = before.toMutableMap()
+            change(DecisionsEdit(after))
+            val edit = prefs.edit()
+            (before.keys + after.keys).forEach { key ->
+                when (val value = after[key]) {
+                    before[key] -> Unit
+                    null -> edit.remove(key)
+                    is String -> edit.putString(key, value)
+                    is Boolean -> edit.putBoolean(key, value)
+                    is Int -> edit.putInt(key, value)
+                    is Long -> edit.putLong(key, value)
+                }
+            }
+            edit.commit()
+        }
+    }
+
+    /** On the first start since they moved: what this store holds of [MOVED], to go to the database. */
+    suspend fun decisionsToMove(): Map<String, Any?> =
+        context.dataStore.data.first().asMap().mapKeys { it.key.name }.filterKeys { it in MOVED }
+
+    /** For tests: a decision as releases before 0.6.6 kept it, here. */
+    internal suspend fun keepAsBefore(name: String, value: Any) {
+        context.dataStore.edit { prefs ->
+            when (value) {
+                is String -> prefs[stringPreferencesKey(name)] = value
+                is Boolean -> prefs[androidx.datastore.preferences.core.booleanPreferencesKey(name)] = value
+            }
+        }
+    }
+
+    /** Once they're in the database: no longer kept here. */
+    suspend fun forgetMovedDecisions() {
+        context.dataStore.edit { prefs -> prefs.asMap().keys.filter { it.name in MOVED }.forEach { prefs.remove(it) } }
+    }
+
     // ---- in a backup ---------------------------------------------------------------------------
 
     /**
@@ -510,8 +580,10 @@ class SecretsStore(private val context: Context) {
      */
     suspend fun exportStore(includeBank: Boolean = false): JSONObject {
         val out = JSONObject()
-        context.dataStore.data.first().asMap().forEach { (key, stored) ->
-            val name = key.name
+        val held = context.dataStore.data.first().asMap().mapKeys { it.key.name }.filterKeys { it !in MOVED } +
+            decisionsNow().filterKeys { it in MOVED }
+        held.forEach { (name, stored) ->
+            if (stored == null) return@forEach
             if (name !in IN_BACKUP && !(includeBank && name in BANK)) return@forEach
             // Sealed by this phone's keystore, which another phone hasn't: opened for the backup.
             val value = if (name in SEALED) SecretCipher.open(stored as String) ?: return@forEach else stored
@@ -531,8 +603,24 @@ class SecretsStore(private val context: Context) {
      * from an encrypted backup, is sealed again with this phone's keystore.
      */
     suspend fun restoreStore(json: JSONObject) {
+        // The user's decisions to the database, as everyday writes of them go (0.6.6).
+        decide { prefs ->
+            json.keys().forEach { name ->
+                if (name !in MOVED) return@forEach
+                val o = json.optJSONObject(name) ?: return@forEach
+                when (o.optString("t")) {
+                    "s" -> {
+                        val key = stringPreferencesKey(name)
+                        val value = o.optString("v")
+                        prefs[key] = if (name in MERGED) JSONArray((parseStringSet(prefs[key]) + parseStringSet(value)).toList()).toString() else value
+                    }
+                    "b" -> prefs[androidx.datastore.preferences.core.booleanPreferencesKey(name)] = o.optBoolean("v")
+                }
+            }
+        }
         context.dataStore.edit { prefs ->
             json.keys().forEach { name ->
+                if (name in MOVED) return@forEach
                 if (name !in IN_BACKUP && name !in BANK) return@forEach
                 val o = json.optJSONObject(name) ?: return@forEach
                 when (o.optString("t")) {
@@ -554,6 +642,15 @@ class SecretsStore(private val context: Context) {
     }
 
     companion object {
+        /** The user's decisions, kept in the database since 0.6.6 rather than here. */
+        internal val MOVED = setOf(
+            "ignored_rules", "transfer_groups", "primary_income_key",
+            "spend_sources", "spend_learned", "spend_places", "spend_reading_on", "misdated_repaired",
+            "notified_goal_warnings", "notified_large_transactions", "notified_card_warnings", "notified_duplicates",
+        )
+
+        private val DECIDING = Any()
+
         /** The bank link - GoCardless keys, token, connections: only in an encrypted backup. */
         internal val BANK = setOf("secret_id", "secret_key", "refresh_token", "connections")
 

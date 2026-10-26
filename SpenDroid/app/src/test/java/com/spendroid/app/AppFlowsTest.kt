@@ -82,6 +82,7 @@ class AppFlowsTest {
         com.spendroid.data.MoneyWatch(app).decide("gym club", com.spendroid.data.MoneyWatch.Decision.EXPECTED)
         Stores.prefs(app, Stores.PENNY_BILLS).edit().putBoolean("OUT|GBP|300|car park", false).commit()
         Stores.prefs(app, Stores.MANUAL_REMINDERS).edit().putInt("statement_every_days", 14).commit()
+        repo.setRuleIgnored("OUT|GBP|300|car park", true)
         repo.saveAccent("BLUE")
         repo.saveNotificationTime("19:30")
         prefs(Stores.PRIVACY).edit().putBoolean("hide_recents", true).commit()
@@ -120,6 +121,9 @@ class AppFlowsTest {
             assertEquals(accountId, repo.manualRules.first().single().accountId)
             assertEquals(1, repo.seenSpends.first().size)
             assertEquals("BLUE", repo.accent.first())
+            // Notification reading and bills left out, kept in the database since 0.6.6.
+            assertEquals(listOf("NatWest"), repo.spendSources.first().map { it.label })
+            assertTrue("OUT|GBP|300|car park" in repo.ignoredRules.first())
             assertEquals("19:30", repo.notificationTime.first())
         }
         assertEquals("Coffee by the station", PayeeNames.nameFor("VIS 4471 SQ *KTH"))

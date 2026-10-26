@@ -8,6 +8,8 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
@@ -51,12 +53,27 @@ object Choices {
         queue.trySend(write)
     }
 
-    /** A different app than before - a new test - starts with nothing remembered. */
+    /**
+     * A different app than before - a new test - starts with nothing remembered. Not started for
+     * it (a test of one part alone), choices are kept in memory only, and read at once.
+     */
     private fun ownedBy(context: Context) {
         val app = context.applicationContext
         if (owner !== app) {
             owner = app
+            dao = null
             stores.values.forEach { it.reset() }
+            loaded = CompletableDeferred<Unit>().apply { complete(Unit) }
+        }
+    }
+
+    /** A store's choices as they change, from once they're loaded. */
+    fun flow(context: Context, name: String): kotlinx.coroutines.flow.Flow<Map<String, Any?>> {
+        ownedBy(context)
+        val store = prefs(name) as ChoicePrefs
+        return kotlinx.coroutines.flow.flow {
+            awaitLoaded()
+            emitAll(store.version.map { store.all })
         }
     }
 
@@ -66,7 +83,13 @@ object Choices {
         // 0.6.5: Penny's answers, money watch, reminders, moments.
         Stores.PENNY_ASK, Stores.PENNY_BILLS, Stores.PENNY_NEWS, Stores.PENNY_VOICE,
         Stores.MONEY_WATCH, Stores.MANUAL_REMINDERS, Stores.MOMENTS,
+        // 0.6.6: what the settings store held that's the user's - notification reading, bills left
+        // out, transfers, the cycle's income, alerts already sent ([SecretsStore.MOVED]).
+        Stores.DECISIONS,
     )
+
+    /** Where a store's choices were before, other than a preferences file: read, then let go. */
+    class Import(val read: suspend () -> Map<String, Any?>, val done: suspend () -> Unit)
 
     fun prefs(context: Context, name: String): SharedPreferences {
         ownedBy(context)
@@ -79,7 +102,7 @@ object Choices {
     }
 
     /** Loads every choice, moving any still in the old files across; [then] once they're in. */
-    fun start(context: Context, dao: BudgetDao, then: () -> Unit = {}) {
+    fun start(context: Context, dao: BudgetDao, imports: Map<String, Import> = emptyMap(), then: () -> Unit = {}) {
         this.dao = dao
         // Once per process on a phone; afresh each time a test starts the app.
         loaded = CompletableDeferred()
@@ -93,14 +116,16 @@ object Choices {
                     val store = prefs(name) as ChoicePrefs
                     val held = rows[name].orEmpty()
                     if (held.isEmpty()) {
-                        // The first start since they moved: what the file held comes across.
+                        // The first start since they moved: what the file - or the settings store -
+                        // held comes across, and only then is let go of there.
+                        val import = imports[name]
                         val legacy = context.getSharedPreferences(name, Context.MODE_PRIVATE)
-                        val old = legacy.all
+                        val old = import?.read?.invoke() ?: legacy.all
                         if (old.isNotEmpty()) {
                             val moved = old.mapNotNull { (key, value) -> encode(value)?.let { ChoiceEntity(name, key, it) } }
                             dao.upsertChoices(moved)
                             store.fill(old)
-                            legacy.edit().clear().commit()
+                            if (import != null) import.done() else legacy.edit().clear().commit()
                         }
                     } else {
                         store.fill(held.associate { it.key to decode(it.value) })
@@ -170,13 +195,18 @@ object Choices {
         private val touched = ConcurrentHashMap.newKeySet<String>()
         private val listeners = java.util.Collections.newSetFromMap(ConcurrentHashMap<SharedPreferences.OnSharedPreferenceChangeListener, Boolean>())
 
+        /** Counts changes, for [flow]: a new number each time anything here changes. */
+        val version = kotlinx.coroutines.flow.MutableStateFlow(0)
+
         fun reset() {
             values.clear()
             touched.clear()
+            version.value++
         }
 
         fun fill(from: Map<String, Any?>) {
             from.forEach { (key, value) -> if (value != null && key !in touched) values.putIfAbsent(key, value) }
+            version.value++
         }
 
         override fun getAll(): Map<String, *> = HashMap(values)
@@ -208,6 +238,7 @@ object Choices {
                 if (clear) { if (!isLoaded) touched += values.keys; values.clear() }
                 changes.forEach { (key, value) -> if (value == null) values.remove(key) else values[key] = value }
                 persist(name, changes.toMap(), clear)
+                version.value++
                 changes.keys.forEach { key -> listeners.forEach { it.onSharedPreferenceChanged(this@ChoicePrefs, key) } }
                 return true
             }

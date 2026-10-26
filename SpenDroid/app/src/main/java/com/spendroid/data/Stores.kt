@@ -59,6 +59,8 @@ object Stores {
     const val DB_ENCRYPTION = "db_encryption"
     const val AUTO_BACKUP = "auto_backup"
     const val APP_UPDATE = "app_update"
+    /** Not a file: the settings store's own decisions, kept in the database since 0.6.6 ([SecretsStore.MOVED]). */
+    const val DECISIONS = "decisions"
 
     val ALL: List<Store> = listOf(
         // Not in a backup: setup is this phone's - restored onto a new one, setup carries on to what
@@ -84,6 +86,9 @@ object Stores {
         Store(WEB_IMPORT, Kind.DEVICE, inBackup = true, holds = "Statement layouts and batches sent from the computer link"),
         Store(WEB_ACCESS, Kind.DEVICE, holds = "Computers the computer link remembers (hashed)"),
         Store(DB_ENCRYPTION, Kind.DEVICE, holds = "Database encryption: on, and its key sealed by this phone"),
+        // Its keys go in a backup with the settings store's, and Clear all data clears what it did before
+        // (SecretsStore.clearAll): so not on those lists here.
+        Store(DECISIONS, Kind.DEVICE, holds = "Notification reading, bills left out, transfers, the cycle's income, alerts sent (in the database)"),
         Store(APP_UPDATE, Kind.DEVICE, holds = "An update downloaded and waiting to install: its version"),
         Store(AUTO_BACKUP, Kind.DEVICE, phoneOnly = true, holds = "Automatic backup: the folder, and the passphrase sealed by this phone"),
     )
