@@ -259,6 +259,28 @@ object BudgetEngine {
             val due = nextFor(rule, on.minusDays(SEEN_EARLY_DAYS + 1))
             return abs(ChronoUnit.DAYS.between(due, on)) <= SEEN_EARLY_DAYS
         }
+        // The pot is the account the main income lands in, which makes designating the income
+        // designate the account too, with no second setting to keep in step.
+        val potAccount = primaryIncome?.let { income ->
+            val paidInto = transactions
+                .filter { it.amountMinor > 0 && RecurringAnalyzer.matches(income, it) }
+                .groupingBy { it.accountId }
+                .eachCount()
+                .maxByOrNull { it.value }
+                ?.key
+            accounts.firstOrNull { it.id == paidInto }
+        }
+        val potBalance = potAccount?.balanceMinor
+
+        /**
+         * A card's bill, paid, carrying a balance over: it was set aside until it left, like any bill,
+         * and so isn't spending. Counted as spent on the day, the cycle's spending - and with it the
+         * bar, the pace, today - jumped by the whole bill while what's left didn't move. Starting
+         * afresh from income there's no balance to have set it aside from, so there it's still spent.
+         */
+        val billNotSpending = budgetModel == BudgetModel.ROLLOVER && potBalance != null
+        fun isCardBillPaid(tx: TransactionEntity) = "${tx.accountId}|${tx.transactionId}" in cardAnalysis.cardPaymentKeys
+
         // Discretionary spending, whenever it happened: what the cycle's figures count, before
         // they are cut to the cycle. The week's bars read from the same pool, so today's bar
         // and "spent today" cannot disagree.
@@ -269,6 +291,7 @@ object BudgetEngine {
             // twice: spent, and still to come. It counts from its date; until then the bill does.
             if (date.isAfter(today)) return@mapNotNull null
             val counted = tx.amountMinor < 0 &&
+                !(billNotSpending && isCardBillPaid(tx)) &&
                 RecurringAnalyzer.groupKey(tx) !in detectedFixedKeys &&
                 fuzzyFixedRules.none { RecurringAnalyzer.matches(it, tx) } &&
                 detectedFixedRules.none { isBillAtNewAmount(it, tx) }
@@ -392,18 +415,6 @@ object BudgetEngine {
             }
         }
 
-        // The pot is the account the main income lands in, which makes designating the income
-        // designate the account too, with no second setting to keep in step.
-        val potAccount = primaryIncome?.let { income ->
-            val paidInto = transactions
-                .filter { it.amountMinor > 0 && RecurringAnalyzer.matches(income, it) }
-                .groupingBy { it.accountId }
-                .eachCount()
-                .maxByOrNull { it.value }
-                ?.key
-            accounts.firstOrNull { it.id == paidInto }
-        }
-        val potBalance = potAccount?.balanceMinor
 
         // Rewind today's balance over everything booked since the cycle began to get what was
         // there at the start. The balance is only as fresh as the last sync, so this is an
