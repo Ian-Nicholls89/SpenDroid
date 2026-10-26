@@ -76,12 +76,24 @@ class WatchUpdateTest {
             fun settle() = repeat(10) { shadowOf(android.os.Looper.getMainLooper()).idle(); compose.mainClock.advanceTimeBy(150) }
             fun shows(text: String) = compose.onAllNodesWithText(text, substring = true).fetchSemanticsNodes().isNotEmpty()
             settle()
-            repeat(12) { if (!shows("Update available")) { compose.onRoot().performTouchInput { swipeUp() }; settle() } }
-            assertTrue("the update page", shows("Watch app 0.9.9"))
+            // The pager keeps the next page drawn just off the screen: swiped until Install is on it.
+            fun onScreen(): Boolean {
+                val install = compose.onAllNodes(hasText("Install") and hasClickAction()).fetchSemanticsNodes().firstOrNull() ?: return false
+                val screen = compose.onRoot().fetchSemanticsNode().boundsInRoot
+                return install.boundsInRoot.top >= screen.top && install.boundsInRoot.bottom <= screen.bottom && install.boundsInRoot.height > 0f
+            }
+            repeat(15) { if (!onScreen()) { compose.onRoot().performTouchInput { swipeUp() }; settle() } }
+            assertTrue("the update page", onScreen() && shows("Watch app 0.9.9"))
             compose.onAllNodes(hasText("Install") and hasClickAction())[0].performClick()
-            // Up to ten seconds: under load the file takes a while to reach the installer.
-            repeat(100) { if (context.packageManager.packageInstaller.allSessions.isEmpty()) { settle(); Thread.sleep(100) } }
-            assertEquals("handed to Android's installer", 1, context.packageManager.packageInstaller.allSessions.size)
+            // Handed to the installer: the page says to confirm. (The session itself is gone once
+            // handed over, so counting sessions only caught it in passing.)
+            repeat(100) { if (!shows("Confirm the install on the next screen")) { settle(); Thread.sleep(100) } }
+            assertTrue(
+                "handed to Android's installer - showing: " + compose.onAllNodes(hasText("", substring = true)).fetchSemanticsNodes().map { n ->
+                    (n.config.find { it.key == androidx.compose.ui.semantics.SemanticsProperties.Text }?.value as? List<*>)?.joinToString("|")
+                },
+                shows("Confirm the install on the next screen"),
+            )
             assertTrue("not downloaded again", !shows("Couldn't download"))
         }
     }

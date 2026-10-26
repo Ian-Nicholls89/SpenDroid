@@ -43,7 +43,6 @@ class UpdateInstallTest {
 
     private val app get() = ApplicationProvider.getApplicationContext<android.app.Application>()
     private val notifications get() = shadowOf(app.getSystemService(NotificationManager::class.java)).allNotifications
-    private val sessions get() = app.packageManager.packageInstaller.allSessions
 
     @Before
     fun allow() {
@@ -121,8 +120,10 @@ class UpdateInstallTest {
             button.performScrollTo()
             settle()
             button.performClick()
-            repeat(100) { if (sessions.isEmpty()) { settle(); Thread.sleep(100) } }
-            assertEquals("handed to Android's installer", 1, sessions.size)
+            // Handed to the installer: Settings says Android will ask to confirm. (The session is
+            // gone once handed over, so counting sessions only caught it in passing.)
+            repeat(100) { if (!shows("Android will ask you to confirm")) { settle(); Thread.sleep(100) } }
+            assertTrue("handed to Android's installer", shows("Android will ask you to confirm"))
         }
     }
 
@@ -131,9 +132,12 @@ class UpdateInstallTest {
         app.getSharedPreferences(Stores.FIRST_RUN, Context.MODE_PRIVATE).edit().putBoolean("done", true).commit()
         keepDownload()
         val intent = Intent(app, MainActivity::class.java).putExtra(UpdateNotice.EXTRA_INSTALL, true)
-        ActivityScenario.launch<MainActivity>(intent).use {
-            repeat(100) { if (sessions.isEmpty()) { shadowOf(android.os.Looper.getMainLooper()).idle(); Thread.sleep(100) } }
-            assertEquals("handed to Android's installer", 1, sessions.size)
+        ActivityScenario.launch<MainActivity>(intent).use { scenario ->
+            var vm: com.spendroid.ui.RootViewModel? = null
+            scenario.onActivity { vm = androidx.lifecycle.ViewModelProvider(it, com.spendroid.ui.RootViewModel.factory(app))[com.spendroid.ui.RootViewModel::class.java] }
+            fun handed() = vm!!.state.value.updateCheckStatus == com.spendroid.ui.UpdateCheckStatus.Installing
+            repeat(100) { if (!handed()) { shadowOf(android.os.Looper.getMainLooper()).idle(); Thread.sleep(100) } }
+            assertTrue("handed to Android's installer", handed())
         }
     }
 }
