@@ -143,6 +143,18 @@ class PennyCycleTest {
                     check(day, b, line)?.let { problems += "$day $time ${line.kind}: ${line.text}  <- $it" }
                 }
             }
+            // The month, cards and all (0.7.1): Home's figure plus this cycle's card bills.
+            com.spendroid.domain.MonthlyAvailable.of(b, state.transactions, state.accounts)?.let { m ->
+                val said = com.spendroid.domain.MonthlyAvailable.line(m) { com.spendroid.ui.formatMoney(it, "GBP") }
+                report.append("  [Month] £%.2f = £%.2f left + %s · cards since payday £%.2f · %s\n".format(
+                    m.totalMinor / 100.0, m.leftMinor / 100.0, m.bills.joinToString(" + ") { "${it.label} £%.2f${if (it.paid) " paid" else ""}".format(it.amountMinor / 100.0) },
+                    m.spentOnCardsMinor / 100.0, said))
+                if (said.length > LONGEST) problems += "$day [Month]: $said  <- too long"
+                if (m.leftMinor != b.availableToSpend) problems += "$day [Month]: not Home's figure"
+                if (m.bills.groupBy { it.label to it.due }.any { it.value.size > 1 }) problems += "$day [Month]: a bill counted twice"
+                val cards = state.accounts.filter { it.accountType == com.spendroid.data.db.AccountType.CREDIT_CARD }.map { it.label.trim() }
+                m.bills.filter { it.label !in cards }.forEach { problems += "$day [Month]: a bill named ${it.label}, not its card" }
+            }
             // The tabs (0.7.0): what she says on each, at midday.
             for (tab in listOf(com.spendroid.AppScreen.Spending, com.spendroid.AppScreen.Rules, com.spendroid.AppScreen.Accounts)) {
                 tabLines(state, tab).forEach { line ->
@@ -158,13 +170,17 @@ class PennyCycleTest {
         assertTrue(problems.joinToString("\n", prefix = "\n"), problems.isEmpty())
     }
 
+    /** 0.7.1: one short sentence or two - the bubble on Home was a paragraph. */
+    private val LONGEST = 70
+
     /** A tab's line: whole, its figures sound, and a link wherever it names something to see. */
     private fun tabCheck(b: com.spendroid.domain.BudgetSnapshot, line: com.spendroid.domain.TabVoice.Line): String? {
         val t = line.text
         if (Regex("null|NaN|£-|-£|\\$\\{| {2}|\\.\\.").containsMatchIn(t)) return "broken figure or text"
         if (!(t.endsWith(".") || t.endsWith("!"))) return "unfinished"
-        if (Regex("on (Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\\b").containsMatchIn(t) && "next big one" !in t && "closes" !in t && "goes" !in t) return "a weekday, for what"
-        if (("went up" in t || "contract ends" in t || "due on payday" in t || "next big one" in t) && line.target == null) return "names a bill, but no link to it"
+        if (t.length > LONGEST) return "too long: ${t.length} characters"
+        if (Regex("on (Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\\b").containsMatchIn(t) && "ext big one" !in t && "closes" !in t && "goes" !in t) return "a weekday, for what"
+        if (("went up" in t || "contract ends" in t || "due on payday" in t || "ext big one" in t) && line.target == null) return "names a bill, but no link to it"
         if ("due on payday" in t && b.upcomingFixed.any { it.rule.key == (line.target as? com.spendroid.domain.TabVoice.Target.Bill)?.ruleKey && !it.dueDate.isBefore(b.nextIncomeDate ?: it.dueDate) }) return "said to be next month's, but counted in this one"
         return null
     }
@@ -174,6 +190,7 @@ class PennyCycleTest {
         val t = line.text
         if (Regex("null|NaN|£-|-£|\\$\\{| {2}|\\.\\.").containsMatchIn(t)) return "broken figure or text"
         if (!(t.endsWith(".") || t.endsWith("!") || t.endsWith("?"))) return "unfinished"
+        if (t.length > LONGEST) return "too long: ${t.length} characters"
         val days = b.daysUntilNextIncome ?: return null
         val weekday = Regex("payday on (Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\\b").find(t)
         if (weekday != null && days > 6) return "payday named by weekday, $days days off"
@@ -189,11 +206,11 @@ class PennyCycleTest {
         if ("£0.00 of" in t) return "£0.00 of something"
         if ("daily amount is now £0.00" in t) return "a daily amount of nothing"
         if ("Card Co Payment" in t) return "a card's bill, paid, told as spending"
-        Regex("a bit over your £([\\d,.]+)").find(t)?.let { m ->
+        Regex("[Aa] bit over today's £([\\d,.]+)").find(t)?.let { m ->
             val of = m.groupValues[1].replace(",", "").toDouble()
             if (b.spentToday / 100.0 > of * 1.25 + 0.01) return "\"a bit over\" when well over"
         }
-        Regex("cost you about £([\\d,]+)\\. A little more than today's £([\\d,.]+)").find(t)?.let { m ->
+        Regex("cost about £([\\d,]+), a little over today's £([\\d,.]+)").find(t)?.let { m ->
             if (m.groupValues[1].replace(",", "").toDouble() > m.groupValues[2].replace(",", "").toDouble() * 1.5) return "\"a little more\" when far more"
         }
         if (b.daysUntilNextIncome == 1 && "rolls into tomorrow" in t) return "tomorrow is payday"

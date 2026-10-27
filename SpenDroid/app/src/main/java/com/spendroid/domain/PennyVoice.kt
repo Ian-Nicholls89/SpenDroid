@@ -52,6 +52,9 @@ object PennyVoice {
         val today = budget.asOf
         val day = today.toEpochDay()
         fun roughly(minor: Long) = money(round(minor)).removeSuffix(".00")
+        // Shops by name alone, the branch left off: places as the user's own payees show them.
+        val places = ShopName.placesIn(budget.cycleSpends.map { it.payee })
+        fun name(payee: String): String = ShopName.clean(payee, places) ?: payee.trim()
         val out = mutableListOf<Line>()
         fun say(kind: Kind, rank: Int, vararg wordings: String) {
             if (wordings.isEmpty()) return
@@ -74,13 +77,13 @@ object PennyVoice {
             // Paid, and the bills to come take all of it: said plainly, not "£0.00 a day".
             say(
                 Kind.PAYDAY, 100,
-                "Payday - but the bills before $untilWhen take all of it. Anything spent now comes out of next cycle.",
+                "Payday - but the bills before $untilWhen take all of it.",
             )
         } else if (payday && days != null && daily != null) {
             say(
                 Kind.PAYDAY, 100,
-                "Payday! ${money(available)} to see you to $untilWhen - about ${money(daily)} a day, bills already allowed for.",
-                "A fresh start: ${money(available)} until $untilWhen. That's about ${money(daily)} a day, with the bills already set aside.",
+                "Payday! ${money(available)} to $untilWhen - about ${money(daily)} a day.",
+                "A fresh start: ${money(available)} until $untilWhen, about ${money(daily)} a day.",
             )
         }
         if (!today.isAfter(budget.cycleStart.plusDays(1))) {
@@ -89,8 +92,8 @@ object PennyVoice {
                 val total = bills.sumOf { it.amountMinor }
                 say(
                     Kind.BILLS_AHEAD, 72,
-                    "${money(total)} of bills come out this cycle. The biggest is ${name(biggest.rule.payee)} ${onDay(biggest.dueDate, today)}.",
-                    "This cycle's bills come to ${money(total)}, all allowed for. ${name(biggest.rule.payee)} is the biggest, ${onDay(biggest.dueDate, today)}.",
+                    "${money(total)} of bills this cycle. Biggest: ${name(biggest.rule.payee)}, ${onDay(biggest.dueDate, today).removePrefix("on ")}.",
+                    "This cycle's bills come to ${money(total)}, all allowed for.",
                 )
             }
         }
@@ -102,8 +105,8 @@ object PennyVoice {
             } else {
                 say(
                     Kind.COUNTDOWN, 90,
-                    "${spelt(days).replaceFirstChar(Char::titlecase)} days to go and ${money(available)} to cover them - about ${money(daily ?: 0L)} a day.",
-                    "${money(available)} for the last ${spelt(days)} days - that's about ${money(daily ?: 0L)} a day.",
+                    "${spelt(days).replaceFirstChar(Char::titlecase)} days to go, ${money(available)} left - about ${money(daily ?: 0L)} a day.",
+                    "${money(available)} for the last ${spelt(days)} days - about ${money(daily ?: 0L)} a day.",
                 )
             }
         }
@@ -114,17 +117,17 @@ object PennyVoice {
             payday -> Unit
             available <= 0L -> say(
                 Kind.PACE, 95,
-                "Nothing left to spend before payday" + (budget.nextIncomeDate?.let { " " + paydayOn(it, today) } ?: "") + ". Anything from here comes out of next cycle.",
+                "Nothing left until payday" + (budget.nextIncomeDate?.let { ", " + paydayOn(it, today).removePrefix("on ") } ?: "") + " - spend now is next cycle's.",
             )
             pace == BudgetPace.Pace.OVER -> say(
                 Kind.PACE, 85,
-                (ahead?.let { "${money(-it)} over the days so far." } ?: "Over the days so far.") + (daily?.let { " About ${money(it)} a day from here gets you to payday." } ?: ""),
-                (ahead?.let { "${money(-it)} more spent than the days so far allow." } ?: "More spent than the days so far allow.") + (daily?.let { " Keeping to about ${money(it)} a day gets you to payday." } ?: ""),
+                (ahead?.let { "${money(-it)} over the days so far." } ?: "Over the days so far.") + (daily?.let { " ${money(it)} a day gets you to payday." } ?: ""),
+                (ahead?.let { "${money(-it)} more than the days allow." } ?: "More than the days allow.") + (daily?.let { " ${money(it)} a day gets you to payday." } ?: ""),
             )
             pace == BudgetPace.Pace.TIGHT -> say(
                 Kind.PACE, 80,
                 "Just behind the days." + (daily?.let { " About ${money(it)} a day keeps you on track." } ?: ""),
-                "A little quicker than the days so far." + (daily?.let { " ${money(it)} a day brings it back." } ?: ""),
+                "A little quick for the days." + (daily?.let { " ${money(it)} a day brings it back." } ?: ""),
             )
             ahead != null && ahead >= 500L -> say(
                 Kind.PACE, 50,
@@ -137,74 +140,58 @@ object PennyVoice {
 
         // ---- today ----
         if (todays != null && todays > 0L && !payday) {
-            // Today's total as Home's "Spent today" has it, cards included; what's left of today's
-            // amount is from what counts against it - card spending is met by the card's bill.
+            // Like with like: what counts against today's amount is from the accounts - card
+            // spending is met by the card's bill. Home's "Spent today", cards and all, is just
+            // below, with the shops in Spending: she says only how today stands.
             val onCards = budget.spentTodayOnCardsMinor
-            val spent = budget.spentTodayFromAccountsMinor + onCards
-            val left = todays - budget.spentToday
-            val cardNote = if (onCards > 0L && spent > onCards) " (${money(onCards)} of it on cards)" else if (onCards > 0L) " (on cards)" else ""
-            val shops = budget.cycleSpends
-                .filter { RecurringAnalyzer.parseBookingDate(it.bookingDate) == today }
-                .groupBy { name(it.payee) }
-                .mapValues { (_, rows) -> rows.sumOf { -it.amountMinor } }
-                .entries.sortedByDescending { it.value }.map { it.key }
-            val where = when (shops.size) {
-                0 -> ""
-                1 -> ", all at ${shops[0]}"
-                2 -> ", at ${shops[0]} and ${shops[1]}"
-                else -> ", mostly at ${shops[0]}"
-            }
+            val counted = budget.spentToday
+            val left = todays - counted
+            // "£17.64 from your account" when cards are in Home's figure too, so the two don't clash.
+            val spentWord = if (onCards > 0L) "${money(counted)} from your account" else "${money(counted)} spent"
             // The day before payday what's left isn't tomorrow's, it's the new cycle's.
-            val intoNext = if (budget.daysUntilNextIncome == 1) "carries into the new cycle" else "rolls into tomorrow"
-            val ofToday = when {
-                left >= todays -> "All of today's ${money(todays)}"
-                else -> "${money(left)} of today's ${money(todays)}"
-            }
-            // "A bit over" only when it is: up to a quarter over today's amount.
-            val over = if (-left <= todays / 4) "a bit over your ${money(todays)}" else "${money(-left)} over your ${money(todays)}"
+            val intoNext = if (budget.daysUntilNextIncome == 1) "the new cycle" else "tomorrow"
             when {
                 // Nothing left before payday: there's no amount for today to be within or over.
-                available <= 0L -> if (spent > 0L) say(
+                available <= 0L -> if (counted > 0L) say(
                     Kind.TODAY, 83,
-                    "${money(spent)} today$where$cardNote. With nothing left before payday, it comes out of next cycle's money.",
-                    "So far today: ${money(spent)}$where$cardNote - from next cycle's money, as nothing's left before payday.",
+                    "$spentWord today - that's next cycle's money.",
                 )
-                spent == 0L && hour in 5..11 -> say(
+                counted == 0L && onCards > 0L -> say(
+                    Kind.TODAY, if (hour >= 18) 80 else 72,
+                    "Only cards today, so all of today's ${money(todays)} is still yours.",
+                )
+                counted == 0L && hour in 5..11 -> say(
                     Kind.TODAY, 78,
                     "Morning. Nothing spent yet - today's ${money(todays)} is all yours.",
                     "Nothing spent yet today. You've ${money(todays)} for it.",
                 )
-                spent == 0L -> say(
+                counted == 0L -> say(
                     Kind.TODAY, 70,
                     "Nothing spent today so far - your ${money(todays)} is untouched.",
                     "A quiet day so far: ${money(todays)} still to spend today.",
                 )
-                hour >= 18 && left == 0L -> say(
-                    Kind.TODAY, 80,
-                    "Today came in at ${money(spent)}$cardNote - today's ${money(todays)}, used to the penny.",
+                left == 0L -> say(
+                    Kind.TODAY, if (hour >= 18) 80 else 76,
+                    "Today's ${money(todays)}, used to the penny.",
                 )
                 hour >= 18 && left > 0L -> say(
                     Kind.TODAY, 80,
-                    "Today came in at ${money(spent)}$cardNote. $ofToday $intoNext.",
-                    "${money(spent)} today$cardNote - ${if (left >= todays) "all" else money(left)} of your ${money(todays)} left, and that ${if (budget.daysUntilNextIncome == 1) "carries into the new cycle" else "goes into the days ahead"}.",
-                )
-                hour >= 18 -> say(
-                    Kind.TODAY, 82,
-                    "Today came in at ${money(spent)}, ${money(-left)} over your ${money(todays)}. The days ahead share it out.",
-                    "${money(spent)} today, $over. Tomorrow's amount takes the difference.",
-                )
-                left == 0L -> say(
-                    Kind.TODAY, 76,
-                    "${money(spent)} so far today$where$cardNote - today's ${money(todays)} is used up.",
+                    "${money(left)} of today's ${money(todays)} left - it rolls into $intoNext.",
+                    "Under today's ${money(todays)} by ${money(left)}. That goes into $intoNext.",
                 )
                 left > 0L -> say(
                     Kind.TODAY, 76,
-                    "${money(spent)} so far today$where$cardNote. ${if (left >= todays) "All of today's ${money(todays)}" else money(left) + " of today's"} is left.",
-                    "So far today: ${money(spent)}$where$cardNote, with ${money(left)} still to spend.",
+                    "$spentWord today - ${money(left)} of today's ${money(todays)} left.",
+                    "${money(left)} of today's ${money(todays)} still to spend.",
+                )
+                // Over: "a bit" only when it is, up to a quarter over.
+                -left <= todays / 4 -> say(
+                    Kind.TODAY, if (hour >= 18) 82 else 83,
+                    "A bit over today's ${money(todays)} - tomorrow's amount takes it.",
                 )
                 else -> say(
-                    Kind.TODAY, 83,
-                    "${money(spent)} so far today$where$cardNote - ${money(-left)} more than today's ${money(todays)}. The days ahead share it out.",
+                    Kind.TODAY, if (hour >= 18) 82 else 83,
+                    "${money(-left)} over today's ${money(todays)} - the days ahead share it out.",
                 )
             }
         }
@@ -220,8 +207,8 @@ object PennyVoice {
                     val shop = name(big.payee)
                     say(
                         Kind.ONE_OFF, 88,
-                        "${money(amount)} at $shop - your biggest spend this cycle." + (daily?.takeIf { available > 0L }?.let { " Your daily amount is now ${money(it)}." } ?: ""),
-                        "$shop, ${money(amount)}: the biggest spend this cycle." + (ahead?.let { if (it + amount > 0L && it < 0L) " Without it, you'd be ${money(it + amount)} ahead of the days." else "" } ?: ""),
+                        "${money(amount)} at $shop - your biggest spend this cycle.",
+                        "$shop, ${money(amount)}: the biggest this cycle.",
                     )
                 }
             }
@@ -264,7 +251,7 @@ object PennyVoice {
             val heading = r.projectedMinor?.takeIf { it > r.spentMinor }
             say(
                 Kind.CARD, 65,
-                heading?.let { "Your ${c.label} is heading for about ${money(it)}, more than $whose." } ?: "Your ${c.label} is already past $whose, at ${money(r.spentMinor)}.",
+                heading?.let { "${c.label} is heading for ${money(it)}, over $whose." } ?: "${c.label} is at ${money(r.spentMinor)}, past $whose.",
             )
         }
 
@@ -298,14 +285,14 @@ object PennyVoice {
             if (usual >= 1_500L && usual >= overall * 3 / 2) {
                 val plural = target.dayOfWeek.getDisplayName(TextStyle.FULL, Locale.UK) + "s"
                 val tail = when {
-                    target != today -> " Tomorrow's one."
-                    todays != null && todays >= usual -> " Today's allowance covers that."
+                    target != today -> " - tomorrow's one."
+                    todays != null && todays >= usual -> " - today's amount covers it."
                     // "A little more" only when it is; with nothing to spend today, nothing to compare.
-                    todays != null && todays > 0L && usual <= todays * 3 / 2 -> " A little more than today's ${money(todays)}."
-                    todays != null && todays > 0L && available > 0L -> " More than today's ${money(todays)} - one to go gently on."
-                    else -> ""
+                    todays != null && todays > 0L && usual <= todays * 3 / 2 -> ", a little over today's ${money(todays)}."
+                    todays != null && todays > 0L && available > 0L -> ", more than today's ${money(todays)}."
+                    else -> "."
                 }
-                say(Kind.WEEKDAY, 58, "$plural usually cost you about ${roughly((usual))}.$tail")
+                say(Kind.WEEKDAY, 58, "$plural usually cost about ${roughly((usual))}$tail")
             }
         }
 
@@ -331,7 +318,7 @@ object PennyVoice {
         }
         if (!bad) {
             moves.filter { it.second > 0 }.maxByOrNull { it.second }?.let { (t, diff) ->
-                say(Kind.CATEGORY, 54, "${t.category.label} is ${money(diff)} over usual this cycle - easily covered while you're ahead.")
+                say(Kind.CATEGORY, 54, "${t.category.label} is ${money(diff)} over usual, but you're still ahead.")
             }
         }
         if (byCycle.isNotEmpty()) {
@@ -368,8 +355,6 @@ object PennyVoice {
     internal fun paydayOn(date: LocalDate, today: LocalDate): String =
         if (!date.isAfter(today.plusDays(6))) "on ${date.dayOfWeek.getDisplayName(TextStyle.FULL, Locale.UK)}"
         else "on ${date.format(WEEKDAY_DAY_MONTH)}"
-
-    private fun name(payee: String): String = ShopName.clean(payee) ?: payee.trim()
 
     private fun whenDue(date: LocalDate, today: LocalDate): String = when (ChronoUnit.DAYS.between(today, date)) {
         0L -> "today"

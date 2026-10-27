@@ -70,7 +70,7 @@ class ScreensTest {
     fun homeCard() {
         val state = Sample.state()
         shoot("home-card", AppScreen.Home) {
-            HomeScreen(state, onRefresh = {}, onRelink = {}, onSeeAllTransactions = {}, onSetBudgetGoal = { _, _ -> }, onLinkBank = {}, initialPage = 1)
+            HomeScreen(state, onRefresh = {}, onRelink = {}, onSeeAllTransactions = {}, onSetBudgetGoal = { _, _ -> }, onLinkBank = {}, initialPage = 2)
         }
     }
 
@@ -80,7 +80,18 @@ class ScreensTest {
     fun homeJoint() {
         val state = Sample.state()
         shoot("home-joint", AppScreen.Home) {
-            HomeScreen(state, onRefresh = {}, onRelink = {}, onSeeAllTransactions = {}, onSetBudgetGoal = { _, _ -> }, onLinkBank = {}, initialPage = 2)
+            HomeScreen(state, onRefresh = {}, onRelink = {}, onSeeAllTransactions = {}, onSetBudgetGoal = { _, _ -> }, onLinkBank = {}, initialPage = 3)
+        }
+    }
+
+    /** 0.7.1: the month, cards and all - Home's figure plus the card bills this cycle pays. Made-up figures. */
+    @Test
+    @Config(qualifiers = "w411dp-h1500dp-xxhdpi")
+    fun homeMonth() {
+        // The sample's Nectar bill falls this cycle: the month page is the second.
+        val state = Sample.state()
+        shoot("home-month", AppScreen.Home) {
+            HomeScreen(state, onRefresh = {}, onRelink = {}, onSeeAllTransactions = {}, onSetBudgetGoal = { _, _ -> }, onLinkBank = {}, initialPage = 1)
         }
     }
 

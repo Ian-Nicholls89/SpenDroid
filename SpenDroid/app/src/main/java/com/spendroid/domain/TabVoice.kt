@@ -64,24 +64,26 @@ object TabVoice {
             val total = pending.sumOf { -it.amountMinor }
             val n = pending.size
             out += Line(
-                "${money(total)} is still pending${if (n > 1) " across $n payments" else ""} - already counted, and it'll settle in a day or two.",
+                "${money(total)} still pending${if (n > 1) " across $n payments" else ""} - already counted.",
                 55, Target.Pending,
             )
         }
 
         // The shop visited most this cycle.
-        val topShop = everyday.groupBy { name(it.payee) }
+        // Shops by name alone, the branch left off: "Tesco Salisbury" and "Tesco Bath" are Tesco.
+        val places = ShopName.placesIn(transactions.map { it.payee })
+        val topShop = everyday.groupBy { name(it.payee, places) }
             .filterKeys { it.isNotBlank() }
             .maxByOrNull { it.value.size }
             ?.takeIf { it.value.size >= 4 }
             ?.also { (shop, rows) ->
-                out += Line("$shop ${rows.size} times this cycle - ${money(rows.sumOf { -it.amountMinor })}, more than any other shop.", 60, Target.Shop(shop))
+                out += Line("$shop ${rows.size} times this cycle - ${money(rows.sumOf { -it.amountMinor })}, your most-visited.", 60, Target.Shop(shop))
             }
 
         // Filed as Other: a nudge to sort them, which teaches her.
         val other = everyday.filter { categoryOf(it) == Category.OTHER }
         if (other.size >= 3) {
-            out += Line("${other.size} payments this cycle are in Other. File one and I'll learn the shop.", 65, Target.Spend(Category.OTHER))
+            out += Line("${other.size} payments in Other this cycle. File one and I'll learn it.", 65, Target.Spend(Category.OTHER))
         }
 
         // Where most of it went.
@@ -92,7 +94,7 @@ object TabVoice {
             // Not when it's all the one shop just named: the same figure twice.
             ?.takeIf { c -> topShop == null || topShop.value.sumOf { -it.amountMinor } * 10 < c.value * 9 }
             ?.let { (category, minor) ->
-                out += Line("Most of this cycle's spending has gone on ${category.label.lowercase()} - ${money(minor)}.", 50, Target.Spend(category))
+                out += Line("Most of this cycle's spending is ${category.label.lowercase()}: ${money(minor)}.", 50, Target.Spend(category))
             }
 
         // Money moved between the user's own accounts.
@@ -101,7 +103,7 @@ object TabVoice {
                 "${it.accountId}|${it.transactionId}" !in budget.cardPaymentKeys
         }.sumOf { -it.amountMinor }
         if (moved >= 1_000L) {
-            out += Line("${money(moved)} moved between your accounts this cycle - not counted as spending.", 45, Target.Transfers)
+            out += Line("${money(moved)} moved between your accounts - not counted as spending.", 45, Target.Transfers)
         }
         return out.sortedByDescending { it.rank }
     }
@@ -120,7 +122,7 @@ object TabVoice {
                 val diff = kotlin.math.abs(c.afterMinor) - kotlin.math.abs(c.beforeMinor)
                 val who = name(c.payee)
                 out += Line(
-                    if (diff > 0) "$who went up ${money(diff)} - I've planned for the new amount."
+                    if (diff > 0) "$who went up ${money(diff)} - planned for at the new amount."
                     else "$who came down ${money(-diff)} - planned for at the new amount.",
                     80, Target.Bill(c.ruleKey),
                 )
@@ -131,7 +133,7 @@ object TabVoice {
             .mapNotNull { e -> (e.status as? Contracts.Status.EndingSoon)?.let { e to it.daysLeft } }
             .minByOrNull { it.second }
             ?.let { (e, days) ->
-                out += Line("${name(e.payee)}'s contract ends ${inDays(days)} - worth a look before it renews.", 75, Target.Bill(e.key))
+                out += Line("${name(e.payee)}'s contract ends ${inDays(days)}. Worth a look before it renews.", 75, Target.Bill(e.key))
             }
 
         // A bill due on payday itself: next month's money, so not in this cycle's - said why, in
@@ -141,7 +143,7 @@ object TabVoice {
                 .filter { it.direction == Direction.OUT && it.cadence == Cadence.MONTHLY && it.anchorDay == payday.dayOfMonth }
                 .maxByOrNull { kotlin.math.abs(it.amountMinor) }
                 ?.let { rule ->
-                    out += Line("${name(rule.payee)} is due on payday, ${payday.format(DAY_MONTH)}, so it comes from next month's money.", 70, Target.Bill(rule.key))
+                    out += Line("${name(rule.payee)} is due on payday, so it's next month's money.", 70, Target.Bill(rule.key))
                 }
         }
 
@@ -152,14 +154,14 @@ object TabVoice {
             .maxByOrNull { it.amountMinor }
             ?.takeIf { total > 0 && it.amountMinor * 100 / total >= 15 && it.amountMinor >= 5_000L }
             ?.let { p ->
-                out += Line("The next big one: ${name(p.rule.payee)}, ${money(p.amountMinor)} ${whenDue(p.dueDate, today)}. It's allowed for.", 60, Target.Bill(p.rule.key))
+                out += Line("Next big one: ${name(p.rule.payee)}, ${money(p.amountMinor)} ${whenDue(p.dueDate, today)}.", 60, Target.Bill(p.rule.key))
             }
 
         // Bills against income, as Each month has them.
         if (budget.averageMonthlyIncome > 0 && budget.fixedMonthlyOutgoings > 0) {
             val share = budget.fixedMonthlyOutgoings * 100 / budget.averageMonthlyIncome
             val left = budget.averageMonthlyIncome - budget.fixedMonthlyOutgoings
-            if (left > 0) out += Line("Bills take $share% of your income, leaving ${money(left)} a month for everything else.", 40)
+            if (left > 0) out += Line("Bills take $share% of your income, leaving ${money(left)} a month.", 40)
         }
         return out.sortedByDescending { it.rank }
     }
@@ -182,7 +184,7 @@ object TabVoice {
             .minByOrNull { it.second }
             ?.let { (c, days) ->
                 out += Line(
-                    "${c.institutionName}'s link needs renewing ${if (days == 0) "today" else inDays(days.toLong())}, or its figures stop.",
+                    "${c.institutionName}'s link needs renewing ${if (days == 0) "today" else inDays(days.toLong())}.",
                     90, Target.Relink(c.requisitionId),
                 )
             }
@@ -191,12 +193,12 @@ object TabVoice {
         budget?.cardBills?.forEach { bill ->
             val due = bill.dueDate
             if (due != null && !bill.statementPaid && bill.dueMinor > 0 && !due.isBefore(today) && !due.isAfter(today.plusDays(10))) {
-                out += Line("${bill.cardLabel.trim()}'s bill, ${money(bill.dueMinor)}, goes ${whenDue(due, today)} - already set aside.", 70)
+                out += Line("${bill.cardLabel.trim()}'s ${money(bill.dueMinor)} bill goes ${whenDue(due, today)} - set aside.", 70)
             } else {
                 val close = bill.nextStatementClose
                 val heading = bill.projectedMinor
                 if (close != null && heading != null && heading > 0 && !close.isBefore(today) && !close.isAfter(today.plusDays(5))) {
-                    out += Line("${bill.cardLabel.trim()}'s statement closes ${whenDue(close, today)}, heading for about ${money(heading)}.", 65)
+                    out += Line("${bill.cardLabel.trim()}'s statement closes ${whenDue(close, today)}, at about ${money(heading)}.", 65)
                 }
             }
         }
@@ -205,7 +207,7 @@ object TabVoice {
         accounts.filter { it.manual && it.accountType != AccountType.CREDIT_CARD }.forEach { a ->
             val last = manualCoverage[a.id] ?: return@forEach
             if (ChronoUnit.DAYS.between(last, today) >= 35) {
-                out += Line("No statement for ${a.label.trim()} since ${last.format(DAY_MONTH)} - import one to keep its figures right.", 60, Target.Import(a.id))
+                out += Line("No statement for ${a.label.trim()} since ${last.format(DAY_MONTH)}. Import one?", 60, Target.Import(a.id))
             }
         }
         return out.sortedByDescending { it.rank }
@@ -216,7 +218,7 @@ object TabVoice {
     private val DAY_MONTH = DateTimeFormatter.ofPattern("d MMM", Locale.UK)
     private val WEEKDAY_DAY_MONTH = DateTimeFormatter.ofPattern("EEE d MMM", Locale.UK)
 
-    private fun name(payee: String): String = ShopName.clean(payee) ?: payee.trim()
+    private fun name(payee: String, places: Set<String> = emptySet()): String = ShopName.clean(payee, places) ?: payee.trim()
 
     private fun whenDue(date: LocalDate, today: LocalDate): String = when (val d = ChronoUnit.DAYS.between(today, date)) {
         0L -> "today"

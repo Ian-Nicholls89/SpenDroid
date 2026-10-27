@@ -79,6 +79,8 @@ private val WEEKDAY: DateTimeFormatter = DateTimeFormatter.ofPattern("EEE")
 /** What a page of the hero is about: the budget, or one account the budget does not spend from. */
 private sealed interface HeroPage {
     data object Budget : HeroPage
+    /** The month's money, cards and all (0.7.1). */
+    data class Month(val month: com.spendroid.domain.MonthlyAvailable.Month) : HeroPage
     data class Account(val account: AccountEntity, val row: PeriodRows.Row, val bill: CreditCardEngine.CardBill?) : HeroPage
 }
 
@@ -133,6 +135,7 @@ fun HomeScreen(
         buildList {
             if (budget != null) add(HeroPage.Budget)
             if (budget != null) {
+                com.spendroid.domain.MonthlyAvailable.of(budget, state.transactions, state.accounts)?.let { add(HeroPage.Month(it)) }
                 // Cards first - their bills are the biggest thing to come - then the rest.
                 val others = state.accounts
                     .filter { it.id != budget.potAccountId && it.accountType != AccountType.PAYPAL }
@@ -180,6 +183,7 @@ fun HomeScreen(
                 when (val p = pages[index]) {
                     HeroPage.Budget -> BudgetHero(budget, state.syncing, onOpenToday, news, onNews, voice)
                     is HeroPage.Account -> AccountHero(p, colourOf(p.account, state.accounts), state.syncing)
+                    is HeroPage.Month -> MonthHero(p.month, budget, state.syncing)
                 }
             }
             if (pages.size > 1) PagerDots(pages.size, pager.currentPage, pageColour ?: MaterialTheme.colorScheme.primary)
@@ -483,6 +487,46 @@ private fun AccountHero(page: HeroPage.Account, colour: Color, syncing: Boolean 
     }
 }
 
+/**
+ * The month's money, cards and all: Home's figure plus the card bills this cycle pays - what the
+ * month has to spend if the cards come to what they did last month. Under it, each bill, and
+ * Penny on the cards since payday.
+ */
+@Composable
+private fun MonthHero(month: com.spendroid.domain.MonthlyAvailable.Month, budget: BudgetSnapshot, syncing: Boolean) {
+    val money = { minor: Long -> formatMoney(minor, budget.baseCurrency) }
+    Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 6.dp)) {
+        PennySays(droidFaceOf(budget, syncing), com.spendroid.domain.MonthlyAvailable.line(month, money))
+        Text(
+            "This month" + (month.until?.let { " · until ${it.format(DAY)}" } ?: ""),
+            style = MaterialTheme.typography.labelLarge,
+            color = Color.White.copy(alpha = 0.78f),
+        )
+        RollingAmount(
+            modifier = Modifier.shimmer(syncing),
+            minor = month.totalMinor,
+            currency = budget.baseCurrency,
+            style = MaterialTheme.typography.displaySmall.copy(fontSize = 48.sp, fontFamily = com.spendroid.ui.theme.Grotesk, letterSpacing = (-1.5).sp),
+            fontWeight = FontWeight.Bold,
+            color = Color.White,
+        )
+        Text("for the month, cards included", style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.7f))
+        Spacer(Modifier.height(8.dp))
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(if (month.overMinor > 0L) "${money(month.overMinor)} over" else "${money(month.leftMinor)} left", style = MaterialTheme.typography.labelLarge, color = Color(0xFFCFD2D8))
+            Text("+", style = MaterialTheme.typography.labelLarge, color = Color(0xFF8D929C))
+            Text("${money(month.cardBillsMinor)} card bills", style = MaterialTheme.typography.labelLarge, color = Color(0xFFCFD2D8))
+        }
+        // Each card's bill this cycle, paid or to come.
+        Text(
+            month.bills.joinToString(" · ") { "${it.label} ${money(it.amountMinor)}${if (it.paid) " ✓" else ""}" },
+            style = MaterialTheme.typography.labelMedium,
+            color = Color(0xFF8D929C),
+            modifier = Modifier.padding(top = 4.dp),
+        )
+    }
+}
+
 @Composable
 private fun PagerDots(count: Int, current: Int, colour: Color) {
     Row(Modifier.padding(start = 20.dp, top = 12.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -753,6 +797,9 @@ private fun SpendPoster(tx: TransactionEntity, state: RootUiState) {
     )
 }
 
+/** How many lines Penny's bubble takes turns with. */
+private const val MOST_LINES = 3
+
 /**
  * Penny's lines as stories, Home's way and the tabs': each has its time, read from a bar filling
  * under it, then the next, round and round while it's on screen; a tap moves on, holding pauses.
@@ -762,11 +809,13 @@ private fun SpendPoster(tx: TransactionEntity, state: RootUiState) {
 @Composable
 internal fun PennyStories(
     face: DroidFace,
-    voice: List<String>,
+    lines: List<String>,
     actions: List<Pair<String, () -> Unit>?> = emptyList(),
     leadByVisit: Boolean = false,
     modifier: Modifier = Modifier.padding(bottom = 12.dp),
 ) {
+    // 0.7.1: the three that matter most now, not every one she has - the rest wait their turn.
+    val voice = lines.take(MOST_LINES)
     if (voice.isEmpty()) return
     // One of her top lines leads, a different one each time Home comes to the front;
     // a tap on her bubble moves on to the next thing she's noticed.
