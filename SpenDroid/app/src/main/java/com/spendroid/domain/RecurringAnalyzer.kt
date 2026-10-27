@@ -51,7 +51,12 @@ object RecurringAnalyzer {
 
     fun analyze(transactions: List<TransactionEntity>): List<RecurringRule> {
         val eligible = transactions.filter { !it.isPending && it.bookingDate.isNotBlank() && it.amountMinor != 0L }
-        val exact = eligible.groupBy { groupKey(it) }.values.mapNotNull { detect(it) }
+        // Everyday spending at one shop isn't a bill, however often one amount comes round: a
+        // coffee at £4.90 now and then among a shop's other amounts read as "the next big one".
+        val outByPayee = eligible.filter { it.amountMinor < 0 }.groupBy { normalize(it.payee) }
+        val exact = eligible.groupBy { groupKey(it) }.values
+            .filterNot { group -> amidShopping(group, outByPayee[normalize(group.first().payee)].orEmpty()) }
+            .mapNotNull { detect(it) }
         // A second look, by payee alone, at what the first could not group: the same payee each
         // month for an amount that changes - an energy bill, a salary with overtime. Grouped by
         // amount to the pound, each month was a group of its own and none was ever regular.
@@ -98,6 +103,25 @@ object RecurringAnalyzer {
     }
 
     private const val MIN_VARIABLE_MONTHS = 3
+
+    /**
+     * Whether [group] - one payee, one amount to the pound - is just some of the visits to a shop
+     * paid at many amounts: over the group's own span, twice as many payments to the payee at other
+     * amounts, and six or more of them. A bill is paid at its amount; a shop at whatever was bought.
+     * Two bills to one payee (£50 and £20 to a child's account) are each half, so both stay.
+     */
+    private fun amidShopping(group: List<TransactionEntity>, payee: List<TransactionEntity>): Boolean {
+        if (group.first().amountMinor >= 0) return false
+        val dates = group.mapNotNull { parseBookingDate(it.bookingDate) }
+        val from = dates.minOrNull() ?: return false
+        val to = dates.maxOrNull() ?: return false
+        val bucket = amountBucket(group.first().amountMinor)
+        val others = payee.count { tx ->
+            amountBucket(tx.amountMinor) != bucket &&
+                parseBookingDate(tx.bookingDate)?.let { !it.isBefore(from) && !it.isAfter(to) } == true
+        }
+        return others >= 6 && others >= group.size * 2
+    }
 
     fun parseBookingDate(value: String): LocalDate? =
         try {

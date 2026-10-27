@@ -130,7 +130,10 @@ fun HomeScreen(
     // What Penny could say, recomputed as the figures change - and each half hour, as the
     // day moves from morning to evening.
     val halfHour = java.time.LocalDateTime.now().let { it.toLocalDate().toEpochDay() * 48 + it.hour * 2 + it.minute / 30 }
-    val voice = remember(budget, state.transactions, state.categoryRules, halfHour) { pennyLines(state) }
+    // A card has its own page, where Penny says how it's going: not said on the first page too.
+    val voice = remember(budget, state.transactions, state.categoryRules, halfHour) {
+        pennyLines(state).filter { it.kind != com.spendroid.domain.PennyVoice.Kind.CARD }
+    }
     val pages = remember(state.accounts, budget, state.transactions) {
         buildList {
             if (budget != null) add(HeroPage.Budget)

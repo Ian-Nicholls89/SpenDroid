@@ -138,6 +138,10 @@ object PennyVoice {
             else -> say(Kind.PACE, 45, "Right on pace." + (daily?.let { " ${money(it)} a day gets you to payday." } ?: ""))
         }
 
+        // Today's amount as a figure only when it's the one on Home's "£X a day": once today's
+        // spending has moved that on, two different daily figures side by side read as a mistake.
+        val todaysAmount = if (todays != null && daily != null && todays != daily) "today's amount" else "today's ${todays?.let(money)}"
+
         // ---- today ----
         if (todays != null && todays > 0L && !payday) {
             // Like with like: what counts against today's amount is from the accounts - card
@@ -158,11 +162,11 @@ object PennyVoice {
                 )
                 counted == 0L && onCards > 0L -> say(
                     Kind.TODAY, if (hour >= 18) 80 else 72,
-                    "Only cards today, so all of today's ${money(todays)} is still yours.",
+                    "Only cards today, so all of $todaysAmount is still yours.",
                 )
                 counted == 0L && hour in 5..11 -> say(
                     Kind.TODAY, 78,
-                    "Morning. Nothing spent yet - today's ${money(todays)} is all yours.",
+                    "Morning. Nothing spent yet - $todaysAmount is all yours.",
                     "Nothing spent yet today. You've ${money(todays)} for it.",
                 )
                 counted == 0L -> say(
@@ -172,26 +176,26 @@ object PennyVoice {
                 )
                 left == 0L -> say(
                     Kind.TODAY, if (hour >= 18) 80 else 76,
-                    "Today's ${money(todays)}, used to the penny.",
+                    "${todaysAmount.replaceFirstChar(Char::titlecase)}, used to the penny.",
                 )
                 hour >= 18 && left > 0L -> say(
                     Kind.TODAY, 80,
-                    "${money(left)} of today's ${money(todays)} left - it rolls into $intoNext.",
-                    "Under today's ${money(todays)} by ${money(left)}. That goes into $intoNext.",
+                    "${money(left)} of $todaysAmount left - it rolls into $intoNext.",
+                    "Under $todaysAmount by ${money(left)}. That goes into $intoNext.",
                 )
                 left > 0L -> say(
                     Kind.TODAY, 76,
-                    "$spentWord today - ${money(left)} of today's ${money(todays)} left.",
-                    "${money(left)} of today's ${money(todays)} still to spend.",
+                    "$spentWord today - ${money(left)} of $todaysAmount left.",
+                    "${money(left)} of $todaysAmount still to spend.",
                 )
                 // Over: "a bit" only when it is, up to a quarter over.
                 -left <= todays / 4 -> say(
                     Kind.TODAY, if (hour >= 18) 82 else 83,
-                    "A bit over today's ${money(todays)} - tomorrow's amount takes it.",
+                    "A bit over $todaysAmount - tomorrow's amount takes it.",
                 )
                 else -> say(
                     Kind.TODAY, if (hour >= 18) 82 else 83,
-                    "${money(-left)} over today's ${money(todays)} - the days ahead share it out.",
+                    "${money(-left)} over $todaysAmount - the days ahead share it out.",
                 )
             }
         }
@@ -288,8 +292,8 @@ object PennyVoice {
                     target != today -> " - tomorrow's one."
                     todays != null && todays >= usual -> " - today's amount covers it."
                     // "A little more" only when it is; with nothing to spend today, nothing to compare.
-                    todays != null && todays > 0L && usual <= todays * 3 / 2 -> ", a little over today's ${money(todays)}."
-                    todays != null && todays > 0L && available > 0L -> ", more than today's ${money(todays)}."
+                    todays != null && todays > 0L && usual <= todays * 3 / 2 -> ", a little over $todaysAmount."
+                    todays != null && todays > 0L && available > 0L -> ", more than $todaysAmount."
                     else -> "."
                 }
                 say(Kind.WEEKDAY, 58, "$plural usually cost about ${roughly((usual))}$tail")

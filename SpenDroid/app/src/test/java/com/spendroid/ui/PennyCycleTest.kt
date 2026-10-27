@@ -155,6 +155,15 @@ class PennyCycleTest {
                 val cards = state.accounts.filter { it.accountType == com.spendroid.data.db.AccountType.CREDIT_CARD }.map { it.label.trim() }
                 m.bills.filter { it.label !in cards }.forEach { problems += "$day [Month]: a bill named ${it.label}, not its card" }
             }
+            // Each card's and account's own page on Home: her line there, held to the same length.
+            com.spendroid.domain.PeriodRows.rows(state.accounts.filter { it.id != b.potAccountId }.map { it.id }, b, state.accounts, state.transactions).forEach { row ->
+                if (row.kind == com.spendroid.domain.PeriodRows.Kind.BUDGET) return@forEach
+                val said = com.spendroid.domain.TodaysRead.of(row) { com.spendroid.ui.formatMoney(it, "GBP") }
+                report.append("  [${row.label.trim()}] $said\n")
+                if (said.length > LONGEST) problems += "$day [${row.label.trim()}]: $said  <- too long: ${said.length} characters"
+            }
+            val home = com.spendroid.domain.TodaysRead.of(b) { com.spendroid.ui.formatMoney(it, "GBP") }
+            if (home.length > LONGEST) problems += "$day [Home, quiet]: $home  <- too long"
             // The tabs (0.7.0): what she says on each, at midday.
             for (tab in listOf(com.spendroid.AppScreen.Spending, com.spendroid.AppScreen.Rules, com.spendroid.AppScreen.Accounts)) {
                 tabLines(state, tab).forEach { line ->
@@ -229,6 +238,8 @@ class PennyCycleTest {
         // The bill was £142.54. Day to day the estimates shift by pennies and pounds; it moved by
         // the whole bill before.
         assertTrue("before ${before.spendableThisCycle}, on ${on.spendableThisCycle}", kotlin.math.abs(on.spendableThisCycle - before.spendableThisCycle) < 14_254L / 4)
-        assertTrue("spent today ${on.spentToday}", on.spentToday == 0L)
+        // The day's own spending, not the bill: £12.80 at a shop (until 0.7.1 wrongly held to be a
+        // regular payment, and left out).
+        assertTrue("spent today ${on.spentToday}", on.spentToday < 14_254L)
     }
 }
