@@ -365,7 +365,11 @@ suspend fun widgetDroid(context: Context, sizePx: Int = 144): Bitmap {
     val accent = widgetAccent(context)
     val snapshot = runCatching { SharedSnapshot.get(context) }.getOrNull()
     // Syncing while a ↻ redraws the widgets, so the tap is seen to have done something.
-    val face = com.spendroid.ui.droidFaceOf(snapshot, syncing = WidgetRefresh.refreshing(context))
+    // Asleep overnight - a redraw at 11pm and 6am sees to it (PennySleepWorker) - unless syncing.
+    val face = com.spendroid.ui.PennySleep.at(
+        com.spendroid.ui.droidFaceOf(snapshot, syncing = WidgetRefresh.refreshing(context)),
+        java.time.LocalTime.now(),
+    )
     return com.spendroid.ui.pennyStill(face, androidx.compose.ui.graphics.Color(accent), sizePx)
 }
 

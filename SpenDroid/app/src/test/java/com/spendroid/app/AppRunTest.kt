@@ -140,4 +140,36 @@ class AppRunTest {
             until("the strip") { shows("question from Penny") }
         }
     }
+
+    /**
+     * 0.7.0: Penny talking on a tab - Accounts, about a statement not imported for six weeks - with
+     * its link, and not in the banner there as well; on Settings, where she says nothing, she is.
+     */
+    @Test
+    fun `Penny talks on a tab, and leaves the banner`() {
+        runBlocking {
+            val app = ApplicationProvider.getApplicationContext<BudgetApplication>()
+            app.getSharedPreferences(com.spendroid.data.Stores.FIRST_RUN, Context.MODE_PRIVATE).edit().putBoolean("done", true).commit()
+            val account = app.repository.addManualAccount("Everyday", "Made-up Bank", AccountType.PERSONAL, 120_000)
+            val day = java.time.LocalDate.now().minusDays(42)
+            app.repository.addImported(listOf(com.spendroid.data.db.TransactionEntity(
+                accountId = account.id, transactionId = com.spendroid.domain.DuplicateCheck.IMPORTED_PREFIX + "made-up-1", bookingDate = day.toString(), valueDate = null,
+                amountMinor = -1_250, currency = "GBP", payee = "Corner Shop", description = null, isPending = false, rawJson = null,
+            )), closing = day to 118_750L)
+        }
+        ActivityScenario.launch(MainActivity::class.java).use {
+            compose.mainClock.autoAdvance = false
+            settle()
+            fun wordmarkLeft(name: String) = compose.onAllNodesWithText(name).fetchSemanticsNodes().minOf { it.boundsInRoot.left }
+
+            tab("Settings")
+            until("settings") { shows("Setup & data") }
+            val withPenny = wordmarkLeft("settings")
+
+            tab("Accounts")
+            until("Penny on Accounts") { shows("No statement for Everyday since") }
+            assertTrue("her link", compose.onAllNodes(hasText("Import ›") and hasClickAction()).fetchSemanticsNodes().isNotEmpty())
+            assertTrue("not in the banner as well", wordmarkLeft("accounts") < withPenny)
+        }
+    }
 }

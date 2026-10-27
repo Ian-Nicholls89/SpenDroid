@@ -70,6 +70,8 @@ open class BudgetApplication : Application() {
             ),
         ) { com.spendroid.data.PayeeNames.load(this) }
         DailyRoundupScheduler.schedule(this)
+        // Penny asleep on the widgets overnight: a redraw when she falls asleep or wakes.
+        com.spendroid.work.PennySleepWorker.schedule(this)
         com.spendroid.data.AutoBackup.schedule(this)
         // An update kept to install, now installed: the file and its notification go.
         com.spendroid.data.ApkInstaller.tidy(this)

@@ -38,7 +38,8 @@ private const val DEFAULT_ACCENT = 0xFF3DDC84.toInt()
 
 // The leading number changes whenever her pictures do, or tiles keep the old ones they have:
 // 3 from watch 1.10.2, her poses from the shared Penny; 4 from 1.10.4, payday without its clipped piece.
-private fun versionFor(accent: Int) = "4-" + Integer.toHexString(accent)
+// 5 from watch 0.1.14: her asleep picture.
+private fun versionFor(accent: Int) = "5-" + Integer.toHexString(accent)
 private fun droidId(mood: WatchMood) = "droid_" + mood.name.lowercase()
 
 /** The droid as a tile image: tiles take pictures, sent once per version. */
@@ -73,7 +74,8 @@ private fun tile(layout: LayoutElement, version: String = RESOURCES): TileBuilde
     TileBuilders.Tile.Builder()
         .setResourcesVersion(version)
         // The phone asks for a redraw whenever it sends new figures; this is only a backstop.
-        .setFreshnessIntervalMillis(60 * 60 * 1000L)
+        // Hourly, or sooner when she falls asleep or wakes, so the tile changes then.
+        .setFreshnessIntervalMillis(minOf(60 * 60 * 1000L, com.spendroid.ui.PennySleep.untilNextChange(java.time.LocalDateTime.now()).toMillis() + 1_000L))
         .setTileTimeline(TimelineBuilders.Timeline.fromLayoutElement(layout))
         .build()
 
@@ -89,7 +91,7 @@ private fun MaterialScope.droidTitle(label: String, reading: BudgetReading?): La
         .setVerticalAlignment(LayoutElementBuilders.VERTICAL_ALIGN_CENTER)
         .addContent(
             LayoutElementBuilders.Image.Builder()
-                .setResourceId(droidId(reading?.let { moodOf(it) } ?: WatchMood.AHEAD))
+                .setResourceId(droidId(tileMoodOf(reading)))
                 .setWidth(dp(18f)).setHeight(dp(18f))
                 .build(),
         )

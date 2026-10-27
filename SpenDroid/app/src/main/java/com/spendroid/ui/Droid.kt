@@ -154,11 +154,14 @@ private fun DrawScope.drawDroid(face: DroidFace, colour: Color, line: Color) {
  * splits, "spen" white and "droid" in the app's colour.
  */
 @Composable
-fun Wordmark(text: String, colour: Color, modifier: Modifier = Modifier) {
+fun Wordmark(text: String, colour: Color, modifier: Modifier = Modifier, droid: Boolean = true) {
     val face = DroidNow.face
     Row(modifier, verticalAlignment = Alignment.CenterVertically) {
-        Droid(face, 30.dp, accent = colour)
-        Spacer(Modifier.width(10.dp))
+        // Where Penny's talking on the screen below, she isn't in the banner as well.
+        if (droid) {
+            Droid(face, 30.dp, accent = colour)
+            Spacer(Modifier.width(10.dp))
+        }
         Text(
             if (text.equals("SpenDroid", ignoreCase = true)) {
                 buildAnnotatedString {

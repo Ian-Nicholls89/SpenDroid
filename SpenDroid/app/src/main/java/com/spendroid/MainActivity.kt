@@ -328,9 +328,12 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                                 IconButton(onClick = { scope.launch { drawer.open() } }, modifier = Modifier.padding(end = 6.dp)) {
                                     Icon(Icons.Filled.Menu, contentDescription = "Menu", tint = Color(0xFFCFD2D8))
                                 }
+                                // Talking on the screen below, Penny isn't in the banner too.
+                                val talks = remember(state, screen) { com.spendroid.ui.pennyTalks(state, screen) }
                                 Wordmark(
                                     text = if (screen == AppScreen.Home) "SpenDroid" else screen.title,
                                     colour = glowColour,
+                                    droid = !talks,
                                 )
                             }
                         },

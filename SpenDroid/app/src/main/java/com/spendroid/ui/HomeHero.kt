@@ -251,42 +251,7 @@ private fun BudgetHero(
                 action = news.ruleKey?.let { "See it" to { onNews(news) } },
             )
         } else if (voice.isNotEmpty()) {
-            // One of her top lines leads, a different one each time Home comes to the front;
-            // a tap on her bubble moves on to the next thing she's noticed.
-            val context = androidx.compose.ui.platform.LocalContext.current
-            var visit by remember { androidx.compose.runtime.mutableIntStateOf(0) }
-            androidx.lifecycle.compose.LifecycleResumeEffect(Unit) {
-                visit = PennyVisits.next(context)
-                onPauseOrDispose { }
-            }
-            // Like stories: each line has its time, read from a bar filling under it, then the next,
-            // round and round while Home is open. A tap moves on; holding pauses. [step] counts on
-            // from the line she led with.
-            // With animations off on the phone she waits for a tap instead.
-            var step by remember(visit) { androidx.compose.runtime.mutableIntStateOf(0) }
-            var held by remember { androidx.compose.runtime.mutableStateOf(false) }
-            val progress = remember(visit, step) { androidx.compose.animation.core.Animatable(0f) }
-            val lead = com.spendroid.domain.PennyVoice.lead(voice, visit)
-            // What she had to say as Home opened sets the bubble's size for the visit: the figures
-            // changing - a sync - mustn't make it grow and shrink. A longer line since grows it once.
-            val opening = remember(visit) { androidx.compose.runtime.mutableStateListOf<String>().apply { addAll(voice.map { it.text }) } }
-            val shown = Math.floorMod(lead + step, voice.size)
-            LaunchedEffect(voice[shown].text) { if (voice[shown].text !in opening) opening += voice[shown].text }
-            val going = voice.size > 1 && !droidStill()
-            LaunchedEffect(visit, step, held, going) {
-                if (!going || held) return@LaunchedEffect
-                val total = storyMillis(voice[shown].text)
-                progress.animateTo(1f, androidx.compose.animation.core.tween(((1f - progress.value) * total).toInt(), easing = androidx.compose.animation.core.LinearEasing))
-                step += 1
-            }
-            PennySays(
-                droidFaceOf(budget, syncing), voice[shown].text,
-                onTap = { step += 1; Unit }.takeIf { voice.size > 1 },
-                onHold = { held = it },
-                sizing = (opening + voice[shown].text).distinct(),
-                // Each time round, the bars start again from the first.
-                story = Story(Math.floorMod(step, voice.size), voice.size, progress.value, typing = going).takeIf { voice.size > 1 },
-            )
+            PennyStories(droidFaceOf(budget, syncing), voice.map { it.text }, leadByVisit = true)
         } else {
             PennySays(droidFaceOf(budget, syncing), com.spendroid.domain.TodaysRead.of(budget) { formatMoney(it, budget.baseCurrency) })
         }
@@ -785,5 +750,60 @@ private fun SpendPoster(tx: TransactionEntity, state: RootUiState) {
         colour = category.visual.color,
         titleColour = if (tx.isPending) Color(0xFF29B6F6) else Color.White,
         glyph = { Icon(category.visual.icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(30.dp)) },
+    )
+}
+
+/**
+ * Penny's lines as stories, Home's way and the tabs': each has its time, read from a bar filling
+ * under it, then the next, round and round while it's on screen; a tap moves on, holding pauses.
+ * [actions] - one per line, or none - are each line's link to what it's about. With [leadByVisit],
+ * a different line leads each time the screen comes to the front.
+ */
+@Composable
+internal fun PennyStories(
+    face: DroidFace,
+    voice: List<String>,
+    actions: List<Pair<String, () -> Unit>?> = emptyList(),
+    leadByVisit: Boolean = false,
+    modifier: Modifier = Modifier.padding(bottom = 12.dp),
+) {
+    if (voice.isEmpty()) return
+    // One of her top lines leads, a different one each time Home comes to the front;
+    // a tap on her bubble moves on to the next thing she's noticed.
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var visit by remember { androidx.compose.runtime.mutableIntStateOf(0) }
+    androidx.lifecycle.compose.LifecycleResumeEffect(Unit) {
+        visit = PennyVisits.next(context)
+        onPauseOrDispose { }
+    }
+    // Like stories: each line has its time, read from a bar filling under it, then the next,
+    // round and round while Home is open. A tap moves on; holding pauses. [step] counts on
+    // from the line she led with.
+    // With animations off on the phone she waits for a tap instead.
+    var step by remember(visit) { androidx.compose.runtime.mutableIntStateOf(0) }
+    var held by remember { androidx.compose.runtime.mutableStateOf(false) }
+    val progress = remember(visit, step) { androidx.compose.animation.core.Animatable(0f) }
+    val lead = if (leadByVisit) com.spendroid.domain.PennyVoice.lead(voice.size, visit) else 0
+    // What she had to say as Home opened sets the bubble's size for the visit: the figures
+    // changing - a sync - mustn't make it grow and shrink. A longer line since grows it once.
+    val opening = remember(visit) { androidx.compose.runtime.mutableStateListOf<String>().apply { addAll(voice) } }
+    val shown = Math.floorMod(lead + step, voice.size)
+    LaunchedEffect(voice[shown]) { if (voice[shown] !in opening) opening += voice[shown] }
+    val going = voice.size > 1 && !droidStill()
+    LaunchedEffect(visit, step, held, going) {
+        if (!going || held) return@LaunchedEffect
+        val total = storyMillis(voice[shown])
+        progress.animateTo(1f, androidx.compose.animation.core.tween(((1f - progress.value) * total).toInt(), easing = androidx.compose.animation.core.LinearEasing))
+        step += 1
+    }
+    PennySays(
+        face, voice[shown],
+        action = actions.getOrNull(shown),
+        modifier = modifier,
+        onTap = { step += 1; Unit }.takeIf { voice.size > 1 },
+        onHold = { held = it },
+        sizing = (opening + voice[shown]).distinct(),
+        // Each time round, the bars start again from the first.
+        story = Story(Math.floorMod(step, voice.size), voice.size, progress.value, typing = going).takeIf { voice.size > 1 },
     )
 }

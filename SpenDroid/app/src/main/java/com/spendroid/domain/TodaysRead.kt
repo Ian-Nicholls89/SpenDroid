@@ -13,7 +13,7 @@ object TodaysRead {
             return "Payday! " + (days?.let { "${money(budget.availableToSpend)} for the next $it days." } ?: "A fresh start.")
         }
         if (budget.availableToSpend <= 0L) {
-            return "Nothing left to spend before payday" + (budget.nextIncomeDate?.let { " on ${it.dayOfWeek.name.lowercase().replaceFirstChar(Char::titlecase)}" } ?: "") + "."
+            return "Nothing left to spend before payday" + (budget.nextIncomeDate?.let { " " + PennyVoice.paydayOn(it, budget.asOf) } ?: "") + "."
         }
         val ahead = aheadMinor(budget)
         return when (BudgetPace.of(budget)) {

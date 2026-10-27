@@ -331,8 +331,9 @@ class ThisPeriodWidget : GlanceAppWidget() {
             val day = if (row.day != null && row.days != null) "day ${row.day} of ${row.days}" else null
             val lead = when (row.pace) {
                 BudgetPace.Pace.OVER -> row.projectedMinor?.takeIf { row.kind == PeriodRows.Kind.STATEMENT }
-                    ?.let { "▲ Heading for ~${formatMoney(it, row.currency)}" } ?: "▲ Ahead of the days"
-                BudgetPace.Pace.TIGHT -> "◆ A little ahead of the days"
+                    ?.let { "▲ Heading for ~${formatMoney(it, row.currency)}" } ?: "▲ Over for the days so far"
+                // "Ahead of the days" is good on Home - under pace - so not said here for over it.
+                BudgetPace.Pace.TIGHT -> "◆ A little quick for the days"
                 BudgetPace.Pace.ON_TRACK -> "● On track"
             }
             return listOfNotNull(lead, day).joinToString(" · ")

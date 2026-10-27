@@ -91,6 +91,8 @@ fun AccountManagementScreen(
     onAddManual: (String, String, AccountType, Long?) -> Unit = { _, _, _, _ -> },
     onRemoveManual: (AccountEntity) -> Unit = {},
     onCheckBalance: (AccountEntity) -> Unit = {},
+    /** Penny, at the top of the list when she has something to say here. */
+    penny: @Composable () -> Unit = {},
 ) {
     var addingManual by remember { mutableStateOf(false) }
     var removing by remember { mutableStateOf<AccountEntity?>(null) }
@@ -115,6 +117,7 @@ fun AccountManagementScreen(
             .padding(horizontal = 16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
+        item { penny() }
         if (state.accounts.isNotEmpty()) {
             item { WhereYouStand(state) }
         }

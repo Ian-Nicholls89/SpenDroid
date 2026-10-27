@@ -108,6 +108,8 @@ fun RecurringRulesScreen(
     contracts: Map<String, com.spendroid.domain.Contracts.Entry> = emptyMap(),
     /** For when payments to a bill started - the guesses at its contract's end. */
     transactions: List<com.spendroid.data.db.TransactionEntity> = emptyList(),
+    /** Penny, at the top of the list when she has something to say here. */
+    penny: @Composable () -> Unit = {},
 ) {
     var editing by remember { mutableStateOf<RecurringRule?>(null) }
     androidx.compose.runtime.LaunchedEffect(openRuleKey, rules) {
@@ -210,6 +212,7 @@ fun RecurringRulesScreen(
             contentPadding = PaddingValues(bottom = 96.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
+            item { penny() }
             // What the month comes to, worked out from everything listed below it.
             budget?.let { b -> item { EachMonthPanel(b, Modifier.padding(horizontal = 14.dp, vertical = 4.dp)) } }
             item {

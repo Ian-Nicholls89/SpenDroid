@@ -143,12 +143,30 @@ class PennyCycleTest {
                     check(day, b, line)?.let { problems += "$day $time ${line.kind}: ${line.text}  <- $it" }
                 }
             }
+            // The tabs (0.7.0): what she says on each, at midday.
+            for (tab in listOf(com.spendroid.AppScreen.Spending, com.spendroid.AppScreen.Rules, com.spendroid.AppScreen.Accounts)) {
+                tabLines(state, tab).forEach { line ->
+                    report.append("  [${tab.shortTitle}] ${line.text}${line.target?.let { "  -> $it" } ?: ""}\n")
+                    tabCheck(b, line)?.let { problems += "$day [${tab.shortTitle}]: ${line.text}  <- $it" }
+                }
+            }
             day = day.plusDays(1)
         }
         java.io.File("build/penny-cycle-$name.txt").writeText(report.toString())
         // The streak counted no further than a week; in a quiet month it grows.
         if (name == "comfortable") assertTrue("the streak grows", Regex("(1[0-9]|2[0-9]) days (in a row|running)").containsMatchIn(report))
         assertTrue(problems.joinToString("\n", prefix = "\n"), problems.isEmpty())
+    }
+
+    /** A tab's line: whole, its figures sound, and a link wherever it names something to see. */
+    private fun tabCheck(b: com.spendroid.domain.BudgetSnapshot, line: com.spendroid.domain.TabVoice.Line): String? {
+        val t = line.text
+        if (Regex("null|NaN|£-|-£|\\$\\{| {2}|\\.\\.").containsMatchIn(t)) return "broken figure or text"
+        if (!(t.endsWith(".") || t.endsWith("!"))) return "unfinished"
+        if (Regex("on (Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\\b").containsMatchIn(t) && "next big one" !in t && "closes" !in t && "goes" !in t) return "a weekday, for what"
+        if (("went up" in t || "contract ends" in t || "due on payday" in t || "next big one" in t) && line.target == null) return "names a bill, but no link to it"
+        if ("due on payday" in t && b.upcomingFixed.any { it.rule.key == (line.target as? com.spendroid.domain.TabVoice.Target.Bill)?.ruleKey && !it.dueDate.isBefore(b.nextIncomeDate ?: it.dueDate) }) return "said to be next month's, but counted in this one"
+        return null
     }
 
     /** What would make a line wrong, read against the figures it's about; null when it's fine. */

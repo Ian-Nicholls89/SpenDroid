@@ -30,7 +30,11 @@ import com.spendroid.ui.poseAt
  * Penny on the watch: the phone's own - the shared :penny module - so she looks and moves the
  * same on both. The watch has her four budget moods.
  */
-internal enum class WatchMood(val mood: DroidMood) { AHEAD(DroidMood.AHEAD), TIGHT(DroidMood.TIGHT), OVER(DroidMood.OVER), PAYDAY(DroidMood.PAYDAY) }
+internal enum class WatchMood(val mood: DroidMood) { AHEAD(DroidMood.AHEAD), TIGHT(DroidMood.TIGHT), OVER(DroidMood.OVER), PAYDAY(DroidMood.PAYDAY), ASLEEP(DroidMood.ASLEEP) }
+
+/** On the tile, a glance at night: asleep from 11pm to 6am ([com.spendroid.ui.PennySleep]). The app, opened, is awake. */
+internal fun tileMoodOf(r: BudgetReading?, time: java.time.LocalTime = java.time.LocalTime.now()): WatchMood =
+    if (com.spendroid.ui.PennySleep.asleep(time)) WatchMood.ASLEEP else r?.let { moodOf(it) } ?: WatchMood.AHEAD
 
 internal fun moodOf(r: BudgetReading): WatchMood = when {
     r.map.getBoolean("payday", false) -> WatchMood.PAYDAY
@@ -62,6 +66,7 @@ internal fun WatchDroid(mood: WatchMood, used: Float?, elapsed: Float?, accent: 
         WatchMood.TIGHT -> "A bit tight"
         WatchMood.OVER -> "Over for the days so far"
         WatchMood.PAYDAY -> "Payday"
+        WatchMood.ASLEEP -> "Overnight"
     }
     Canvas(modifier.size(size).semantics { contentDescription = said }) {
         // Read here, in drawing, so only her drawing redraws as the clock ticks.
@@ -73,6 +78,6 @@ internal fun WatchDroid(mood: WatchMood, used: Float?, elapsed: Float?, accent: 
 
 /** Penny as a picture, for a tile: tiles take images, not drawing. Her mood's own pose, with a typical fill. */
 internal fun watchDroidBitmap(mood: WatchMood, accent: Int, sizePx: Int = 96): Bitmap {
-    val fill = when (mood) { WatchMood.AHEAD -> 0.3f; WatchMood.TIGHT -> 0.55f; WatchMood.OVER -> 0.75f; WatchMood.PAYDAY -> 1f }
+    val fill = when (mood) { WatchMood.AHEAD -> 0.3f; WatchMood.TIGHT -> 0.55f; WatchMood.OVER -> 0.75f; WatchMood.PAYDAY -> 1f; WatchMood.ASLEEP -> 0.3f }
     return pennyStill(DroidFace(mood.mood, fill, 0.5f), Color(accent), sizePx)
 }

@@ -38,6 +38,9 @@ object PennyVoice {
     /** The line to lead with on the [visit]th time Home is opened: the top few in turn. */
     fun lead(lines: List<Line>, visit: Int): Int = if (lines.isEmpty()) 0 else Math.floorMod(visit, minOf(TURNS, lines.size))
 
+    /** The same, by how many lines there are: for lines that aren't [Line]s - the tabs'. */
+    fun lead(count: Int, visit: Int): Int = if (count == 0) 0 else Math.floorMod(visit, minOf(TURNS, count))
+
     fun lines(
         budget: BudgetSnapshot,
         now: LocalDateTime,
