@@ -115,7 +115,14 @@ internal class BackupArea(host: AreaHost,
             val app = getApplication<Application>()
             com.spendroid.data.Stores.clearedWithData.forEach { com.spendroid.data.Stores.prefs(app, it).edit().clear().commit() }
             com.spendroid.data.PayeeNames.load(app)
-            _state.update { RootUiState(connections = emptyList(), manualRules = emptyList(), showRecurringOnly = true, showInternalTransfers = false, versionName = "", versionCode = 0) }
+            // A restore begun since the database emptied - its passphrase asked, or under way - carries
+            // on: wiped here, the prompt vanished, and a restore straight after a clear went nowhere.
+            _state.update { before ->
+                RootUiState(
+                    connections = emptyList(), manualRules = emptyList(), showRecurringOnly = true, showInternalTransfers = false, versionName = "", versionCode = 0,
+                    importStatus = before.importStatus.takeIf { it is ImportStatus.Working || it is ImportStatus.NeedsPassphrase } ?: ImportStatus.Idle,
+                )
+            }
             forgetLink()
             // Otherwise the widgets go on showing the figures that were just deleted.
             refreshWidgets(getApplication())

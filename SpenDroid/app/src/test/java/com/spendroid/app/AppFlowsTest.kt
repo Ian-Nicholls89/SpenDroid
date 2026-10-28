@@ -135,6 +135,26 @@ class AppFlowsTest {
         assertEquals(14, Stores.prefs(app, Stores.MANUAL_REMINDERS).getInt("statement_every_days", 0))
     }
 
+    /**
+     * 0.7.2: Restore tapped straight after Clear all data. Clearing ends by starting the screen
+     * afresh; that used to wipe the passphrase question the restore had just asked.
+     */
+    @Test
+    fun `a restore straight after clearing still asks for its passphrase`() {
+        seed()
+        val json = runBlocking { repo.exportJson(com.spendroid.data.BackupPrefs.export(app), includeBank = true) }
+        val locked = File(app.cacheDir, "straight-after.spendroid").apply { writeBytes(com.spendroid.data.BackupCrypto.encrypt(json, "made-up passphrase".toCharArray())) }
+        val vm = RootViewModel(app)
+        until("loaded") { vm.state.value.accounts.isNotEmpty() }
+        vm.clearData()
+        until("cleared") { runBlocking { repo.accounts().isEmpty() } }
+        vm.importFrom(Uri.fromFile(locked))
+        until("asked") { vm.state.value.importStatus is ImportStatus.NeedsPassphrase }
+        // Clearing's own last step, whenever it lands, leaves the question there.
+        repeat(20) { shadowOf(Looper.getMainLooper()).idle(); Thread.sleep(50) }
+        assertTrue("still asked", vm.state.value.importStatus is ImportStatus.NeedsPassphrase)
+    }
+
     @Test
     fun `an encrypted backup asks for its passphrase, refuses a wrong one, and opens with the right one`() {
         seed()
