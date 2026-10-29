@@ -96,4 +96,14 @@ class RenewalAlertsTest {
         check()
         assertTrue(manager.allNotifications.isEmpty())
     }
+
+    @Test
+    fun `not when it looks paid already - Penny's question does instead`() {
+        val paid = com.spendroid.data.db.TransactionEntity(
+            accountId = "a", transactionId = "t1", bookingDate = today.minusDays(2).toString(), valueDate = null, amountMinor = -46_218,
+            currency = "GBP", payee = "MADE-UP INSURANCE CO", description = null, isPending = false, rawJson = null,
+        )
+        RenewalAlerts.check(app, Renewals.all(RenewalStore(app).all(), listOf(paid), today))
+        assertTrue(manager.allNotifications.isEmpty())
+    }
 }

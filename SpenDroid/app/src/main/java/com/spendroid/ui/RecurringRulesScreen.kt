@@ -219,9 +219,15 @@ fun RecurringRulesScreen(
         onOpenedRule()
     }
     renewalOpen?.let { (id, name) ->
+        // Read afresh from the store: a reminder just changed shows at once, not after the figures are redone.
+        val existing = id?.let { want -> renewalStore.get(want) ?: renewals.firstOrNull { it.renewal.id == want }?.renewal }
+        // Removed since - its notification tapped later: nothing to open, and not an empty "Add".
+        if (id != null && existing == null) {
+            androidx.compose.runtime.LaunchedEffect(id) { renewalOpen = null }
+            return@let
+        }
         RenewalSheet(
-            // Read afresh from the store: a reminder just changed shows at once, not after the figures are redone.
-            existing = id?.let { want -> renewalStore.get(want) ?: renewals.firstOrNull { it.renewal.id == want }?.renewal },
+            existing = existing,
             name = name,
             today = LocalDate.now(),
             onSave = { r -> renewalStore.save(r); if (id == null) renewalOpen = null; onReload() },

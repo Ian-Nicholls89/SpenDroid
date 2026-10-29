@@ -79,6 +79,10 @@ object Renewals {
     /** How long after the end a renewal's payment can still turn up - and the reminder stays. */
     private const val LATE_DAYS = 21L
 
+    /** A payment to the same payee this long before means it's paid regularly: a week to six. */
+    private const val REGULAR_GAP_MIN = 6L
+    private const val REGULAR_GAP_MAX = 45L
+
     fun status(r: Renewal, today: LocalDate): Status {
         val daysLeft = ChronoUnit.DAYS.between(today, r.ends)
         return when {
@@ -90,8 +94,16 @@ object Renewals {
     }
 
     /** Every renewal, soonest first, each with where it stands and any payment to ask about. */
-    fun all(renewals: List<Renewal>, transactions: List<TransactionEntity>, today: LocalDate): List<Item> =
-        renewals.sortedBy { it.ends }.map { r -> Item(r, status(r, today), lookalike(r, transactions, today)) }
+    fun all(renewals: List<Renewal>, transactions: List<TransactionEntity>, today: LocalDate): List<Item> {
+        // A payment is one renewal's at most: one already said to renew another isn't asked about
+        // again, and two ending together don't both ask about the same one - the sooner asks.
+        val taken = renewals.flatMap { r -> r.renewedBy.map { it.key } }.toMutableSet()
+        return renewals.sortedBy { it.ends }.map { r ->
+            val match = lookalike(r, transactions, today, taken)
+            match?.let { taken += it.key }
+            Item(r, status(r, today), match)
+        }
+    }
 
     /** How a transaction is known again: the same key for the same payment, sync after sync. */
     fun txKey(tx: TransactionEntity): String = "${tx.accountId}|${tx.transactionId}"
@@ -101,10 +113,18 @@ object Renewals {
      * after its end: to a payee it was renewed with before, or one named like it, or - for
      * insurance or cover - to an insurer. The latest one not already answered.
      */
-    fun lookalike(r: Renewal, transactions: List<TransactionEntity>, today: LocalDate): Payment? {
+    fun lookalike(r: Renewal, transactions: List<TransactionEntity>, today: LocalDate, taken: Set<String> = emptySet()): Payment? {
         val from = r.remindOn.minusWeeks(2)
         val to = minOf(r.ends.plusDays(LATE_DAYS), today)
-        val answered = r.notIt + r.renewedBy.map { it.key }
+        val answered = r.notIt + r.renewedBy.map { it.key } + taken
+        // Payees paid regularly - a monthly insurance direct debit - by when each was paid: one
+        // paid a month or so before too is that, carrying on, not something renewing.
+        val paidOn = transactions.asSequence()
+            .filter { !it.isPending && it.amountMinor < 0 }
+            .mapNotNull { tx -> RecurringAnalyzer.parseBookingDate(tx.bookingDate)?.let { RecurringAnalyzer.normalizedPayee(tx.payee) to it } }
+            .groupBy({ it.first }, { it.second })
+        fun carryingOn(tx: TransactionEntity, on: LocalDate): Boolean =
+            paidOn[RecurringAnalyzer.normalizedPayee(tx.payee)].orEmpty().any { it.isBefore(on.minusDays(REGULAR_GAP_MIN)) && !it.isBefore(on.minusDays(REGULAR_GAP_MAX)) }
         val before = r.renewedBy.map { RecurringAnalyzer.normalizedPayee(it.payee) }.toSet()
         val stems = stemsOf(r.name)
         val insurance = INSURANCE_WORDS.any { r.name.lowercase().contains(it) }
@@ -113,6 +133,7 @@ object Renewals {
             .filter { txKey(it) !in answered }
             .mapNotNull { tx -> RecurringAnalyzer.parseBookingDate(tx.bookingDate)?.let { tx to it } }
             .filter { (_, d) -> !d.isBefore(from) && !d.isAfter(to) }
+            .filter { (tx, d) -> !carryingOn(tx, d) }
             .filter { (tx, _) ->
                 val payee = tx.payee.lowercase()
                 RecurringAnalyzer.normalizedPayee(tx.payee) in before ||

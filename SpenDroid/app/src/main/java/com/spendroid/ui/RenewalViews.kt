@@ -328,6 +328,8 @@ private fun RemindChoice(remind: Renewals.Remind, onPick: (Renewals.Remind) -> U
 @Composable
 private fun RenewalDetails(r: Renewals.Renewal, today: LocalDate, onSave: (Renewals.Renewal) -> Unit, onRemove: () -> Unit) {
     var picking by remember { mutableStateOf(false) }
+    // Removing can't be undone: a second tap to be sure.
+    var removing by remember { mutableStateOf(false) }
     Row(verticalAlignment = Alignment.CenterVertically) {
         ArtTile(payeeColour(r.name), size = 38.dp) { Monogram(r.name, 38.dp) }
         Spacer(Modifier.width(10.dp))
@@ -368,8 +370,8 @@ private fun RenewalDetails(r: Renewals.Renewal, today: LocalDate, onSave: (Renew
             modifier = Modifier.weight(1f).clip(RoundedCornerShape(8.dp)).clickable { picking = true }.padding(vertical = 10.dp),
         )
         Text(
-            "Remove", color = Charcoal.Bad, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelLarge,
-            modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable(onClick = onRemove).padding(10.dp),
+            if (removing) "Tap again to remove" else "Remove", color = Charcoal.Bad, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelLarge,
+            modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable { if (removing) onRemove() else removing = true }.padding(10.dp),
         )
     }
     if (picking) {

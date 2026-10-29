@@ -118,4 +118,25 @@ class RenewalsTest {
         val tv = Renewals.Renewal(id = "tv", name = "TV licence", ends = today.plusWeeks(3))
         assertEquals("TV licence ends in 3 weeks. Worth a look before it renews.", TabVoice.renewalLines(Renewals.all(listOf(tv), emptyList(), today)).single().text)
     }
+
+    @Test
+    fun `a monthly insurance direct debit carrying on isn't asked about`() {
+        // Pet insurance taken monthly: in the car's weeks, but paid a month before too.
+        val monthly = (0..4L).map { tx(LocalDate.of(2026, 11, 3).plusMonths(it), 1_850, "MADE-UP PET INSURANCE") }
+        assertNull(Renewals.lookalike(car, monthly, LocalDate.of(2027, 3, 20)))
+        // A new insurer's first payment still is.
+        val first = tx(LocalDate.of(2027, 3, 4), 46_218, "ADMIRAL INSURANCE")
+        assertEquals("ADMIRAL INSURANCE", Renewals.lookalike(car, monthly + first, LocalDate.of(2027, 3, 20))?.payee)
+    }
+
+    @Test
+    fun `two ending together don't both ask about one payment, nor about one already said to renew the other`() {
+        val home = Renewals.Renewal(id = "home", name = "Home insurance", ends = LocalDate.of(2027, 3, 20))
+        val paid = tx(LocalDate.of(2027, 3, 2), 46_218, "ADMIRAL INSURANCE")
+        val items = Renewals.all(listOf(car, home), listOf(paid), LocalDate.of(2027, 3, 5))
+        assertEquals(listOf("car"), items.filter { it.match != null }.map { it.renewal.id })
+
+        val renewedCar = car.copy(renewedBy = listOf(Renewals.Payment(Renewals.txKey(paid), paid.bookingDate.let(LocalDate::parse), paid.payee, 46_218)))
+        assertTrue(Renewals.all(listOf(renewedCar, home), listOf(paid), LocalDate.of(2027, 3, 5)).all { it.match == null })
+    }
 }

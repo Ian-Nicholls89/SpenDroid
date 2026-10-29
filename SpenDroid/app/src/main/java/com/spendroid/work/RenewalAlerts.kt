@@ -37,6 +37,8 @@ object RenewalAlerts {
         val told = mutableListOf<String>()
         renewals.forEach { item ->
             val s = item.status as? Renewals.Status.Due ?: return@forEach
+            // Paid already, by the look of it: Penny's question about that payment does instead.
+            if (item.match != null) return@forEach
             val r = item.renewal
             // Once for each end date - and once more after each "Remind me in 2 weeks".
             val key = "renewal|${r.id}|${r.ends}|${r.snoozedUntil ?: ""}"
