@@ -105,6 +105,9 @@ class RenewalsRunTest {
             tap("Renewals", lowest = false)
             until("the tab") { shows("1 renewal") }
             assertTrue(shows("SORTED"))
+            // The usual ones stay a tap away, less the one already there (0.7.2.1).
+            assertTrue(shows("+ Home insurance"))
+            assertTrue(!shows("+ Car insurance"))
         }
     }
 

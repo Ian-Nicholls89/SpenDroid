@@ -98,16 +98,30 @@ internal fun LazyListScope.renewalsTab(
         item { DayHeading("Later") }
         items(later, key = { "renewal|" + it.renewal.id }) { RenewalRow(it, today, onOpen) }
     }
-    item {
+    // The usual ones still a tap away once there's one - less those already added.
+    val missing = Renewals.USUAL.filter { usual -> items.none { it.renewal.name.trim().equals(usual, ignoreCase = true) } }
+    item { DayHeading("Add another") }
+    item { QuickAdd(missing, onAdd, Modifier.padding(horizontal = 14.dp)) }
+}
+
+/** The usual ones as pills to add with a tap, and "Add something else" for the rest. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun QuickAdd(usual: List<String>, onAdd: (String?) -> Unit, modifier: Modifier = Modifier) {
+    Column(modifier) {
+        if (usual.isNotEmpty()) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                usual.forEach { name -> Pill("+ $name") { onAdd(name) } }
+            }
+        }
         Text(
-            "Add a renewal",
+            "Add something else",
             style = MaterialTheme.typography.labelLarge,
             fontWeight = FontWeight.Bold,
             color = Charcoal.Muted,
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 6.dp)
-                .clip(RoundedCornerShape(22.dp)).border(1.dp, Charcoal.Line, RoundedCornerShape(22.dp))
-                .clickable { onAdd(null) }.padding(vertical = 12.dp),
             textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            modifier = Modifier.fillMaxWidth().padding(top = if (usual.isEmpty()) 0.dp else 12.dp).clip(RoundedCornerShape(22.dp))
+                .border(1.dp, Charcoal.Line, RoundedCornerShape(22.dp)).clickable { onAdd(null) }.padding(vertical = 12.dp),
         )
     }
 }
@@ -154,18 +168,7 @@ private fun RenewalsEmpty(onAdd: (String?) -> Unit) {
             modifier = Modifier.padding(top = 4.dp),
         )
         Text("The usual ones", style = MaterialTheme.typography.labelMedium, color = Charcoal.Muted, modifier = Modifier.padding(top = 12.dp, bottom = 8.dp))
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Renewals.USUAL.forEach { name -> Pill("+ $name") { onAdd(name) } }
-        }
-        Text(
-            "Add something else",
-            style = MaterialTheme.typography.labelLarge,
-            fontWeight = FontWeight.Bold,
-            color = Charcoal.Muted,
-            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-            modifier = Modifier.fillMaxWidth().padding(top = 12.dp).clip(RoundedCornerShape(22.dp)).border(1.dp, Charcoal.Line, RoundedCornerShape(22.dp))
-                .clickable { onAdd(null) }.padding(vertical = 12.dp),
-        )
+        QuickAdd(Renewals.USUAL, onAdd)
     }
 }
 

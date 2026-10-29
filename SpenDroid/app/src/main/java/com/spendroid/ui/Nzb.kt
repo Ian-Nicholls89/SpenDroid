@@ -1,5 +1,8 @@
 package com.spendroid.ui
 
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInParent
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -107,6 +110,10 @@ fun LabelledBar(
 ) {
     val shown by animateFloatAsState(fraction.coerceIn(0f, 1f), Motion.change(Motion.LONG), label = "bar")
     val coming by animateFloatAsState(extra.coerceIn(0f, 1f - fraction.coerceIn(0f, 1f)), Motion.change(Motion.LONG), label = "bar extra")
+    val fontSize = if (height < 20.dp) 11.sp else 12.sp
+    // At a large text size the bar grows to hold its figure, rather than the figure spilling out.
+    val fontScale = androidx.compose.ui.platform.LocalDensity.current.fontScale
+    val height = maxOf(height, (fontSize.value * fontScale * 1.5f).dp)
     BoxWithConstraints(
         modifier
             .fillMaxWidth()
@@ -145,7 +152,8 @@ fun LabelledBar(
             label,
             fontFamily = com.spendroid.ui.theme.Grotesk,
             fontWeight = FontWeight.Bold,
-            fontSize = if (height < 20.dp) 11.sp else 12.sp,
+            fontSize = fontSize,
+            lineHeight = fontSize,
             color = Color.White,
             textAlign = TextAlign.Center,
             maxLines = 1,
@@ -257,10 +265,20 @@ fun Chip(text: String, colour: Color, textColour: Color = Color(0xFF111111), mod
 /** Text tabs, the selected one white with a dot beneath it in the accent. */
 @Composable
 fun DotTabs(tabs: List<String>, selected: Int, onSelect: (Int) -> Unit, modifier: Modifier = Modifier) {
-    Row(modifier, horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+    // More tabs than fit - five, at a large text size - scroll sideways, each kept to one line,
+    // rather than the last squeezed into a column of letters. The chosen one is scrolled into view.
+    val scroll = androidx.compose.foundation.rememberScrollState()
+    val starts = androidx.compose.runtime.remember(tabs) { IntArray(tabs.size) }
+    androidx.compose.runtime.LaunchedEffect(selected, tabs) {
+        // A frame first, so each tab has been placed and its start is known.
+        androidx.compose.runtime.withFrameNanos { }
+        if (selected in starts.indices) scroll.animateScrollTo((starts[selected] - 40).coerceAtLeast(0))
+    }
+    Row(modifier.horizontalScroll(scroll), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
         tabs.forEachIndexed { i, label ->
             Column(
                 Modifier
+                    .onGloballyPositioned { starts[i] = it.positionInParent().x.toInt() }
                     .clip(RoundedCornerShape(6.dp))
                     .clickable { onSelect(i) }
                     .padding(vertical = 6.dp),
@@ -272,6 +290,8 @@ fun DotTabs(tabs: List<String>, selected: Int, onSelect: (Int) -> Unit, modifier
                     fontWeight = FontWeight.Bold,
                     fontSize = 15.sp,
                     color = if (i == selected) Color.White else Color(0xFF7D828C),
+                    maxLines = 1,
+                    softWrap = false,
                 )
                 Spacer(Modifier.height(4.dp))
                 Box(

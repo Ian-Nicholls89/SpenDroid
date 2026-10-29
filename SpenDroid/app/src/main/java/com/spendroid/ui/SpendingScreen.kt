@@ -16,8 +16,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.horizontalScroll
 import com.spendroid.data.db.TransactionEntity
 import com.spendroid.domain.Category
 
@@ -84,7 +82,7 @@ fun SpendingScreen(
             tabs = SpendingTab.entries.map { it.label },
             selected = selected,
             onSelect = { own = it; onTabIndex(it) },
-            modifier = Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 18.dp),
+            modifier = Modifier.padding(horizontal = 18.dp),
         )
         when (tab) {
             SpendingTab.INSIGHTS -> Unit

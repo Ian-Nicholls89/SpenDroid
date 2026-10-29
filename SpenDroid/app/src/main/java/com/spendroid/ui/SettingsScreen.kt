@@ -49,7 +49,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.border
 import androidx.compose.foundation.background
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.spendroid.domain.BudgetModel
@@ -124,14 +123,13 @@ fun SettingsScreen(
     var selectedTime by rememberSaveable { mutableStateOf(parseNotificationTime(notificationTime).format(timeFormatter)) }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        // Scrollable, not fixed: five labels sharing the width evenly left "Notifications"
-        // about 70dp, so it broke mid-word into "Notifi / catio / ns". Each tab now takes
-        // the width its own label needs and the row scrolls if they do not all fit.
+        // Each tab takes the width its own label needs, and the row scrolls if they don't all
+        // fit (DotTabs does that itself): shared evenly, "Notifications" broke mid-word.
         DotTabs(
             tabs = SettingsTab.entries.map { it.label },
             selected = selectedTab,
             onSelect = { selectedTab = it },
-            modifier = Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 18.dp),
+            modifier = Modifier.padding(horizontal = 18.dp),
         )
         Column(
             modifier = Modifier
