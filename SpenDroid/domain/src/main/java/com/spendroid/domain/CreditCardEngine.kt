@@ -385,7 +385,7 @@ object CreditCardEngine {
      * With no usual bill yet there is nothing to start from, so the statement needs a week
      * of its own first.
      */
-    internal fun projectStatement(
+    fun projectStatement(
         soFar: Long,
         usualMinor: Long?,
         today: LocalDate,

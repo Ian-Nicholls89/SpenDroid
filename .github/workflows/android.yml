@@ -85,6 +85,10 @@ jobs:
       - name: The computer page reads statements as the phone does
         run: node app/src/test/web/import-parity.mjs
 
+      # Plain Kotlin, no phone needed: a few seconds, and a wrong budget sum never reaches a release.
+      - name: The budget's maths
+        run: ./gradlew :domain:testDebugUnitTest
+
       - name: Build Debug APK
         run: ./gradlew assembleDebug
         

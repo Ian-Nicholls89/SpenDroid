@@ -302,10 +302,11 @@ internal object WatchSync {
         )
         putFloat("capShare", cap?.let { (bill.unbilledMinor.toFloat() / it).coerceIn(0f, 1f) } ?: -1f)
         val cycle = bill.statementClose?.let { close -> bill.nextStatementClose?.let { ChronoUnit.DAYS.between(close, it) } }
+        val elapsed = bill.statementDaysElapsed
         putFloat(
             "statementGone",
-            if (cycle != null && cycle > 0 && bill.statementDaysElapsed != null) {
-                (bill.statementDaysElapsed.toFloat() / cycle).coerceIn(0f, 1f)
+            if (cycle != null && cycle > 0 && elapsed != null) {
+                (elapsed.toFloat() / cycle).coerceIn(0f, 1f)
             } else {
                 -1f
             },

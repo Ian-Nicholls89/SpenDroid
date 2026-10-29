@@ -61,9 +61,10 @@ private fun until(date: LocalDate, today: LocalDate): String {
 /** What's known about one, under its name: when it ends, and what it cost or how it's paid. */
 private fun facts(r: Renewals.Renewal): String = buildString {
     append("ends ${r.ends.format(DAY)}")
+    val last = r.lastMinor
     when {
         r.paid == Renewals.Paid.MONTHLY -> append(" · paid monthly")
-        r.lastMinor != null -> append(" · about ${roughly(r.lastMinor)} last time")
+        last != null -> append(" · about ${roughly(last)} last time")
     }
 }
 

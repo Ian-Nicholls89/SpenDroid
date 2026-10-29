@@ -356,7 +356,7 @@ object PennyVoice {
     private val WEEKDAY_DAY_MONTH = DateTimeFormatter.ofPattern("EEE d MMM", Locale.UK)
 
     /** Payday: "on Wednesday" within the week; further off, the date - "on Wednesday" read as this one. */
-    internal fun paydayOn(date: LocalDate, today: LocalDate): String =
+    fun paydayOn(date: LocalDate, today: LocalDate): String =
         if (!date.isAfter(today.plusDays(6))) "on ${date.dayOfWeek.getDisplayName(TextStyle.FULL, Locale.UK)}"
         else "on ${date.format(WEEKDAY_DAY_MONTH)}"
 

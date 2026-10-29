@@ -70,8 +70,8 @@ android {
         applicationId = "com.spendroid"
         minSdk = 26
         targetSdk = 35
-        versionCode = 207
-        versionName = "0.7.3"
+        versionCode = 208
+        versionName = "0.7.4"
         // Native code - the database's encryption - only for the processors phones have, not
         // emulators' x86: about half the size it would add.
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
@@ -120,6 +120,7 @@ android {
 dependencies {
     // Penny - her face, moods and moments - shared with the watch.
     implementation(project(":penny"))
+    implementation(project(":domain"))
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.core.ktx)
     // Reading PDF statements on the phone (Apache 2.0).
