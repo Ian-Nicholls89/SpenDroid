@@ -69,6 +69,14 @@ internal fun PennyAsking(
                     com.spendroid.ui.PennyBills.answer(context, rule, isBill)
                     viewModel.setRuleIgnored(rule.key, !isBill)
                 },
+                onRenewed = { id, payment, ends ->
+                    com.spendroid.data.RenewalStore(context).renewed(id, payment, ends)
+                    viewModel.reloadLocal()
+                },
+                onNotRenewed = { id, key ->
+                    com.spendroid.data.RenewalStore(context).notIt(id, key)
+                    viewModel.reloadLocal()
+                },
             ),
             onLater = {
                 com.spendroid.ui.PennyAsk.later(context)

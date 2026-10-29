@@ -75,6 +75,7 @@ class AppFlowsTest {
         PayeeNames.load(app)
         PayeeNames.set("VIS 4471 SQ *KTH", "Coffee by the station")
         ContractEnds(app).set("gym club", LocalDate.of(2027, 3, 1))
+        com.spendroid.data.RenewalStore(app).save(com.spendroid.domain.Renewals.Renewal(id = "car", name = "Car insurance", ends = LocalDate.of(2027, 3, 14), lastMinor = 45_000))
         SubscriptionChoices(app).setKind("OUT|GBP|2500|gym club", Subscriptions.Kind.HOUSEHOLD)
         repo.saveSpendSources(listOf(NotificationSpend.Source(natwest, "NatWest", listOf(account.id), defaultAccountId = account.id)))
         repo.setSpendReadingOn(true)
@@ -107,6 +108,7 @@ class AppFlowsTest {
         // Clear all data: the user's data goes, this phone's settings stay (0.6.0's list).
         assertNull(PayeeNames.nameFor("VIS 4471 SQ *KTH"))
         assertTrue(ContractEnds(app).all().isEmpty())
+        assertTrue(com.spendroid.data.RenewalStore(app).all().isEmpty())
         assertTrue(SubscriptionChoices(app).kinds().isEmpty())
         assertTrue(Stores.prefs(app, Stores.PENNY_BILLS).all.isEmpty())
         assertTrue(Stores.prefs(app, Stores.MONEY_WATCH).all.isEmpty())
@@ -128,6 +130,8 @@ class AppFlowsTest {
         }
         assertEquals("Coffee by the station", PayeeNames.nameFor("VIS 4471 SQ *KTH"))
         assertEquals(LocalDate.of(2027, 3, 1), ContractEnds(app).all()["gym club"])
+        // Renewals too (0.7.2).
+        assertEquals(LocalDate.of(2027, 3, 14), com.spendroid.data.RenewalStore(app).get("car")?.ends)
         assertEquals(Subscriptions.Kind.HOUSEHOLD, SubscriptionChoices(app).kinds()["OUT|GBP|2500|gym club"])
         // Penny's answers, money watch's decisions and the reminders too (0.6.5).
         assertTrue(Stores.prefs(app, Stores.PENNY_BILLS).contains("OUT|GBP|300|car park"))

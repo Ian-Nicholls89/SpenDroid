@@ -191,6 +191,8 @@
         <receiver android:name=".work.SubscriptionReceiver" android:exported="false" />
         <!-- The account buttons on "which account?". -->
         <receiver android:name=".work.SpendAnswerReceiver" android:exported="false" />
+        <!-- "Remind me in 2 weeks" and "Sorted" on a renewal coming up. -->
+        <receiver android:name=".work.RenewalReceiver" android:exported="false" />
 
         <receiver
             android:name=".data.InstallResultReceiver"

@@ -54,6 +54,10 @@ class AlertsWorker(
             SubscriptionAlerts.check(applicationContext, outlook, transactions, repo.ignoredRules.first())
             ContractAlerts.check(applicationContext, outlook)
         }
+        // Renewals in their reminder weeks.
+        runCatching {
+            RenewalAlerts.check(applicationContext, com.spendroid.domain.Renewals.all(com.spendroid.data.RenewalStore(applicationContext).all(), transactions, java.time.LocalDate.now()))
+        }
         // Accounts with no bank link: a new statement, a balance check.
         runCatching { ManualAlerts.check(applicationContext, repo.accounts(), repo.manualCoverage(), snapshot.cycleStart) }
 

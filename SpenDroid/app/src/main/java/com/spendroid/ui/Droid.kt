@@ -73,6 +73,8 @@ fun Droid(
     moment: DroidMoment = DroidMoment.NONE,
     /** The visor sweeps up to the figure as the screen opens. */
     fillOnOpen: Boolean = false,
+    /** Her bulb in a colour of its own: amber while what she's saying needs the user. */
+    bulb: Color? = null,
 ) {
     val colour = droidColour(face.mood, accent)
     val description = when {
@@ -87,28 +89,28 @@ fun Droid(
         }
     }
     LocalDroidAt.current?.let { ms ->
-        Box(modifier) { DroidAt(face, size, accent, ms, moment, ms, fillOnOpen, line) }
+        Box(modifier) { DroidAt(face, size, accent, ms, moment, ms, fillOnOpen, line, bulb) }
         return
     }
     if (!droidStill()) {
-        MovingDroid(face, size, modifier, colour, line, moment, fillOnOpen, description)
+        MovingDroid(face, size, modifier, colour, line, moment, fillOnOpen, description, bulb)
         return
     }
     // Still: animations switched off on the phone, or a screenshot.
     Canvas(
         modifier.size(size).semantics { contentDescription = description },
     ) {
-        scale(this.size.minDimension / 108f, pivot = Offset.Zero) { drawDroid(face, colour, line) }
+        scale(this.size.minDimension / 108f, pivot = Offset.Zero) { drawDroid(face, colour, line, bulb ?: colour) }
     }
 }
 
 /** The drawing itself, in 108 units. Shared with nothing else, so the widget draws its own copy. */
-private fun DrawScope.drawDroid(face: DroidFace, colour: Color, line: Color) {
+private fun DrawScope.drawDroid(face: DroidFace, colour: Color, line: Color, bulb: Color = colour) {
     val track = Color(0xFF3A3D45)
     val cap = StrokeCap.Round
     // Antenna and bulb.
     drawLine(line, Offset(62f, 25f), Offset(67f, 15f), strokeWidth = 4f, cap = cap)
-    drawCircle(colour, radius = 4.5f, center = Offset(68f, 13f))
+    drawCircle(bulb, radius = 4.5f, center = Offset(68f, 13f))
     // Head.
     drawRoundRect(line, Offset(26f, 27f), Size(56f, 52f), CornerRadius(16f), style = Stroke(5f))
     // Visor: the budget used, then the tick where the days are. Payday: full, no tick.

@@ -68,6 +68,9 @@ internal sealed class PennyQuestion(val key: String) {
     class WhichAccount(val spend: SeenSpendEntity) : PennyQuestion("account:${spend.id}")
     class NotReported(val spend: SeenSpendEntity) : PennyQuestion("unreported:${spend.id}")
     class Vanished(val question: DuplicateCheck.Question) : PennyQuestion("vanished:${question.vanished.accountId}:${question.vanished.transactionId}")
+    /** A payment around a renewal's end that looks like it (0.7.2): was it, and when does the new cover end? */
+    class Renewed(val renewal: com.spendroid.domain.Renewals.Renewal, val payment: com.spendroid.domain.Renewals.Payment) :
+        PennyQuestion("renewal:${renewal.id}:${payment.key}")
 }
 
 /** Every question waiting, most pressing first: the ones that change today's figure lead. */
@@ -85,7 +88,8 @@ internal fun pennyQuestions(
         bills.map { PennyQuestion.NewBill(it) } +
         NotificationSpend.unanswered(state.seenSpends).filter { it.id !in asked }.sortedByDescending { it.seenAt }.map { PennyQuestion.WhichAccount(it) } +
         NotificationSpend.unconfirmed(state.seenSpends, now, state.manualCoverage).filter { it.id !in asked }.map { PennyQuestion.NotReported(it) } +
-        state.duplicateQuestions.map { PennyQuestion.Vanished(it) }
+        state.duplicateQuestions.map { PennyQuestion.Vanished(it) } +
+        state.renewals.mapNotNull { item -> item.match?.let { PennyQuestion.Renewed(item.renewal, it) } }
 }
 
 /** What answering does: the same calls the cards made. */
@@ -100,6 +104,10 @@ internal class PennyAnswers(
     val onCardCheck: (spendId: String, check: Boolean) -> Unit = { _, _ -> },
     /** "A regular bill, or just spending?" */
     val onBill: (rule: com.spendroid.domain.RecurringRule, isBill: Boolean) -> Unit = { _, _ -> },
+    /** That payment renewed it, and the new cover ends then. */
+    val onRenewed: (id: String, payment: com.spendroid.domain.Renewals.Payment, ends: LocalDate) -> Unit = { _, _, _ -> },
+    /** That payment wasn't it. */
+    val onNotRenewed: (id: String, paymentKey: String) -> Unit = { _, _ -> },
 )
 
 /**
@@ -197,6 +205,7 @@ internal fun PennyQuestionBody(
             is PennyQuestion.WhichAccount -> AccountQuestion(q.spend, accounts, sources, answers) { answer(q, it) }
             is PennyQuestion.NotReported -> UnreportedQuestion(q.spend, answers) { answer(q, it) }
             is PennyQuestion.Vanished -> VanishedQuestion(q.question, accounts, answers) { answer(q, it) }
+            is PennyQuestion.Renewed -> RenewedQuestion(q, answers) { answer(q, it) }
         }
         Text(
             "Ask me later",
@@ -387,6 +396,61 @@ private fun VanishedQuestion(q: DuplicateCheck.Question, accounts: List<AccountE
                 said(Noted("Kept: $money at $payee stays counted."))
             }, Modifier.fillMaxWidth())
         }
+    }
+}
+
+/** "Car insurance" in a sentence: "your car insurance" - but "your TV licence". */
+private fun inSentence(name: String): String =
+    if (name.length > 1 && name[1].isLowerCase()) name.replaceFirstChar { it.lowercase() } else name
+
+@Composable
+private fun RenewedQuestion(q: PennyQuestion.Renewed, answers: PennyAnswers, said: (Noted) -> Unit) {
+    val r = q.renewal
+    val p = q.payment
+    val what = inSentence(r.name)
+    val long = DateTimeFormatter.ofPattern("EEE d MMM yyyy")
+    // First whether it was it; then - never assuming the payment's date - when the new cover ends.
+    var yes by remember(q.key) { mutableStateOf(false) }
+    var picking by remember(q.key) { mutableStateOf(false) }
+    fun renewed(ends: LocalDate) {
+        answers.onRenewed(r.id, p, ends)
+        said(Noted("Noted: $what ends ${ends.format(long)}. Reminder on ${r.remind.on(ends).format(DAY)}. You can change it under Regular, Renewals."))
+    }
+    if (!yes) {
+        Question(
+            "${formatMoney(p.amountMinor, "GBP")} to ${p.payee.tidyPayee().ifBlank { p.payee }}, ${p.date.format(DAY)}",
+            "Your $what ${if (r.ends.isBefore(LocalDate.now())) "ended" else "ends"} on ${r.ends.format(DAY)}. Was this it renewing - with anyone?",
+        )
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            BigButton("Yes, renewed", null, { yes = true }, Modifier.fillMaxWidth(), colour = Charcoal.Warn, textColour = Color(0xFF111111))
+            BigButton("No", null, {
+                answers.onNotRenewed(r.id, p.key)
+                said(Noted("Noted: that wasn't your $what. I'll keep an eye out."))
+            }, Modifier.fillMaxWidth())
+        }
+        return
+    }
+    Question(
+        "When does the new cover end?",
+        "It's on the new policy's schedule. I'll remind you ${r.remind.label}.",
+    )
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        com.spendroid.domain.Renewals.nextEnds(r, p.date).forEach { ends ->
+            BigButton(ends.format(long), null, { renewed(ends) }, Modifier.fillMaxWidth())
+        }
+        BigButton("Another date…", null, { picking = true }, Modifier.fillMaxWidth())
+    }
+    Text(
+        "A year on from the old end, or from this payment - or pick the one on the schedule.",
+        color = Charcoal.Muted, style = MaterialTheme.typography.labelSmall, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 8.dp),
+    )
+    if (picking) {
+        RenewalDatePicker(
+            "New cover ends", r.ends.plusYears(1), earliest = p.date,
+            onPick = { picking = false; renewed(it) },
+            onDismiss = { picking = false },
+            note = "Nothing before the payment on ${p.date.format(DAY)}.",
+        )
     }
 }
 

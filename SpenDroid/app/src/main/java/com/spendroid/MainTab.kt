@@ -53,33 +53,27 @@ internal fun MainTab(
     var showManualDialog by manualDialog
     // Penny on this tab (0.7.0): her lines, and where each one's link goes.
     val tabLines = androidx.compose.runtime.remember(state, shown) { com.spendroid.ui.tabLines(state, shown) }
+    // Where a line's link goes: on its own tab, or from Home - which moves to the tab first.
+    fun follow(target: com.spendroid.domain.TabVoice.Target) {
+        when (target) {
+            is com.spendroid.domain.TabVoice.Target.Spend -> { viewModel.setCategoryFilter(target.category); spendingTab = 0 }
+            is com.spendroid.domain.TabVoice.Target.Shop -> { viewModel.setTransactionQuery(target.name); spendingTab = 0 }
+            com.spendroid.domain.TabVoice.Target.Pending -> spendingTab = 1
+            com.spendroid.domain.TabVoice.Target.Transfers -> spendingTab = 3
+            is com.spendroid.domain.TabVoice.Target.Bill -> { openRule.value = target.ruleKey; navigate(AppScreen.Rules) }
+            is com.spendroid.domain.TabVoice.Target.Renewal -> { openRule.value = com.spendroid.ui.RENEWAL_LINK + target.id; navigate(AppScreen.Rules) }
+            is com.spendroid.domain.TabVoice.Target.Relink -> state.connections.firstOrNull { it.requisitionId == target.requisitionId }?.let(viewModel::relink)
+            is com.spendroid.domain.TabVoice.Target.Import -> importRequest.value = com.spendroid.ui.ImportRequest(accountId = target.accountId)
+        }
+    }
     val tabPenny: @androidx.compose.runtime.Composable () -> Unit = {
         if (tabLines.isNotEmpty()) {
             com.spendroid.ui.PennyStories(
                 com.spendroid.ui.droidFaceOf(state.budget, state.syncing),
                 tabLines.map { it.text },
-                actions = tabLines.map { line ->
-                    line.target?.let { target ->
-                        val label = when (target) {
-                            is com.spendroid.domain.TabVoice.Target.Relink -> "Renew"
-                            is com.spendroid.domain.TabVoice.Target.Import -> "Import"
-                            else -> "See it"
-                        }
-                        label to {
-                            when (target) {
-                                is com.spendroid.domain.TabVoice.Target.Spend -> { viewModel.setCategoryFilter(target.category); spendingTab = 0 }
-                                is com.spendroid.domain.TabVoice.Target.Shop -> { viewModel.setTransactionQuery(target.name); spendingTab = 0 }
-                                com.spendroid.domain.TabVoice.Target.Pending -> spendingTab = 1
-                                com.spendroid.domain.TabVoice.Target.Transfers -> spendingTab = 3
-                                is com.spendroid.domain.TabVoice.Target.Bill -> openRule.value = target.ruleKey
-                                is com.spendroid.domain.TabVoice.Target.Relink -> state.connections.firstOrNull { it.requisitionId == target.requisitionId }?.let(viewModel::relink)
-                                is com.spendroid.domain.TabVoice.Target.Import -> importRequest.value = com.spendroid.ui.ImportRequest(accountId = target.accountId)
-                            }
-                            Unit
-                        }
-                    }
-                },
+                actions = tabLines.map { line -> line.target?.let { target -> com.spendroid.ui.linkLabel(target) to { follow(target) } } },
                 modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 8.dp),
+                needsYou = tabLines.map { it.needsYou },
             )
         }
     }
@@ -98,6 +92,8 @@ internal fun MainTab(
             onOpenForecast = { id -> forecastFor = id ?: "" },
             onReload = viewModel::reloadLocal,
             onOpenToday = { showToday = true },
+            needsYou = androidx.compose.runtime.remember(state) { com.spendroid.ui.needsYouLines(state) },
+            onNeedsYou = ::follow,
             news = news,
             onNews = {},
             prompts = {
@@ -185,6 +181,7 @@ internal fun MainTab(
             transactions = state.transactions,
             onReload = viewModel::reloadLocal,
             penny = tabPenny,
+            renewals = state.renewals,
         )
 
         AppScreen.Settings -> SettingsScreen(

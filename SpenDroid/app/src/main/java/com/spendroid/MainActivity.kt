@@ -112,6 +112,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
         intent?.getStringExtra(com.spendroid.work.MoneyWatchAlerts.EXTRA_OPEN_RULE)?.let { openRule.value = it }
         intent?.getStringExtra(com.spendroid.work.MoneyWatchAlerts.EXTRA_OPEN_FORECAST)?.let { openForecast.value = it }
         intent?.getStringExtra(com.spendroid.work.ContractAlerts.EXTRA_OPEN_CONTRACT)?.let { openRule.value = it }
+        intent?.getStringExtra(com.spendroid.work.RenewalAlerts.EXTRA_OPEN_RENEWAL)?.let { openRule.value = com.spendroid.ui.RENEWAL_LINK + it }
         intent?.getStringExtra(com.spendroid.work.ManualAlerts.EXTRA_OPEN_BALANCE_CHECK)?.let { checkBalance.value = it }
         if (intent?.getBooleanExtra(com.spendroid.work.SpendQuestions.EXTRA_ASK, false) == true) askPenny.value = true
         intent?.getStringExtra(com.spendroid.work.ManualAlerts.EXTRA_OPEN_IMPORT)?.let { importRequest.value = com.spendroid.ui.ImportRequest(accountId = it) }

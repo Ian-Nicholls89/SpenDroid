@@ -283,7 +283,7 @@ fun droidStill(): Boolean {
 
 /** Penny alive: her clock runs while she's on screen, and only her drawing redraws as it ticks. */
 @Composable
-fun MovingDroid(face: DroidFace, size: Dp, modifier: Modifier, colour: Color, line: Color, moment: DroidMoment, fillOnOpen: Boolean, description: String) {
+fun MovingDroid(face: DroidFace, size: Dp, modifier: Modifier, colour: Color, line: Color, moment: DroidMoment, fillOnOpen: Boolean, description: String, bulb: Color? = null) {
     val clock = remember { mutableLongStateOf(0L) }
     val momentAt = remember(moment) { mutableLongStateOf(-1L) }
     LaunchedEffect(Unit) {
@@ -295,19 +295,20 @@ fun MovingDroid(face: DroidFace, size: Dp, modifier: Modifier, colour: Color, li
         val ms = clock.longValue
         val since = if (momentAt.longValue < 0) 0L else ms - momentAt.longValue
         val pose = poseAt(face.mood, moment, ms, since, ms, fillOnOpen)
-        scale(this.size.minDimension / 108f, pivot = Offset.Zero) { drawPose(face, pose, colour, line) }
+        scale(this.size.minDimension / 108f, pivot = Offset.Zero) { drawPose(face, pose, colour, line, bulb = bulb) }
     }
 }
 
 private val PIVOT_BASE = Offset(54f, 79f)
 private val PIVOT_ANTENNA = Offset(62f, 25f)
 
-fun DrawScope.drawPose(face: DroidFace, p: Pose, colour: Color, line: Color, still: Boolean = false) {
+/** [bulb]: her bulb in its own colour - amber when what she's saying needs the user - not the visor's. */
+fun DrawScope.drawPose(face: DroidFace, p: Pose, colour: Color, line: Color, still: Boolean = false, bulb: Color? = null) {
     val track = Color(0xFF3A3D45)
     val cap = StrokeCap.Round
     val a = p.alpha
     if (a <= 0.01f) return
-    val bulbColour = lerp(colour, PENNY_WARN, p.bulbAmber)
+    val bulbColour = lerp(bulb ?: colour, PENNY_WARN, p.bulbAmber)
     val fillColour = if (p.hue != 0f) hueShift(colour, p.hue) else colour
     withTransform({
         translate(0f, p.bodyDy)
@@ -471,10 +472,10 @@ private fun hueShift(colour: Color, degrees: Float): Color {
 
 /** Penny at one instant - [ms] into her mood, [sinceMoment] into a moment - for frame-by-frame checks. */
 @Composable
-fun DroidAt(face: DroidFace, size: Dp, colour: Color, ms: Long, moment: DroidMoment = DroidMoment.NONE, sinceMoment: Long = ms, fillOnOpen: Boolean = false, line: Color = Color.White) {
+fun DroidAt(face: DroidFace, size: Dp, colour: Color, ms: Long, moment: DroidMoment = DroidMoment.NONE, sinceMoment: Long = ms, fillOnOpen: Boolean = false, line: Color = Color.White, bulb: Color? = null) {
     Canvas(Modifier.size(size)) {
         val pose = poseAt(face.mood, moment, ms, sinceMoment, ms, fillOnOpen)
-        scale(this.size.minDimension / 108f, pivot = Offset.Zero) { drawPose(face, pose, droidColour(face.mood, colour), line) }
+        scale(this.size.minDimension / 108f, pivot = Offset.Zero) { drawPose(face, pose, droidColour(face.mood, colour), line, bulb = bulb) }
     }
 }
 

@@ -101,6 +101,8 @@ data class RootUiState(
     val duplicateQuestions: List<com.spendroid.domain.DuplicateCheck.Question> = emptyList(),
     /** The forecast to payday, any dip below zero ahead, and bills' price changes. */
     val outlook: com.spendroid.domain.Outlook = com.spendroid.domain.Outlook.EMPTY,
+    /** Things that end and renew, soonest first, where each stands (0.7.2). */
+    val renewals: List<com.spendroid.domain.Renewals.Item> = emptyList(),
     /** New rows held out of the budget until a question about them is answered. */
     val heldDuplicateKeys: Set<String> = emptySet(),
     /** How each payee has been filed by hand, for suggesting where a transaction belongs. */

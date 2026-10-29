@@ -86,6 +86,8 @@ object Choices {
         // 0.6.6: what the settings store held that's the user's - notification reading, bills left
         // out, transfers, the cycle's income, alerts already sent ([SecretsStore.MOVED]).
         Stores.DECISIONS,
+        // 0.7.2: renewals.
+        Stores.RENEWALS,
     )
 
     /** Where a store's choices were before, other than a preferences file: read, then let go. */

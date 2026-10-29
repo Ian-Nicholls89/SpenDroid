@@ -19,7 +19,12 @@ import java.util.Locale
  */
 object TabVoice {
 
-    data class Line(val text: String, val rank: Int, val target: Target? = null)
+    /**
+     * [needsYou]: something for the user to do, that goes wrong if it's left - a renewal, a bank
+     * link lapsing, a contract ending, a statement to import. Drawn in amber, said first, and said
+     * on Home too.
+     */
+    data class Line(val text: String, val rank: Int, val target: Target? = null, val needsYou: Boolean = false)
 
     /** What a line is about: where its link goes. */
     sealed interface Target {
@@ -30,6 +35,7 @@ object TabVoice {
         data object Transfers : Target
         data class Relink(val requisitionId: String) : Target
         data class Import(val accountId: String) : Target
+        data class Renewal(val id: String) : Target
     }
 
     // ---- Spending ------------------------------------------------------------------------------
@@ -110,9 +116,9 @@ object TabVoice {
 
     // ---- Regular -------------------------------------------------------------------------------
 
-    fun regular(budget: BudgetSnapshot, outlook: Outlook, money: (Long) -> String): List<Line> {
+    fun regular(budget: BudgetSnapshot, outlook: Outlook, money: (Long) -> String, renewals: List<Renewals.Item> = emptyList()): List<Line> {
         val today = budget.asOf
-        val out = mutableListOf<Line>()
+        val out = mutableListOf<Line>().apply { addAll(renewalLines(renewals)) }
 
         // A bill that's changed price lately.
         outlook.priceChanges.values
@@ -133,7 +139,7 @@ object TabVoice {
             .mapNotNull { e -> (e.status as? Contracts.Status.EndingSoon)?.let { e to it.daysLeft } }
             .minByOrNull { it.second }
             ?.let { (e, days) ->
-                out += Line("${name(e.payee)}'s contract ends ${inDays(days)}. Worth a look before it renews.", 75, Target.Bill(e.key))
+                out += Line("${name(e.payee)}'s contract ends ${inDays(days)}. Worth a look before it renews.", 75, Target.Bill(e.key), needsYou = true)
             }
 
         // A bill due on payday itself: next month's money, so not in this cycle's - said why, in
@@ -166,6 +172,29 @@ object TabVoice {
         return out.sortedByDescending { it.rank }
     }
 
+    /**
+     * Renewals needing the user (0.7.2): one in its reminder weeks, or one whose cover has ended
+     * with no new end date - the nearest first. Said on Regular, and on Home.
+     */
+    fun renewalLines(renewals: List<Renewals.Item>): List<Line> = renewals
+        .filter { it.needsYou && it.match == null }
+        .map { item ->
+            val r = item.renewal
+            when (val s = item.status) {
+                is Renewals.Status.Ended -> Line("${r.name} ended on ${r.ends.format(DAY_MONTH)}. When does the new one end?", 88, Target.Renewal(r.id), needsYou = true)
+                is Renewals.Status.Due -> Line(
+                    if (Renewals.compares(r)) "${r.name} ends ${inDays(s.daysLeft)} - time to compare quotes."
+                    else "${r.name} ends ${inDays(s.daysLeft)}. Worth a look before it renews.",
+                    // Nearer, louder: still under a bank link about to lapse until the last fortnight.
+                    if (s.daysLeft < 14) 92 else 85, Target.Renewal(r.id), needsYou = true,
+                )
+                else -> null
+            }
+        }
+        .filterNotNull()
+        .sortedByDescending { it.rank }
+        .take(2)
+
     // ---- Accounts ------------------------------------------------------------------------------
 
     fun accounts(
@@ -185,7 +214,7 @@ object TabVoice {
             ?.let { (c, days) ->
                 out += Line(
                     "${c.institutionName}'s link needs renewing ${if (days == 0) "today" else inDays(days.toLong())}.",
-                    90, Target.Relink(c.requisitionId),
+                    90, Target.Relink(c.requisitionId), needsYou = true,
                 )
             }
 
@@ -207,7 +236,7 @@ object TabVoice {
         accounts.filter { it.manual && it.accountType != AccountType.CREDIT_CARD }.forEach { a ->
             val last = manualCoverage[a.id] ?: return@forEach
             if (ChronoUnit.DAYS.between(last, today) >= 35) {
-                out += Line("No statement for ${a.label.trim()} since ${last.format(DAY_MONTH)}. Import one?", 60, Target.Import(a.id))
+                out += Line("No statement for ${a.label.trim()} since ${last.format(DAY_MONTH)}. Import one?", 60, Target.Import(a.id), needsYou = true)
             }
         }
         return out.sortedByDescending { it.rank }

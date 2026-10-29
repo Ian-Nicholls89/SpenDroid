@@ -642,8 +642,12 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
                 com.spendroid.data.ContractEnds(getApplication()).accepted(),
             )
         }.getOrDefault(com.spendroid.domain.Outlook.EMPTY)
+        val renewals = runCatching {
+            com.spendroid.domain.Renewals.all(com.spendroid.data.RenewalStore(getApplication()).all(), all, java.time.LocalDate.now())
+        }.getOrDefault(emptyList())
         _state.update {
             it.copy(
+                renewals = renewals,
                 accounts = accounts,
                 transactions = all,
                 rules = detectedRules,

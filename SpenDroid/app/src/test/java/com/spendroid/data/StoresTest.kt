@@ -15,7 +15,7 @@ class StoresTest {
         assertEquals(
             setOf(
                 "first_run", "moments", "contracts", "subscriptions", "money_watch", "manual_reminders", "payee_names",
-                "penny_ask", "penny_bills", "penny_news", "penny_voice",
+                "penny_ask", "penny_bills", "penny_news", "penny_voice", "renewals",
             ),
             Stores.clearedWithData.toSet(),
         )

@@ -110,9 +110,12 @@ fun RecurringRulesScreen(
     transactions: List<com.spendroid.data.db.TransactionEntity> = emptyList(),
     /** Penny, at the top of the list when she has something to say here. */
     penny: @Composable () -> Unit = {},
+    /** Things that end and renew, soonest first (0.7.2). */
+    renewals: List<com.spendroid.domain.Renewals.Item> = emptyList(),
 ) {
     var editing by remember { mutableStateOf<RecurringRule?>(null) }
     androidx.compose.runtime.LaunchedEffect(openRuleKey, rules) {
+        if (openRuleKey?.startsWith(RENEWAL_LINK) == true) return@LaunchedEffect
         // A bill's own key, or its contract's - from a contract notification.
         val rule = rules.firstOrNull { it.key == openRuleKey }
             ?: rules.filter { com.spendroid.domain.Contracts.keyFor(it.payee) == openRuleKey }.maxByOrNull { it.lastOccurrence }
@@ -170,7 +173,8 @@ fun RecurringRulesScreen(
     val manualIncome = manualRules.filter { it.direction == "IN" }
     val manualFixed = manualRules.filter { it.direction == "OUT" }
 
-    if (rules.isEmpty() && manualRules.isEmpty()) {
+    // Renewals aren't bills: with one added, the tabs show even before any bill is found.
+    if (rules.isEmpty() && manualRules.isEmpty() && renewals.isEmpty()) {
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Text(
@@ -205,6 +209,27 @@ fun RecurringRulesScreen(
 
     var tab by rememberSaveable { mutableIntStateOf(0) }
     var billFilter by rememberSaveable { mutableIntStateOf(0) }
+    // A renewal's sheet: by its id, or a new one - perhaps with its name chosen already.
+    val renewalStore = remember { com.spendroid.data.RenewalStore(context) }
+    var renewalOpen by remember { mutableStateOf<Pair<String?, String?>?>(null) }
+    androidx.compose.runtime.LaunchedEffect(openRuleKey) {
+        val id = openRuleKey?.takeIf { it.startsWith(RENEWAL_LINK) }?.removePrefix(RENEWAL_LINK) ?: return@LaunchedEffect
+        tab = RENEWALS_TAB
+        renewalOpen = id to null
+        onOpenedRule()
+    }
+    renewalOpen?.let { (id, name) ->
+        RenewalSheet(
+            // Read afresh from the store: a reminder just changed shows at once, not after the figures are redone.
+            existing = id?.let { want -> renewalStore.get(want) ?: renewals.firstOrNull { it.renewal.id == want }?.renewal },
+            name = name,
+            today = LocalDate.now(),
+            onSave = { r -> renewalStore.save(r); if (id == null) renewalOpen = null; onReload() },
+            onRemove = { id?.let(renewalStore::remove); renewalOpen = null; onReload() },
+            onDismiss = { renewalOpen = null },
+            newId = renewalStore::newId,
+        )
+    }
     val ignoredRules = rules.filter { it.key in ignored }
     Box(Modifier.fillMaxSize()) {
         LazyColumn(
@@ -217,7 +242,7 @@ fun RecurringRulesScreen(
             budget?.let { b -> item { EachMonthPanel(b, Modifier.padding(horizontal = 14.dp, vertical = 4.dp)) } }
             item {
                 DotTabs(
-                    listOf("Upcoming", "Bills", "Income", "Ignored"),
+                    listOf("Upcoming", "Bills", "Renewals", "Income", "Ignored"),
                     tab,
                     { tab = it },
                     Modifier.padding(horizontal = 18.dp),
@@ -249,6 +274,19 @@ fun RecurringRulesScreen(
                         if (payments.isEmpty()) return@forEach
                         item { DayHeading(heading) }
                         items(payments, key = { "${it.rule.key}|${it.dueDate}" }) { p -> UpcomingRow(p, today) }
+                    }
+                    // Renewals in their reminder weeks: compare, or say it's sorted.
+                    val renewing = renewals.filter { it.status is com.spendroid.domain.Renewals.Status.Due }
+                    if (renewing.isNotEmpty()) {
+                        item { DayHeading("Renewing") }
+                        items(renewing, key = { "renewing|" + it.renewal.id }) { r ->
+                            RenewingCard(
+                                r,
+                                onSnooze = { renewalStore.snooze(r.renewal.id); onReload() },
+                                onSorted = { renewalStore.sorted(r.renewal.id); onReload() },
+                                onOpen = { renewalOpen = r.renewal.id to null },
+                            )
+                        }
                     }
                     // Contracts in their last six weeks: time to look for a better deal.
                     val ending = contracts.values.filter { it.status is com.spendroid.domain.Contracts.Status.EndingSoon }.sortedBy { it.status.end }
@@ -313,7 +351,13 @@ fun RecurringRulesScreen(
                         }
                     }
                 }
-                2 -> {
+                RENEWALS_TAB -> renewalsTab(
+                    renewals,
+                    LocalDate.now(),
+                    onOpen = { renewalOpen = it to null },
+                    onAdd = { renewalOpen = null to it },
+                )
+                3 -> {
                     item {
                         Text(
                             "Star the income that sets your pay cycle. Everything else still adds to the budget - " +
@@ -884,3 +928,6 @@ private fun RuleOverrideSheet(
         }
     }
 }
+
+/** Where Renewals sits among Regular's tabs. */
+private const val RENEWALS_TAB = 2

@@ -3,6 +3,7 @@ package com.spendroid.ui
 import com.spendroid.domain.toRecurringRule
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.layout.Arrangement
@@ -116,6 +117,9 @@ fun HomeScreen(
     onOpenForecast: (String?) -> Unit = {},
     /** Works things out again - after a contract end date is set, or a new price accepted. */
     onReload: () -> Unit = {},
+    /** What needs the user, from every tab (0.7.2): Penny says it first, in amber - and where each goes. */
+    needsYou: List<com.spendroid.domain.TabVoice.Line> = emptyList(),
+    onNeedsYou: (com.spendroid.domain.TabVoice.Target) -> Unit = {},
     /** Which page the hero opens on; for screenshots. */
     initialPage: Int = 0,
     /** Questions waiting on the user, pinned above everything else. */
@@ -184,7 +188,7 @@ fun HomeScreen(
 
             HorizontalPager(state = pager, modifier = Modifier.fillMaxWidth()) { index ->
                 when (val p = pages[index]) {
-                    HeroPage.Budget -> BudgetHero(budget, state.syncing, onOpenToday, news, onNews, voice)
+                    HeroPage.Budget -> BudgetHero(budget, state.syncing, onOpenToday, news, onNews, voice, needsYou, onNeedsYou)
                     is HeroPage.Account -> AccountHero(p, colourOf(p.account, state.accounts), state.syncing)
                     is HeroPage.Month -> MonthHero(p.month, budget, state.syncing)
                 }
@@ -247,6 +251,8 @@ private fun BudgetHero(
     news: PennyNews.News? = null,
     onNews: (PennyNews.News) -> Unit = {},
     voice: List<com.spendroid.domain.PennyVoice.Line> = emptyList(),
+    needsYou: List<com.spendroid.domain.TabVoice.Line> = emptyList(),
+    onNeedsYou: (com.spendroid.domain.TabVoice.Target) -> Unit = {},
 ) {
     val pace = BudgetPace.of(budget)
     Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 6.dp)) {
@@ -257,8 +263,14 @@ private fun BudgetHero(
                 droidFaceOf(budget, syncing), news.line, moment = DroidMoment.NOTICED,
                 action = news.ruleKey?.let { "See it" to { onNews(news) } },
             )
-        } else if (voice.isNotEmpty()) {
-            PennyStories(droidFaceOf(budget, syncing), voice.map { it.text }, leadByVisit = true)
+        } else if (voice.isNotEmpty() || needsYou.isNotEmpty()) {
+            PennyStories(
+                droidFaceOf(budget, syncing),
+                needsYou.map { it.text } + voice.map { it.text },
+                actions = needsYou.map { line -> line.target?.let { linkLabel(it) to { onNeedsYou(it) } } },
+                leadByVisit = true,
+                needsYou = needsYou.map { true },
+            )
         } else {
             PennySays(droidFaceOf(budget, syncing), com.spendroid.domain.TodaysRead.of(budget) { formatMoney(it, budget.baseCurrency) })
         }
@@ -333,16 +345,19 @@ internal fun PennySays(
     onHold: ((Boolean) -> Unit)? = null,
     /** Every line she'll say in turn: the bubble is as tall as the longest, so nothing below jumps. */
     sizing: List<String> = emptyList(),
+    /** Something for the user to do (0.7.2): the bubble edged in amber, her bulb and the link too. */
+    needsYou: Boolean = false,
 ) {
     // Room above for her sparks and jumps: she's often at the top of something that clips.
     Row(verticalAlignment = Alignment.Top, modifier = modifier.padding(top = size * PENNY_REACH)) {
-        Droid(face, size, accent = accent, fillOnOpen = moment == DroidMoment.NONE, moment = moment)
+        Droid(face, size, accent = accent, fillOnOpen = moment == DroidMoment.NONE, moment = moment, bulb = Charcoal.Warn.takeIf { needsYou })
         Spacer(Modifier.width(10.dp))
         val bubble = RoundedCornerShape(topStart = 4.dp, topEnd = 14.dp, bottomEnd = 14.dp, bottomStart = 14.dp)
         Column(
             Modifier
                 .clip(bubble)
                 .background(Color(0xFF1F2127))
+                .then(if (needsYou) Modifier.border(1.5.dp, Charcoal.Warn, bubble) else Modifier)
                 .then(
                     if (onTap != null) {
                         Modifier.pointerInput(onTap, onHold) {
@@ -379,7 +394,7 @@ internal fun PennySays(
                     Text(
                         androidx.compose.ui.text.buildAnnotatedString {
                             append(line.take(shown))
-                            if (shown < line.length) withStyle(androidx.compose.ui.text.SpanStyle(color = accent)) { append("▍") }
+                            if (shown < line.length) withStyle(androidx.compose.ui.text.SpanStyle(color = if (needsYou) Charcoal.Warn else accent)) { append("▍") }
                         },
                         style = MaterialTheme.typography.bodyMedium, color = Color(0xFFE7E9EE),
                         modifier = Modifier.clearAndSetSemantics { contentDescription = line },
@@ -397,8 +412,12 @@ internal fun PennySays(
                 Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(5.dp), verticalAlignment = Alignment.CenterVertically) {
                     repeat(st.count) { i ->
                         val width by androidx.compose.animation.core.animateDpAsState(if (i == st.at) 26.dp else 5.dp, label = "dot")
-                        Box(Modifier.width(width).height(5.dp).clip(RoundedCornerShape(3.dp)).background(Color(0xFF3A3D45))) {
-                            if (i == st.at) Box(Modifier.fillMaxWidth(st.progress).height(5.dp).background(Color(0xFF9AA0AA)))
+                        // A line that needs the user keeps an amber dot, so it's seen to be waiting
+                        // while she says the others.
+                        val amber = i in st.amber
+                        val track = if (amber && i != st.at) Color(0xFF8A6420) else Color(0xFF3A3D45)
+                        Box(Modifier.width(width).height(5.dp).clip(RoundedCornerShape(3.dp)).background(track)) {
+                            if (i == st.at) Box(Modifier.fillMaxWidth(st.progress).height(5.dp).background(if (amber) Charcoal.Warn else Color(0xFF9AA0AA)))
                         }
                     }
                 }
@@ -408,7 +427,7 @@ internal fun PennySays(
                     "$label ›",
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.Bold,
-                    color = accent,
+                    color = if (needsYou) Charcoal.Warn else accent,
                     modifier = Modifier.padding(top = 6.dp).clickable(onClick = go),
                 )
             }
@@ -417,7 +436,7 @@ internal fun PennySays(
 }
 
 /** Where Penny's lines are: [at] of [count], [progress] through its time. */
-internal data class Story(val at: Int, val count: Int, val progress: Float, val typing: Boolean = false)
+internal data class Story(val at: Int, val count: Int, val progress: Float, val typing: Boolean = false, val amber: Set<Int> = emptySet())
 
 /** Long enough to read: four seconds, and a little more for each word, up to nine. */
 internal fun storyMillis(line: String): Long = (4_000L + line.split(' ').size * 150L).coerceAtMost(9_000L)
@@ -816,10 +835,16 @@ internal fun PennyStories(
     actions: List<Pair<String, () -> Unit>?> = emptyList(),
     leadByVisit: Boolean = false,
     modifier: Modifier = Modifier.padding(bottom = 12.dp),
+    /** Which of [lines] need the user (0.7.2): said first, and in amber. */
+    needsYou: List<Boolean> = emptyList(),
 ) {
+    // What needs the user first, then the rest as they came.
+    val order = lines.indices.sortedBy { if (needsYou.getOrElse(it) { false }) 0 else 1 }
     // 0.7.1: the three that matter most now, not every one she has - the rest wait their turn.
-    val voice = lines.take(MOST_LINES)
+    val voice = order.map { lines[it] }.take(MOST_LINES)
     if (voice.isEmpty()) return
+    val amber = order.take(MOST_LINES).mapIndexedNotNull { i, at -> i.takeIf { needsYou.getOrElse(at) { false } } }.toSet()
+    val doing = order.map { actions.getOrNull(it) }
     // One of her top lines leads, a different one each time Home comes to the front;
     // a tap on her bubble moves on to the next thing she's noticed.
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -835,7 +860,8 @@ internal fun PennyStories(
     var step by remember(visit) { androidx.compose.runtime.mutableIntStateOf(0) }
     var held by remember { androidx.compose.runtime.mutableStateOf(false) }
     val progress = remember(visit, step) { androidx.compose.animation.core.Animatable(0f) }
-    val lead = if (leadByVisit) com.spendroid.domain.PennyVoice.lead(voice.size, visit) else 0
+    // Something waiting on the user leads, every time; otherwise her top lines take turns.
+    val lead = if (leadByVisit && amber.isEmpty()) com.spendroid.domain.PennyVoice.lead(voice.size, visit) else 0
     // What she had to say as Home opened sets the bubble's size for the visit: the figures
     // changing - a sync - mustn't make it grow and shrink. A longer line since grows it once.
     val opening = remember(visit) { androidx.compose.runtime.mutableStateListOf<String>().apply { addAll(voice) } }
@@ -850,12 +876,13 @@ internal fun PennyStories(
     }
     PennySays(
         face, voice[shown],
-        action = actions.getOrNull(shown),
+        action = doing.getOrNull(shown),
         modifier = modifier,
         onTap = { step += 1; Unit }.takeIf { voice.size > 1 },
         onHold = { held = it },
         sizing = (opening + voice[shown]).distinct(),
         // Each time round, the bars start again from the first.
-        story = Story(Math.floorMod(step, voice.size), voice.size, progress.value, typing = going).takeIf { voice.size > 1 },
+        story = Story(Math.floorMod(step, voice.size), voice.size, progress.value, typing = going, amber = amber).takeIf { voice.size > 1 },
+        needsYou = shown in amber,
     )
 }
