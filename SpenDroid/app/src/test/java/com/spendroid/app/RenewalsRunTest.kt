@@ -6,7 +6,7 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import com.spendroid.BudgetApplication
@@ -77,10 +77,9 @@ class RenewalsRunTest {
         assertTrue("nothing to tap saying $label", nodes.isNotEmpty())
         val at = if (lowest) nodes.indices.maxBy { nodes[it].boundsInRoot.top } else nodes.indices.minBy { nodes[it].boundsInRoot.top }
         val node = compose.onAllNodes(matcher)[at]
-        // Below the fold in a list or a sheet: scrolled to first, or the tap lands off the screen.
-        runCatching { node.performScrollTo() }
-        settle()
-        node.performClick()
+        // Pressed by its click action: it may be below the fold, and scrolling to it waits for the
+        // screen to be still, which with Penny moving it never is.
+        node.performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick)
         settle()
     }
 

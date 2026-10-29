@@ -37,7 +37,7 @@ import com.spendroid.domain.PriceChanges
 import com.spendroid.ui.theme.Charcoal
 import kotlinx.coroutines.launch
 
-/** Settings → Preferences: telling you when a bill goes up, and when an account is heading below zero. */
+/** Settings → Notifications: telling you when a bill goes up, and when an account is heading below zero. */
 @Composable
 internal fun BillsAndBalancesSection(onChanged: () -> Unit) {
     val context = LocalContext.current
@@ -67,7 +67,7 @@ internal fun BillsAndBalancesSection(onChanged: () -> Unit) {
 }
 
 /**
- * Settings → Privacy: the app lock - Android's own fingerprint, face or PIN - how soon it locks
+ * Settings → Privacy & security: the app lock - Android's own fingerprint, face or PIN - how soon it locks
  * again, hiding from recent apps, and what shows outside the app while it's locked.
  */
 @Composable
@@ -157,7 +157,7 @@ private fun EncryptionPanel() {
                     if (turnOn) {
                         "SpenDroid restarts, and writes your history out again encrypted - a few seconds. It checks every " +
                             "row came across before it swaps, and keeps the old copy until the new one has opened.\n\n" +
-                            "Export a backup first (Settings → Data), to be safe.\n\n" +
+                            "Export a backup first (Settings → Backups & data), to be safe.\n\n" +
                             "The key stays on this phone. Android's own backup can't bring encrypted data to a new phone - " +
                             "SpenDroid's backup is the way to move it."
                     } else {

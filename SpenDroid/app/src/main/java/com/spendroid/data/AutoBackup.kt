@@ -123,7 +123,7 @@ object AutoBackup {
     /** What went wrong, as a sentence the user can act on - the folder's errors aren't. */
     fun explain(error: Throwable): String = when (error) {
         is SecurityException, is java.io.FileNotFoundException, is IllegalArgumentException ->
-            "The backup folder can't be reached - it may have been moved or deleted. Choose it again in Settings → Data."
+            "The backup folder can't be reached - it may have been moved or deleted. Choose it again in Settings → Backups & data."
         else -> (error.message ?: error.javaClass.simpleName).trimEnd('.') + "."
     }
 

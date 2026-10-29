@@ -118,9 +118,9 @@ class AppRunTest {
             settle()
             until("dialog gone") { !shows("Add recurring rule") }
             tab("Settings")
-            until("settings tabs") { shows("Setup & data") }
+            until("settings list") { shows("YOUR BUDGET") }
             tab("Home")
-            until("Home") { !shows("Setup & data") }
+            until("Home") { !shows("YOUR BUDGET") }
 
             // The side menu's screens.
             compose.onNodeWithContentDescription("Menu").performClick()
@@ -163,7 +163,7 @@ class AppRunTest {
             fun wordmarkLeft(name: String) = compose.onAllNodesWithText(name).fetchSemanticsNodes().minOf { it.boundsInRoot.left }
 
             tab("Settings")
-            until("settings") { shows("Setup & data") }
+            until("settings") { shows("YOUR BUDGET") }
             val withPenny = wordmarkLeft("settings")
 
             tab("Accounts")

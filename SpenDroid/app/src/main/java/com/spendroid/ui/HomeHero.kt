@@ -656,12 +656,23 @@ private fun BudgetBelow(state: RootUiState, budget: BudgetSnapshot, onRefresh: (
  * a bar for how much of the income the bills take. At the head of Regular.
  */
 @Composable
-internal fun EachMonthPanel(budget: BudgetSnapshot, modifier: Modifier = Modifier) {
+internal fun EachMonthPanel(
+    budget: BudgetSnapshot,
+    modifier: Modifier = Modifier,
+    /** Tapping Income: the income itself, and which sets the pay cycle (0.7.3). */
+    onIncome: (() -> Unit)? = null,
+) {
     Panel(modifier) {
         SectionHeading("Each month")
         Spacer(Modifier.height(10.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(22.dp)) {
-            HeroStat("Income", budget.averageMonthlyIncome, budget.baseCurrency)
+            if (onIncome != null) {
+                Box(Modifier.clip(RoundedCornerShape(8.dp)).clickable(onClickLabel = "See your income", onClick = onIncome)) {
+                    HeroStat("Income ›", budget.averageMonthlyIncome, budget.baseCurrency)
+                }
+            } else {
+                HeroStat("Income", budget.averageMonthlyIncome, budget.baseCurrency)
+            }
             HeroStat("Bills", budget.fixedMonthlyOutgoings, budget.baseCurrency)
             Column {
                 Text("To spend", style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.8f))

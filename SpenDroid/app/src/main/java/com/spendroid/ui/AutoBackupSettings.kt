@@ -35,7 +35,7 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
 /**
- * Settings → Data's automatic backup: a folder chosen (Google Drive's, if it's installed, is one
+ * Settings → Backups & data's automatic backup: a folder chosen (Google Drive's, if it's installed, is one
  * of the places the picker offers), a passphrase set, and a backup every night from then on.
  */
 @Composable

@@ -208,6 +208,18 @@ internal fun MainTab(
             onConfirmLock = { done -> authenticate("Confirm it's you") { ok -> done(ok); if (ok) com.spendroid.data.Privacy.unlocked = true } },
             onHideInRecents = applyHideInRecents,
             onReload = viewModel::reloadLocal,
+            cardAlertsStatus = run {
+                val on = viewModel.spendReadingOn.collectAsStateWithLifecycle().value
+                val apps = viewModel.spendSources.collectAsStateWithLifecycle().value.map { it.label }
+                val wallet = state.accounts.count { it.walletLinked }
+                when {
+                    !on -> "Off"
+                    else -> listOfNotNull(
+                        apps.takeIf { it.isNotEmpty() }?.let { "Reading " + it.joinToString(", ") },
+                        if (wallet > 0) "Wallet on" else "Wallet off",
+                    ).joinToString(" · ")
+                }
+            },
             cardAlerts = {
                 CardAlertsSection(
                     accounts = state.accounts,

@@ -1,5 +1,22 @@
 package com.spendroid.ui
 
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.AccountBalanceWallet
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.CreditCard
+import androidx.compose.material.icons.filled.AccountBalance
+import androidx.compose.material.icons.filled.CloudUpload
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Watch
+import androidx.compose.material.icons.filled.Computer
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.text.font.FontWeight
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -66,14 +83,48 @@ import java.time.format.DateTimeFormatter
  * Grouped by how often they are touched: things you tune, things you set up once, and things
  * you only read.
  */
-private enum class SettingsTab(val label: String) {
-    PREFERENCES("Preferences"),
-    SETUP("Setup & data"),
-    CARD_ALERTS("Card alerts"),
-    PRIVACY("Privacy"),
-    WATCH("Watch"),
-    COMPUTER("Computer"),
-    ABOUT("About"),
+/** Settings' sections (0.7.3), grouped as the list shows them; each opens its own page. */
+private enum class SettingsPage(val title: String, val group: String?, val icon: androidx.compose.ui.graphics.vector.ImageVector) {
+    LOOK("Look", "Your budget", Icons.Filled.Palette),
+    BUDGET("Budget", "Your budget", Icons.Filled.AccountBalanceWallet),
+    NOTIFICATIONS("Notifications", "Your budget", Icons.Filled.Notifications),
+    CARD_ALERTS("Card alerts", "Your budget", Icons.Filled.CreditCard),
+    BANK("Bank & syncing", "Your data", Icons.Filled.AccountBalance),
+    BACKUPS("Backups & data", "Your data", Icons.Filled.CloudUpload),
+    PRIVACY("Privacy & security", "Your data", Icons.Filled.Lock),
+    WATCH("Watch", "Devices", Icons.Filled.Watch),
+    COMPUTER("Computer link", "Devices", Icons.Filled.Computer),
+    ABOUT("About", null, Icons.Filled.Info),
+}
+
+/** A section in the list: its icon, its name, how it's set now, and the way in. */
+@Composable
+private fun SettingsRow(page: SettingsPage, status: String, onOpen: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clickable(onClick = onOpen).padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(page.icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp))
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f)) {
+            Text(page.title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
+            Text(status, style = MaterialTheme.typography.labelMedium, color = Charcoal.Muted)
+        }
+        Text("›", color = Charcoal.Faint, style = MaterialTheme.typography.titleLarge)
+    }
+}
+
+/** "last night", "today at 03:12", "on Tue 27 Oct". */
+private fun backedUp(at: Long): String {
+    val time = java.time.Instant.ofEpochMilli(at).atZone(java.time.ZoneId.systemDefault())
+    val day = time.toLocalDate()
+    val today = java.time.LocalDate.now()
+    return when {
+        day == today && time.hour < 6 -> "last night"
+        day == today -> "today at ${time.format(timeFormatter)}"
+        day == today.minusDays(1) -> "yesterday"
+        else -> "on ${day.format(DateTimeFormatter.ofPattern("EEE d MMM"))}"
+    }
 }
 
 private val timeFormatter = DateTimeFormatter.ofPattern("HH:mm")
@@ -103,6 +154,8 @@ fun SettingsScreen(
     notificationTime: String,
     onSaveNotificationTime: (String) -> Unit,
     cardAlerts: @Composable () -> Unit = {},
+    /** How card alerts are set, for its line in the list. */
+    cardAlertsStatus: String = "Payments from bank apps and Wallet",
     look: Look = Look(),
     onSetAccent: (com.spendroid.ui.theme.Accent) -> Unit = {},
     onSetAccountColours: (Boolean) -> Unit = {},
@@ -112,9 +165,10 @@ fun SettingsScreen(
     onHideInRecents: (Boolean) -> Unit = {},
     onReload: () -> Unit = {},
 ) {
-    var selectedTab by rememberSaveable { mutableIntStateOf(0) }
-    // A tab index saved before this row had three entries would otherwise index past the end.
-    selectedTab = selectedTab.coerceIn(0, SettingsTab.entries.lastIndex)
+    // 0.7.3: one list of sections, each opening its own page - in place of seven tabs.
+    var openPage by rememberSaveable { mutableStateOf<String?>(null) }
+    val page = openPage?.let { name -> SettingsPage.entries.firstOrNull { it.name == name } }
+    androidx.activity.compose.BackHandler(enabled = page != null) { openPage = null }
     var secretIdField by rememberSaveable(secretId) { mutableStateOf(secretId) }
     var secretKeyField by rememberSaveable(secretKey) { mutableStateOf(secretKey) }
     var saved by rememberSaveable { mutableStateOf(false) }
@@ -122,66 +176,98 @@ fun SettingsScreen(
     var showTimePicker by rememberSaveable { mutableStateOf(false) }
     var selectedTime by rememberSaveable { mutableStateOf(parseNotificationTime(notificationTime).format(timeFormatter)) }
 
-    Column(modifier = Modifier.fillMaxSize()) {
-        // Each tab takes the width its own label needs, and the row scrolls if they don't all
-        // fit (DotTabs does that itself): shared evenly, "Notifications" broke mid-word.
-        DotTabs(
-            tabs = SettingsTab.entries.map { it.label },
-            selected = selectedTab,
-            onSelect = { selectedTab = it },
-            modifier = Modifier.padding(horizontal = 18.dp),
-        )
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 14.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            when (SettingsTab.entries[selectedTab]) {
-                SettingsTab.PREFERENCES -> {
-                    LookSection(look, onSetAccent, onSetAccountColours, onSetIconFollows)
-                    Panel {
-                        BudgetSection(
-                            current = state.budgetModel,
-                            onSelect = onSetBudgetModel,
-                        )
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 14.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        if (page == null) {
+            val context = LocalContext.current
+            fun status(p: SettingsPage): String = when (p) {
+                SettingsPage.LOOK -> "${look.accent.label} · " + if (look.accountColours) "accounts in their own colours" else "one colour throughout"
+                SettingsPage.BUDGET -> "${state.budgetModel.label} · cards: ${state.cardTiming.label.lowercase()}"
+                SettingsPage.NOTIFICATIONS -> {
+                    // Only what's actually on.
+                    val watch = com.spendroid.data.MoneyWatch(context)
+                    listOfNotNull("Roundup at $selectedTime", "bills going up".takeIf { watch.riseAlerts }, "overdraft".takeIf { watch.overdraftAlerts }).joinToString(" · ")
+                }
+                SettingsPage.CARD_ALERTS -> cardAlertsStatus
+                SettingsPage.BANK -> when (val n = state.connections.size) {
+                    0 -> if (secretId.isBlank()) "No bank linked" else "GoCardless · no bank linked yet"
+                    1 -> "GoCardless · 1 bank link"
+                    else -> "GoCardless · $n bank links"
+                }
+                SettingsPage.BACKUPS -> {
+                    val backup = com.spendroid.data.AutoBackup.status(context)
+                    when {
+                        !com.spendroid.data.AutoBackup.isOn(context) -> "Automatic backup off · export, restore, clear"
+                        !backup.ok -> "The last automatic backup failed"
+                        backup.lastAt != null -> "Backed up " + backedUp(backup.lastAt)
+                        else -> "Automatic backup on"
                     }
-                    Panel {
-                        CardTimingSection(
-                            current = state.cardTiming,
-                            onSelect = onSetCardTiming,
-                        )
+                }
+                SettingsPage.PRIVACY -> {
+                    val lock = if (com.spendroid.data.Privacy(context).lockEnabled) "Locked" else "No app lock"
+                    lock + if (com.spendroid.data.DbEncryption.isOn(context)) " · encrypted" else ""
+                }
+                SettingsPage.WATCH -> "Install, chime and what it shows"
+                SettingsPage.COMPUTER -> if (com.spendroid.web.WebAccess.running.value != null) "On" else "Off"
+                SettingsPage.ABOUT -> state.versionName.takeIf { it.isNotBlank() }?.let { "Version $it · updates" } ?: "Updates"
+            }
+            SettingsPage.entries.groupBy { it.group }.forEach { (group, pages) ->
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    group?.let { SectionHeading(it, Modifier.padding(horizontal = 6.dp)) }
+                    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Charcoal.Panel)) {
+                        pages.forEachIndexed { i, p ->
+                            if (i > 0) androidx.compose.material3.HorizontalDivider(color = Charcoal.Line)
+                            SettingsRow(p, status(p)) { openPage = p.name }
+                        }
                     }
-                    SyncingSection(state)
+                }
+            }
+        } else {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = { openPage = null }) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back to settings")
+                }
+                Text(page.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            }
+            when (page) {
+                SettingsPage.LOOK -> LookSection(look, onSetAccent, onSetAccountColours, onSetIconFollows)
+                SettingsPage.BUDGET -> {
+                    Panel { BudgetSection(current = state.budgetModel, onSelect = onSetBudgetModel) }
+                    Panel { CardTimingSection(current = state.cardTiming, onSelect = onSetCardTiming) }
+                }
+                SettingsPage.NOTIFICATIONS -> {
+                    Panel { NotificationsSection(selectedTime = selectedTime, onPickTime = { showTimePicker = true }) }
                     BillsAndBalancesSection(onChanged = onReload)
+                }
+                SettingsPage.CARD_ALERTS -> Panel { cardAlerts() }
+                SettingsPage.BANK -> {
+                    SyncingSection(state)
                     Panel {
-                        NotificationsSection(
-                            selectedTime = selectedTime,
-                            onPickTime = { showTimePicker = true },
+                        CredentialsSection(
+                            secretId = secretIdField,
+                            onSecretIdChange = {
+                                secretIdField = it
+                                saved = false
+                            },
+                            secretKey = secretKeyField,
+                            onSecretKeyChange = {
+                                secretKeyField = it
+                                saved = false
+                            },
+                            saved = saved,
+                            onSave = {
+                                onSave(secretIdField.trim(), secretKeyField.trim())
+                                saved = true
+                            },
                         )
                     }
                 }
-
-                SettingsTab.SETUP -> Panel {
-                    CredentialsSection(
-                        secretId = secretIdField,
-                        onSecretIdChange = {
-                            secretIdField = it
-                            saved = false
-                        },
-                        secretKey = secretKeyField,
-                        onSecretKeyChange = {
-                            secretKeyField = it
-                            saved = false
-                        },
-                        saved = saved,
-                        onSave = {
-                            onSave(secretIdField.trim(), secretKeyField.trim())
-                            saved = true
-                        },
-                    )
-                    Spacer(Modifier.height(24.dp))
+                SettingsPage.BACKUPS -> Panel {
                     DataSection(
                         state = state,
                         onExport = onExport,
@@ -191,24 +277,20 @@ fun SettingsScreen(
                         onCancelRestore = onCancelRestore,
                     )
                 }
-
-                SettingsTab.CARD_ALERTS -> Panel { cardAlerts() }
-
-                SettingsTab.PRIVACY -> PrivacySection(onConfirmLock, onHideInRecents)
-
-                SettingsTab.WATCH -> Panel { WatchSection() }
-
-                SettingsTab.COMPUTER -> WebSection()
-
-                SettingsTab.ABOUT -> {
-                    Panel { UpdatesSection(
-                        state = state,
-                        versionName = state.versionName,
-                        versionCode = state.versionCode,
-                        onCheckUpdate = onCheckUpdate,
-                        onOpenInstallSettings = onOpenInstallSettings,
-                        onInstallDownloaded = onInstallDownloaded,
-                    ) }
+                SettingsPage.PRIVACY -> PrivacySection(onConfirmLock, onHideInRecents)
+                SettingsPage.WATCH -> Panel { WatchSection() }
+                SettingsPage.COMPUTER -> WebSection()
+                SettingsPage.ABOUT -> {
+                    Panel {
+                        UpdatesSection(
+                            state = state,
+                            versionName = state.versionName,
+                            versionCode = state.versionCode,
+                            onCheckUpdate = onCheckUpdate,
+                            onOpenInstallSettings = onOpenInstallSettings,
+                            onInstallDownloaded = onInstallDownloaded,
+                        )
+                    }
                     Panel { CrashSection() }
                 }
             }

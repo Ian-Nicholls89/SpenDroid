@@ -63,7 +63,7 @@ class AutoBackupWorker(context: Context, params: WorkerParameters) : CoroutineWo
             .setSmallIcon(com.spendroid.R.drawable.ic_stat_droid)
             .setContentTitle("Backup to your folder didn't save")
             .setContentText("$why Your data on the phone is fine.")
-            .setStyle(NotificationCompat.BigTextStyle().bigText("$why Your data on the phone is fine - Settings → Data to try again, or choose another folder."))
+            .setStyle(NotificationCompat.BigTextStyle().bigText("$why Your data on the phone is fine - Settings → Backups & data to try again, or choose another folder."))
             .setContentIntent(com.spendroid.work.openAppIntent(applicationContext, NOTIFICATION_ID))
             .setAutoCancel(true)
             .build()

@@ -208,10 +208,53 @@ fun RecurringRulesScreen(
     }
 
     var tab by rememberSaveable { mutableIntStateOf(0) }
+    // Saved before 0.7.3, when Income and Ignored were tabs four and five: none of the three now.
+    if (tab > RENEWALS_TAB) tab = 0
     var billFilter by rememberSaveable { mutableIntStateOf(0) }
     // A renewal's sheet: by its id, or a new one - perhaps with its name chosen already.
     val renewalStore = remember { com.spendroid.data.RenewalStore(context) }
+    val ignoredRules = rules.filter { it.key in ignored }
     var renewalOpen by remember { mutableStateOf<Pair<String?, String?>?>(null) }
+    // Income, from Each month's figure (0.7.3): what was the Income tab.
+    var incomeOpen by rememberSaveable { mutableStateOf(false) }
+    if (incomeOpen) {
+        IncomeSheet(onDismiss = { incomeOpen = false }) {
+            Text(
+                "Star the income that sets your pay cycle. Everything else still adds to the budget; it just doesn't move the dates.",
+                style = MaterialTheme.typography.bodySmall,
+                color = Charcoal.Muted,
+                modifier = Modifier.padding(bottom = 10.dp),
+            )
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                income.filter { it.key !in ignored }.forEach { rule ->
+                    RuleRow(
+                        rule = rule,
+                        ignored = false,
+                        isPrimaryIncome = rule.key == primaryIncomeKey,
+                        canBePrimary = true,
+                        overridden = overrides.containsKey(rule.key),
+                        // Its own sheet, in place of this one.
+                        onEdit = { incomeOpen = false; editing = rule },
+                        onSetPrimary = { onSetPrimaryIncome(if (rule.key == primaryIncomeKey) null else rule.key) },
+                    ) { onToggle(rule.key, it) }
+                }
+                manualIncome.forEach { rule ->
+                    ManualRuleRow(rule, accounts, onSetManualPaidFrom, onDeleteManual, subscriptions[manualKey(rule)], subControls, contractControls, rule.toRecurringRule()?.let { contractOf(it) })
+                }
+                val leftOutIncome = ignoredRules.filter { it.direction == Direction.IN }
+                if (leftOutIncome.isNotEmpty()) {
+                    SectionHeading("Left out", Modifier.padding(top = 8.dp), trailing = "switched off")
+                    leftOutIncome.forEach { rule ->
+                        RuleRow(rule = rule, ignored = true, overridden = overrides.containsKey(rule.key), onEdit = { incomeOpen = false; editing = rule }) { onToggle(rule.key, it) }
+                    }
+                }
+                if (income.isEmpty() && manualIncome.isEmpty()) {
+                    Text("No regular income found yet.", color = Charcoal.Muted, style = MaterialTheme.typography.bodySmall)
+                }
+            }
+            BigButton("Add income by hand", null, { incomeOpen = false; onAddManual() }, Modifier.fillMaxWidth().padding(top = 14.dp))
+        }
+    }
     androidx.compose.runtime.LaunchedEffect(openRuleKey) {
         val id = openRuleKey?.takeIf { it.startsWith(RENEWAL_LINK) }?.removePrefix(RENEWAL_LINK) ?: return@LaunchedEffect
         tab = RENEWALS_TAB
@@ -236,7 +279,6 @@ fun RecurringRulesScreen(
             newId = renewalStore::newId,
         )
     }
-    val ignoredRules = rules.filter { it.key in ignored }
     Box(Modifier.fillMaxSize()) {
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
@@ -245,10 +287,11 @@ fun RecurringRulesScreen(
         ) {
             item { penny() }
             // What the month comes to, worked out from everything listed below it.
-            budget?.let { b -> item { EachMonthPanel(b, Modifier.padding(horizontal = 14.dp, vertical = 4.dp)) } }
+            budget?.let { b -> item { EachMonthPanel(b, Modifier.padding(horizontal = 14.dp, vertical = 4.dp), onIncome = { incomeOpen = true }) } }
             item {
                 DotTabs(
-                    listOf("Upcoming", "Bills", "Renewals", "Income", "Ignored"),
+                    // 0.7.3: three. Left out is a filter on Bills; income opens from Each month.
+                    listOf("Upcoming", "Bills", "Renewals"),
                     tab,
                     { tab = it },
                     Modifier.padding(horizontal = 18.dp),
@@ -315,8 +358,23 @@ fun RecurringRulesScreen(
                     val subs = active.mapNotNull { subOf(it.key) } + manualSubs.mapNotNull { subOf(manualKey(it)) }
                     val live = subs.filter { !it.lapsed }
                     item { SectionHeading("Bills", Modifier.padding(horizontal = 18.dp, vertical = 6.dp), trailing = "switch one off to leave it out") }
-                    item { BillFilter(billFilter, live.size, { billFilter = it }, Modifier.padding(horizontal = 18.dp)) }
+                    val leftOut = ignoredRules.filter { it.direction == Direction.OUT }
+                    item { BillFilter(billFilter, live.size, { billFilter = it }, Modifier.padding(horizontal = 18.dp), leftOut = leftOut.size) }
                     when (billFilter) {
+                        3 -> {
+                            item {
+                                Text(
+                                    if (leftOut.isEmpty()) "Nothing left out. Switch a bill off to leave it out of the budget."
+                                    else "Switched off, so not planned for. Switch one on to count it again.",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = Charcoal.Muted,
+                                    modifier = Modifier.padding(horizontal = 18.dp, vertical = 4.dp),
+                                )
+                            }
+                            items(leftOut, key = { "left|" + it.key }) { rule ->
+                                RuleRow(rule = rule, ignored = true, overridden = overrides.containsKey(rule.key), onEdit = { editing = rule }) { onToggle(rule.key, it) }
+                            }
+                        }
                         1 -> {
                             // Just the subscriptions, biggest a year first; any that have stopped, apart.
                             item { SubscriptionSummary(live, currency, Modifier.padding(horizontal = 18.dp, vertical = 4.dp)) }
@@ -363,42 +421,7 @@ fun RecurringRulesScreen(
                     onOpen = { renewalOpen = it to null },
                     onAdd = { renewalOpen = null to it },
                 )
-                3 -> {
-                    item {
-                        Text(
-                            "Star the income that sets your pay cycle. Everything else still adds to the budget - " +
-                                "it just does not move the dates.",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = Charcoal.Muted,
-                            modifier = Modifier.padding(horizontal = 18.dp, vertical = 6.dp),
-                        )
-                    }
-                    items(income.filter { it.key !in ignored }, key = { it.key }) { rule ->
-                        RuleRow(
-                            rule = rule,
-                            ignored = false,
-                            isPrimaryIncome = rule.key == primaryIncomeKey,
-                            canBePrimary = true,
-                            overridden = overrides.containsKey(rule.key),
-                            onEdit = { editing = rule },
-                            onSetPrimary = { onSetPrimaryIncome(if (rule.key == primaryIncomeKey) null else rule.key) },
-                        ) { onToggle(rule.key, it) }
-                    }
-                    items(manualIncome, key = { it.id }) { rule -> ManualRuleRow(rule, accounts, onSetManualPaidFrom, onDeleteManual, subscriptions[manualKey(rule)], subControls, contractControls, rule.toRecurringRule()?.let { contractOf(it) }) }
-                }
-                else -> {
-                    if (ignoredRules.isEmpty()) {
-                        item { Text("Nothing left out. Switch a bill or income off to leave it out of the budget.", color = Charcoal.Muted, modifier = Modifier.padding(horizontal = 18.dp, vertical = 6.dp)) }
-                    }
-                    items(ignoredRules, key = { it.key }) { rule ->
-                        RuleRow(
-                            rule = rule,
-                            ignored = true,
-                            overridden = overrides.containsKey(rule.key),
-                            onEdit = { editing = rule },
-                        ) { onToggle(rule.key, it) }
-                    }
-                }
+                else -> Unit
             }
         }
         androidx.compose.material3.FloatingActionButton(
@@ -622,7 +645,9 @@ private fun RuleRow(
                 } else {
                     MaterialTheme.colorScheme.onSurfaceVariant
                 },
-                maxLines = 1,
+                // Two lines: on one, "sets the cycle" was cut to a bare "·" beside the amount.
+                maxLines = 2,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
             )
             Row {
                 if (sub != null) SubscriptionTag()
@@ -937,3 +962,16 @@ private fun RuleOverrideSheet(
 
 /** Where Renewals sits among Regular's tabs. */
 private const val RENEWALS_TAB = 2
+
+/** A sheet for the income list, opened from Each month's Income. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun IncomeSheet(onDismiss: () -> Unit, content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit) {
+    val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheet, containerColor = Charcoal.Panel) {
+        Column(Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState()).padding(start = 18.dp, end = 18.dp, bottom = 28.dp)) {
+            Text("Your income", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 4.dp))
+            content()
+        }
+    }
+}

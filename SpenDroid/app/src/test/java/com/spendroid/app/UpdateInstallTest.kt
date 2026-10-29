@@ -11,6 +11,7 @@ import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import com.spendroid.BuildConfig
@@ -114,7 +115,9 @@ class UpdateInstallTest {
                 nodes[all.indices.maxBy { all[it].boundsInRoot.top }].performClick()
             }
             repeat(10) { if (!shows("About")) settle() }
-            compose.onAllNodes(hasText("About") and hasClickAction())[0].performClick()
+            // About is the last row of Settings' list (0.7.3), below the fold: pressed by its click
+            // action - scrolling to it waits for the screen to be still, and Penny never is.
+            compose.onAllNodes(hasText("About") and hasClickAction())[0].performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick)
             repeat(10) { if (!shows("(downloaded)")) settle() }
             val button = compose.onAllNodes(hasText("Install SpenDroid 9.9 (downloaded)") and hasClickAction())[0]
             button.performScrollTo()

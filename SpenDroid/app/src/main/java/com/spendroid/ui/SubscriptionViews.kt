@@ -47,9 +47,11 @@ internal fun SubscriptionTag() {
 
 /** All · Subscriptions · Household, above the bills. */
 @Composable
-internal fun BillFilter(selected: Int, subscriptions: Int, onSelect: (Int) -> Unit, modifier: Modifier = Modifier) {
-    Row(modifier, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        listOf("All", "Subscriptions · $subscriptions", "Household").forEachIndexed { i, label ->
+internal fun BillFilter(selected: Int, subscriptions: Int, onSelect: (Int) -> Unit, modifier: Modifier = Modifier, leftOut: Int = 0) {
+    // Wrapped, not scrolled: four, at a large text size, still all in sight.
+    androidx.compose.foundation.layout.FlowRow(modifier, horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        // "Left out" (0.7.3): what was the Ignored tab - bills switched off.
+        (listOf("All", "Subscriptions · $subscriptions", "Household") + listOfNotNull("Left out · $leftOut".takeIf { leftOut > 0 || selected == 3 })).forEachIndexed { i, label ->
             val on = i == selected
             Text(
                 label,

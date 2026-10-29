@@ -32,7 +32,7 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
 /**
- * Settings → Computer: "Open on my computer". On, the phone serves a read-only page over the home
+ * Settings → Computer link: "Open on my computer". On, the phone serves a read-only page over the home
  * Wi-Fi; this shows the address to type and the code to pair with, and the computers that were
  * told to remember, each of which can be forgotten.
  */

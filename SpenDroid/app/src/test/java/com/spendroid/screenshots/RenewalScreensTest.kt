@@ -163,4 +163,58 @@ class RenewalScreensTest {
         compose.waitForIdle()
         compose.onRoot().captureRoboImage("build/screenshots/renewals-question.png")
     }
+
+    // ---- 0.7.3: Regular in three tabs, Settings as one list ----
+
+    @Test
+    fun regularLeftOut() {
+        val state = Sample.state()
+        val ignored = state.rules.filter { it.direction == com.spendroid.domain.Direction.OUT }.take(1).map { it.key }.toSet()
+        compose.setContent {
+            Frame(AppScreen.Rules) {
+                com.spendroid.ui.RecurringRulesScreen(
+                    rules = state.rules, manualRules = emptyList(), ignored = ignored, onToggle = { _, _ -> }, onAddManual = {}, budget = state.budget,
+                )
+            }
+        }
+        compose.onNode(androidx.compose.ui.test.hasText("Bills") and androidx.compose.ui.test.hasClickAction()).performClick()
+        compose.waitForIdle()
+        compose.onNodeWithText("Left out", substring = true).performClick()
+        compose.waitForIdle()
+        compose.onRoot().captureRoboImage("build/screenshots/tidy-left-out.png")
+    }
+
+    @Test
+    fun regularIncome() {
+        val state = Sample.state()
+        compose.setContent {
+            Frame(AppScreen.Rules) {
+                com.spendroid.ui.RecurringRulesScreen(
+                    rules = state.rules, manualRules = emptyList(), ignored = emptySet(), onToggle = { _, _ -> }, onAddManual = {}, budget = state.budget,
+                    primaryIncomeKey = state.rules.firstOrNull { it.direction == com.spendroid.domain.Direction.IN }?.key,
+                )
+            }
+        }
+        compose.onNodeWithText("Income ›", substring = true).performClick()
+        compose.waitForIdle()
+        com.github.takahirom.roborazzi.captureScreenRoboImage("build/screenshots/tidy-income.png")
+    }
+
+    @Test
+    fun settingsList() {
+        val state = Sample.state()
+        compose.setContent {
+            Frame(AppScreen.Settings) {
+                com.spendroid.ui.SettingsScreen(
+                    state = state, onSave = { _, _ -> }, onSetBudgetModel = {}, onSetCardTiming = {}, onExport = {}, onImport = {},
+                    onClearData = {}, onCheckUpdate = {}, onOpenInstallSettings = {}, secretId = "abc", secretKey = "def",
+                    notificationTime = "19:30", onSaveNotificationTime = {}, cardAlertsStatus = "Reading NatWest · Wallet off",
+                )
+            }
+        }
+        compose.onRoot().captureRoboImage("build/screenshots/tidy-settings.png")
+        compose.onNodeWithText("Privacy & security").performClick()
+        compose.waitForIdle()
+        compose.onRoot().captureRoboImage("build/screenshots/tidy-settings-privacy.png")
+    }
 }

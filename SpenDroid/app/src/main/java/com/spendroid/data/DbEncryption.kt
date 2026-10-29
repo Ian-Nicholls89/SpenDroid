@@ -5,7 +5,7 @@ import java.io.File
 import java.security.SecureRandom
 
 /**
- * The database encrypted on the phone - when the user turns it on in Settings → Privacy - with a
+ * The database encrypted on the phone - when the user turns it on in Settings → Privacy & security - with a
  * key the phone's keystore holds, so there's nothing to type. Off by default while it's road-tested.
  *
  * Turning it on or off asks for a restart, and the change is made as the app next starts, before
@@ -72,7 +72,7 @@ object DbEncryption {
             prefs.edit().putBoolean(ON, false).remove(KEY).putString(
                 NOTE,
                 "The data here was encrypted on another phone, and can't be opened on this one. " +
-                    "Restore from a SpenDroid backup: Settings → Data → Restore.",
+                    "Restore from a SpenDroid backup: Settings → Backups & data → Restore.",
             ).commit()
             return null
         }
