@@ -415,7 +415,8 @@ internal fun PennySays(
                         // A line that needs the user keeps an amber dot, so it's seen to be waiting
                         // while she says the others.
                         val amber = i in st.amber
-                        val track = if (amber && i != st.at) Color(0xFF8A6420) else Color(0xFF3A3D45)
+                        // Amber whether or not it's the one being said - still, with animations off, it shows.
+                        val track = if (amber) Color(0xFF8A6420) else Color(0xFF3A3D45)
                         Box(Modifier.width(width).height(5.dp).clip(RoundedCornerShape(3.dp)).background(track)) {
                             if (i == st.at) Box(Modifier.fillMaxWidth(st.progress).height(5.dp).background(if (amber) Charcoal.Warn else Color(0xFF9AA0AA)))
                         }

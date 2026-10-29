@@ -43,6 +43,8 @@ class RenewalsRunTest {
     /** An account with a bill, so Home has its figures and Regular its tabs. */
     private fun seed(): String = runBlocking {
         app.getSharedPreferences(com.spendroid.data.Stores.FIRST_RUN, Context.MODE_PRIVATE).edit().putBoolean("done", true).commit()
+        // The app loads the user's choices as it starts: renewals saved after that, or the load overwrites them.
+        com.spendroid.data.Choices.awaitLoaded()
         val account = app.repository.addManualAccount("Everyday", "Made-up Bank", AccountType.PERSONAL, 120_000)
         app.repository.addManualRule(
             ManualRecurringRuleEntity(
