@@ -64,6 +64,8 @@ internal fun MainTab(
             is com.spendroid.domain.TabVoice.Target.Renewal -> { openRule.value = com.spendroid.ui.RENEWAL_LINK + target.id; navigate(AppScreen.Rules) }
             is com.spendroid.domain.TabVoice.Target.Relink -> state.connections.firstOrNull { it.requisitionId == target.requisitionId }?.let(viewModel::relink)
             is com.spendroid.domain.TabVoice.Target.Import -> importRequest.value = com.spendroid.ui.ImportRequest(accountId = target.accountId)
+            // Home opens its own sheet for it; anywhere else, Home is where it lives.
+            com.spendroid.domain.TabVoice.Target.NextMonth -> navigate(AppScreen.Home)
         }
     }
     val tabPenny: @androidx.compose.runtime.Composable () -> Unit = {

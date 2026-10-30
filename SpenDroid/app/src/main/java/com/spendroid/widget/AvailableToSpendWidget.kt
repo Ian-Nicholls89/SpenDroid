@@ -95,6 +95,8 @@ class AvailableToSpendWidget : GlanceAppWidget() {
         val days: String?,
         val perDay: String?,
         val incomeDate: String?,
+        /** With cards (0.8.0): the figure is the month's; this is how much of it the account can pay. */
+        val fromAccount: String? = null,
         val remaining: Float,
         val pace: BudgetPace.Pace,
         val lines: List<Line>,
@@ -155,6 +157,14 @@ class AvailableToSpendWidget : GlanceAppWidget() {
                     "${formatMoney(snapshot.availableToSpend / it, snapshot.baseCurrency)} a day"
                 },
                 incomeDate = snapshot.nextIncomeDate?.let { "Income ${it.format(INCOME_FORMAT)}" },
+                fromAccount = snapshot.month?.let { m ->
+                    when {
+                        m.accountLeftMinor < 0L -> "Account short · cards only"
+                        m.leftMinor <= 0L -> "Month spent"
+                        m.leftMinor > 0L && m.accountLeftMinor >= m.leftMinor -> "Your account can cover it"
+                        else -> "Up to ${poundsOnly(m.fromAccountMinor)} from your account"
+                    }
+                },
                 remaining = BudgetPace.remainingFraction(snapshot),
                 pace = BudgetPace.of(snapshot),
                 // Card bills first: they are the largest and the least expected.
@@ -417,7 +427,7 @@ class AvailableToSpendWidget : GlanceAppWidget() {
     @Composable
     private fun Meaning(summary: Summary) {
         Row(modifier = GlanceModifier.fillMaxWidth()) {
-            Text(summary.used?.let { "${(it * 100).toInt()}% of the budget used" }.orEmpty(), style = caption(10.sp), maxLines = 1, modifier = GlanceModifier.defaultWeight())
+            Text(summary.fromAccount ?: summary.used?.let { "${(it * 100).toInt()}% of the budget used" }.orEmpty(), style = caption(10.sp), maxLines = 1, modifier = GlanceModifier.defaultWeight())
             Text(listOfNotNull(summary.perDay, summary.days).joinToString(" · "), style = caption(10.sp), maxLines = 1)
         }
     }

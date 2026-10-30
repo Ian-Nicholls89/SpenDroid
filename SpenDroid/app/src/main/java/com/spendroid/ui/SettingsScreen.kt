@@ -725,7 +725,7 @@ private fun BudgetSection(
     Spacer(Modifier.height(12.dp))
     Text(
         "Carrying the balance over and showing the balance both use the account your main " +
-            "income is paid into. Star which income that is under Regular, on the Income tab.",
+            "income is paid into. Star which income that is on Regular - tap Income in Each month.",
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )

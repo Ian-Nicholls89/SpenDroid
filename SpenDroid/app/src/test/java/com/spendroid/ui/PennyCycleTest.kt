@@ -143,17 +143,17 @@ class PennyCycleTest {
                     check(day, b, line)?.let { problems += "$day $time ${line.kind}: ${line.text}  <- $it" }
                 }
             }
-            // The month, cards and all (0.7.1): Home's figure plus this cycle's card bills.
-            com.spendroid.domain.MonthlyAvailable.of(b, state.transactions, state.accounts)?.let { m ->
-                val said = com.spendroid.domain.MonthlyAvailable.line(m) { com.spendroid.ui.formatMoney(it, "GBP") }
-                report.append("  [Month] £%.2f = £%.2f left + %s · cards since payday £%.2f · %s\n".format(
-                    m.totalMinor / 100.0, m.leftMinor / 100.0, m.bills.joinToString(" + ") { "${it.label} £%.2f${if (it.paid) " paid" else ""}".format(it.amountMinor / 100.0) },
-                    m.spentOnCardsMinor / 100.0, said))
-                if (said.length > LONGEST) problems += "$day [Month]: $said  <- too long"
-                if (m.leftMinor != b.availableToSpend) problems += "$day [Month]: not Home's figure"
-                if (m.bills.groupBy { it.label to it.due }.any { it.value.size > 1 }) problems += "$day [Month]: a bill counted twice"
+            // The month, account and cards together (0.8.0): its sums, each day, in the transcript.
+            b.month?.let { m ->
+                report.append("  [Month] £%.2f left = account £%.2f + statements £%.2f - cards £%.2f - card bills £%.2f · next month £%.2f, short £%.2f\n".format(
+                    b.availableToSpend / 100.0, (m.account.availableToSpend - m.account.shortfallMinor) / 100.0, m.statementsMinor / 100.0,
+                    m.spentOnCardsMinor / 100.0, m.cardBillsMinor / 100.0, m.nextStatementsMinor / 100.0, m.nextShortMinor / 100.0))
+                com.spendroid.domain.TabVoice.nextMonthLine(b) { com.spendroid.ui.formatMoney(it, "GBP") }?.let { line ->
+                    if (line.text.length > LONGEST) problems += "$day [Next month]: ${line.text}  <- too long: ${line.text.length} characters"
+                }
+                if (m.statements.groupBy { it.label to it.due }.any { it.value.size > 1 }) problems += "$day [Month]: a statement counted twice"
                 val cards = state.accounts.filter { it.accountType == com.spendroid.data.db.AccountType.CREDIT_CARD }.map { it.label.trim() }
-                m.bills.filter { it.label !in cards }.forEach { problems += "$day [Month]: a bill named ${it.label}, not its card" }
+                m.statements.filter { it.label !in cards }.forEach { problems += "$day [Month]: a statement named ${it.label}, not its card" }
             }
             // Each card's and account's own page on Home: her line there, held to the same length.
             com.spendroid.domain.PeriodRows.rows(state.accounts.filter { it.id != b.potAccountId }.map { it.id }, b, state.accounts, state.transactions).forEach { row ->

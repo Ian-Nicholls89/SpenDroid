@@ -70,8 +70,8 @@ android {
         applicationId = "com.spendroid"
         minSdk = 26
         targetSdk = 35
-        versionCode = 208
-        versionName = "0.7.4"
+        versionCode = 209
+        versionName = "0.8.0"
         // Native code - the database's encryption - only for the processors phones have, not
         // emulators' x86: about half the size it would add.
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }

@@ -87,7 +87,7 @@ class EndToEndSmokeTest {
     @Test
     fun `the cycle counts the card bill, the pending charge and the one-off`() {
         // 5,705 card bill + 3,860 pending + 200,000 venue + 5,000 Beanstalk.
-        assertEquals(214565L, budget.spentThisCycle)
+        assertEquals(214565L, budget.accountOnly.spentThisCycle)
     }
 
     @Test
@@ -96,7 +96,7 @@ class EndToEndSmokeTest {
             .filter { it.accountId != "personal" && it.amountMinor < 0 }
             .sumOf { -it.amountMinor }
         assertTrue("the pot and the card spent real money", onCardOrPot > 0)
-        assertTrue(budget.spentThisCycle < onCardOrPot + 214565L)
+        assertTrue(budget.accountOnly.spentThisCycle < onCardOrPot + 214565L)
     }
 
     /**
@@ -122,7 +122,7 @@ class EndToEndSmokeTest {
             .sumOf { -it.amountMinor }
 
         assertTrue("commitments fell in this cycle", commitments > 0)
-        assertEquals(budget.spentThisCycle + commitments, breakdown)
+        assertEquals(budget.accountOnly.spentThisCycle + commitments, breakdown)
     }
 
     /** The pending charge has to be in the breakdown too, or the two disagree by its size. */

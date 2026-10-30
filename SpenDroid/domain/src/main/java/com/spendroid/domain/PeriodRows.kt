@@ -17,7 +17,8 @@ import java.time.temporal.ChronoUnit
  */
 object PeriodRows {
 
-    enum class Kind { BUDGET, CYCLE, STATEMENT }
+    /** [MONTH]: the month, account and cards together (0.8.0) - a row of its own, not an account's. */
+    enum class Kind { BUDGET, CYCLE, STATEMENT, MONTH }
 
     data class Row(
         val accountId: String,
@@ -59,12 +60,42 @@ object PeriodRows {
         }
     }
 
+    /**
+     * The month, account and cards together, as Home's first page has it (0.8.0): leading the
+     * widget's rows when there are cards; null without them, where the budget's row says it all.
+     */
+    fun monthRow(s: BudgetSnapshot): Row? {
+        if (s.month == null) return null
+        val (day, days) = dayOf(s.cycleStart, s.cycleEnd, s.asOf)
+        return Row(
+            accountId = MONTH_ROW,
+            label = "This month",
+            kind = Kind.MONTH,
+            spentMinor = s.usedThisCycle,
+            againstMinor = s.spendableThisCycle.takeIf { it > 0L },
+            against = Against.BUDGET,
+            used = BudgetPace.usedFraction(s),
+            gone = BudgetPace.elapsedFraction(s),
+            day = day,
+            days = days,
+            pendingMinor = 0L,
+            projectedMinor = null,
+            pace = BudgetPace.of(s),
+            currency = s.baseCurrency,
+        )
+    }
+
+    /** [monthRow]'s id, never an account's. */
+    const val MONTH_ROW = "month"
+
     /** The account the budget is paid from: where the income lands, else the only personal one. */
     private fun isBudgetAccount(account: AccountEntity, snapshot: BudgetSnapshot, accounts: List<AccountEntity>): Boolean =
         snapshot.potAccountId?.let { it == account.id }
             ?: (account.accountType == AccountType.PERSONAL && accounts.count { it.accountType == AccountType.PERSONAL } == 1)
 
-    private fun budgetRow(account: AccountEntity, s: BudgetSnapshot): Row {
+    private fun budgetRow(account: AccountEntity, month: BudgetSnapshot): Row {
+        // The account's own figures, cards apart (0.8.0): this is its row, beside the month's.
+        val s = month.accountOnly
         val (day, days) = dayOf(s.cycleStart, s.cycleEnd, s.asOf)
         return Row(
             accountId = account.id,

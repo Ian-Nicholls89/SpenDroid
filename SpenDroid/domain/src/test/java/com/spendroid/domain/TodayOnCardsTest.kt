@@ -53,7 +53,9 @@ class TodayOnCardsTest {
         assertEquals(3_990L, s.spentTodayOnCardsPendingMinor)
         assertEquals(4_240L, s.spentTodayPendingMinor)
         // The budget's own figure still counts the card at the bill.
-        assertEquals(250L, s.spentToday)
+        // The account's own "today"; the month's counts the card's everyday spending too (0.8.0).
+        assertEquals(250L, s.accountOnly.spentToday)
+        assertEquals(250L + 3_990L, s.spentToday)
     }
 
     @Test

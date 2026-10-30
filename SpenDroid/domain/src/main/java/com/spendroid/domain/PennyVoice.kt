@@ -147,7 +147,9 @@ object PennyVoice {
             // Like with like: what counts against today's amount is from the accounts - card
             // spending is met by the card's bill. Home's "Spent today", cards and all, is just
             // below, with the shops in Spending: she says only how today stands.
-            val onCards = budget.spentTodayOnCardsMinor
+            // With the month on Home (0.8.0), today's spending is the cards' too: like with like,
+            // it's all "spent". Without it, card spending is met by the bill and set apart.
+            val onCards = if (budget.month != null) 0L else budget.spentTodayOnCardsMinor
             val counted = budget.spentToday
             val left = todays - counted
             // "£17.64 from your account" when cards are in Home's figure too, so the two don't clash.

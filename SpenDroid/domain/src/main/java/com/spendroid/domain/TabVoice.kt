@@ -36,6 +36,8 @@ object TabVoice {
         data class Relink(val requisitionId: String) : Target
         data class Import(val accountId: String) : Target
         data class Renewal(val id: String) : Target
+        /** Next month's card statements against what next month can pay (0.8.0). */
+        data object NextMonth : Target
     }
 
     // ---- Spending ------------------------------------------------------------------------------
@@ -194,6 +196,15 @@ object TabVoice {
         .filterNotNull()
         .sortedByDescending { it.rank }
         .take(2)
+
+    /**
+     * Next month's card statements outgrowing what next month can pay - its own money plus what
+     * this month leaves in the account (0.8.0): something to act on now, while there's time.
+     */
+    fun nextMonthLine(budget: BudgetSnapshot, money: (Long) -> String): Line? {
+        val short = budget.month?.nextShortMinor?.takeIf { it > 0L } ?: return null
+        return Line("Next month's statements are ${money(short)} more than next month can cover.", 94, Target.NextMonth, needsYou = true)
+    }
 
     // ---- Accounts ------------------------------------------------------------------------------
 

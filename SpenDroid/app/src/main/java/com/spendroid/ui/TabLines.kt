@@ -35,7 +35,8 @@ internal fun pennyTalks(state: RootUiState, screen: AppScreen): Boolean = when (
  * ending, a statement to import: Penny says it on Home too, first. Two at most.
  */
 internal fun needsYouLines(state: RootUiState): List<TabVoice.Line> =
-    (tabLines(state, AppScreen.Rules) + tabLines(state, AppScreen.Accounts))
+    (tabLines(state, AppScreen.Rules) + tabLines(state, AppScreen.Accounts) +
+        listOfNotNull(state.budget?.let { b -> TabVoice.nextMonthLine(b) { formatMoney(it, b.baseCurrency) } }))
         .filter { it.needsYou }
         .sortedByDescending { it.rank }
         .take(2)

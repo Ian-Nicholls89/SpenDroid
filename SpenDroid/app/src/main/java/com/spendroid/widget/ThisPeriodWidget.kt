@@ -93,14 +93,15 @@ class ThisPeriodWidget : GlanceAppWidget() {
             val accent = androidx.compose.ui.graphics.Color(widgetAccent(context))
             val own = app.repository.accountColours.first()
             Content(
-                PeriodRows.rows(choice.accountIds, snapshot, accounts, app.repository.transactions()),
+                // With cards, the month leads (0.8.0): account and cards together, then the accounts chosen.
+                listOfNotNull(PeriodRows.monthRow(snapshot)) + PeriodRows.rows(choice.accountIds, snapshot, accounts, app.repository.transactions()),
                 choice.drain,
                 WidgetRefresh.label(context, bankSyncedAt(accounts)),
                 accounts.associate { a ->
                     a.id to com.spendroid.ui.accountColour(a, accounts, own, accent).let {
                         android.graphics.Color.argb(255, (it.red * 255).toInt(), (it.green * 255).toInt(), (it.blue * 255).toInt())
                     }
-                },
+                } + (PeriodRows.MONTH_ROW to widgetAccent(context)),
             )
         }.getOrNull()
     }
@@ -141,7 +142,8 @@ class ThisPeriodWidget : GlanceAppWidget() {
             // Penny says how the budget is going; that account's own caption then isn't repeated.
             // The budget's own row where it's there, as her face is the budget's mood; else the first
             // account that isn't a card.
-            val said = content.rows.firstOrNull { it.kind == PeriodRows.Kind.BUDGET }
+            val said = content.rows.firstOrNull { it.kind == PeriodRows.Kind.MONTH }
+                ?: content.rows.firstOrNull { it.kind == PeriodRows.Kind.BUDGET }
                 ?: content.rows.firstOrNull { it.kind != PeriodRows.Kind.STATEMENT }
             Row(modifier = GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.Vertical.CenterVertically) {
                 LocalWidgetDroid.current?.let { droid ->
@@ -172,7 +174,10 @@ class ThisPeriodWidget : GlanceAppWidget() {
                 if (density == RowDensity.LINE) {
                     LineView(row, content.drain, content.colours[row.accountId])
                 } else {
-                    RowView(row, content.drain, content.colours[row.accountId], full = density == RowDensity.FULL, captioned = row !== said)
+                    RowView(
+                        row, content.drain, content.colours[row.accountId], full = density == RowDensity.FULL, captioned = row !== said,
+                        monthShown = content.rows.any { it.kind == PeriodRows.Kind.MONTH },
+                    )
                 }
             }
             // Only on a widget too small even for single lines: say what is not shown.
@@ -186,7 +191,7 @@ class ThisPeriodWidget : GlanceAppWidget() {
     }
 
     @Composable
-    private fun RowView(row: PeriodRows.Row, drain: Boolean, own: Int?, full: Boolean = true, captioned: Boolean = true) {
+    private fun RowView(row: PeriodRows.Row, drain: Boolean, own: Int?, full: Boolean = true, captioned: Boolean = true, monthShown: Boolean = false) {
         val colour = paceColour(row.pace)
         // The bar in the account's own colour, as the app draws it; the caption keeps the pace's.
         val barColour = own ?: colour
@@ -216,7 +221,7 @@ class ThisPeriodWidget : GlanceAppWidget() {
         if (full) {
             Row(modifier = GlanceModifier.fillMaxWidth()) {
                 Text(
-                    kindLabel(row.kind),
+                    kindLabel(row.kind, monthShown),
                     modifier = GlanceModifier.defaultWeight(),
                     style = TextStyle(color = GlanceTheme.colors.onSurfaceVariant, fontSize = 9.sp),
                 )
@@ -310,8 +315,10 @@ class ThisPeriodWidget : GlanceAppWidget() {
             BudgetPace.Pace.OVER -> RED
         }
 
-        fun kindLabel(kind: PeriodRows.Kind): String = when (kind) {
-            PeriodRows.Kind.BUDGET -> "Budget · pay cycle"
+        fun kindLabel(kind: PeriodRows.Kind, monthShown: Boolean = false): String = when (kind) {
+            // Beside the month's row, the budget's account is the account's own limit.
+            PeriodRows.Kind.BUDGET -> if (monthShown) "From the account" else "Budget · pay cycle"
+            PeriodRows.Kind.MONTH -> "Account and cards"
             PeriodRows.Kind.CYCLE -> "Pay cycle"
             PeriodRows.Kind.STATEMENT -> "Statement"
         }

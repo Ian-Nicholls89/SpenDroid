@@ -64,7 +64,7 @@ class CardTimingTest {
 
     @Test
     fun `at the bill, the payment is the spending and the purchases are not`() {
-        val s = snapshot(CardTiming.AT_BILL)
+        val s = snapshot(CardTiming.AT_BILL).accountOnly
         assertEquals(6200L + 2000L, s.spentThisCycle)
         assertEquals(0L, s.fixedMonthlyOutgoings)
     }
@@ -91,7 +91,7 @@ class CardTimingTest {
             cardTiming = timing,
         )
         val purchase = at(CardTiming.AT_PURCHASE)
-        val bill = at(CardTiming.AT_BILL)
+        val bill = at(CardTiming.AT_BILL).accountOnly
         val cardBill = purchase.upcomingFixed.single { it.rule.key.startsWith(CARD_BILL_KEY_PREFIX) }
 
         // Still listed, because it still leaves the account...
@@ -104,7 +104,7 @@ class CardTimingTest {
     /** The balance still has to pay the bill whichever way it was counted. */
     @Test
     fun `carrying over still holds the bill back from the balance`() {
-        val atBill = snapshot(CardTiming.AT_BILL, BudgetModel.ROLLOVER)
+        val atBill = snapshot(CardTiming.AT_BILL, BudgetModel.ROLLOVER).accountOnly
         val atPurchase = snapshot(CardTiming.AT_PURCHASE, BudgetModel.ROLLOVER)
         assertEquals(atBill.availableToSpend, atPurchase.availableToSpend)
     }

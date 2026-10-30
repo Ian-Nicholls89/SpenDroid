@@ -517,7 +517,7 @@ object BudgetEngine {
         // as spending alone, a card bill coming due took the headline down and left the bar full.
         val usedThisCycle = (spendableThisCycle - availableToSpend).coerceAtLeast(0L)
 
-        return BudgetSnapshot(
+        val accountSnapshot = BudgetSnapshot(
             averageMonthlyIncome = averageMonthlyIncome,
             fixedMonthlyOutgoings = fixedMonthlyOutgoings,
             variableMonthlyBudget = variableBudget,
@@ -569,6 +569,109 @@ object BudgetEngine {
             asOf = today,
             primaryIncomeDesignated = designated != null,
             designationLost = designationLost,
+        )
+
+        // ---- The month, cards and all (0.8.0) ------------------------------------------------
+        // Only with cards whose spending counts at the bill: counted at the till, the account's
+        // figure already is the month's.
+        if (creditCardAccountIds.isEmpty() || atPurchase) return accountSnapshot
+        val periodEnd = cycleEnd?.let { minOf(it, today) } ?: today
+        fun inPeriod(date: LocalDate) = !date.isBefore(cycleStart) && !date.isAfter(periodEnd)
+        fun keyOf(tx: TransactionEntity) = "${tx.accountId}|${tx.transactionId}"
+        fun dateOf(tx: TransactionEntity) = RecurringAnalyzer.parseBookingDate(tx.bookingDate)
+        fun cardLabel(cardId: String) = (cardBills.firstOrNull { it.cardAccountId == cardId }?.cardLabel
+            ?: accounts.firstOrNull { it.id == cardId }?.label ?: "Card").trim()
+
+        // This period's statements: paid from the account since payday, and still to come before it.
+        val statementsPaid = transactions
+            .filter { tx ->
+                tx.amountMinor < 0L && keyOf(tx) in cardAnalysis.cardPaymentKeys &&
+                    (potAccount == null || tx.accountId == potAccount.id) && dateOf(tx)?.let(::inPeriod) == true
+            }
+            .map { tx ->
+                // Which card it paid: the one the same amount reached within a few days.
+                val on = dateOf(tx)
+                val card = transactions.firstOrNull { c ->
+                    c.accountId in creditCardAccountIds && c.amountMinor == -tx.amountMinor && on != null &&
+                        dateOf(c)?.let { abs(ChronoUnit.DAYS.between(on, it)) <= CANDIDATE_WINDOW_DAYS } == true
+                }?.accountId
+                MonthBill(card?.let(::cardLabel) ?: ShopName.clean(tx.payee) ?: "Card bill", -tx.amountMinor, paid = true, due = on)
+            }
+        val statementsToCome = upcomingFixed
+            .filter { it.rule.key.startsWith(CARD_BILL_KEY_PREFIX) && it.amountMinor > 0L }
+            .map { MonthBill(cardLabel(it.rule.key.removePrefix(CARD_BILL_KEY_PREFIX)), it.amountMinor, paid = false, due = it.dueDate) }
+        val statements = (statementsPaid + statementsToCome).sortedBy { it.due }
+
+        // Everyday spending on the cards: not paying them off, not money moved, not bills paid by card.
+        val notSpending = cardAnalysis.cardPaymentKeys + cardAnalysis.cardSettlementKeys
+        val cardDebits = transactions.filter { tx ->
+            tx.accountId in creditCardAccountIds && tx.amountMinor < 0L && !tx.isInternalTransfer &&
+                keyOf(tx) !in notSpending && tx.currency == baseCurrency && dateOf(tx)?.let { !it.isAfter(today) } == true
+        }
+        fun isCardBill(tx: TransactionEntity) = cardRules.any { RecurringAnalyzer.matches(it, tx) }
+        val cardEveryday = cardDebits.filter { !isCardBill(it) }
+        val cardEverydayThisPeriod = cardEveryday.filter { dateOf(it)?.let(::inPeriod) == true }
+        val onCards = cardEverydayThisPeriod.sumOf { -it.amountMinor }
+
+        // Bills paid by card this period: charged already, and due before payday but not yet charged.
+        val cardBillsCharged = cardDebits.filter { isCardBill(it) && dateOf(it)?.let(::inPeriod) == true }.sumOf { -it.amountMinor }
+        val cardBillsToCome = if (lastDayToCome == null) 0L else cardRules.sumOf { rule ->
+            val next = nextFor(rule, today.minusDays(1))
+            val charged = cardDebits.any { tx ->
+                RecurringAnalyzer.matches(rule, tx) && dateOf(tx)?.let { !it.isBefore(next.minusDays(CANDIDATE_WINDOW_DAYS)) } == true
+            }
+            if (!next.isBefore(today) && !next.isAfter(lastDayToCome) && !charged) abs(rule.amountMinor) else 0L
+        }
+
+        // From the account: everyday spending, the statements set aside or paid not among it.
+        val fromAccountTx = variableDebits.filter { !isCardBillPaid(it) }
+        val fromAccount = fromAccountTx.sumOf { -it.amountMinor }
+
+        // Left this month = the account's figure, plus the statements it pays (last month's card
+        // spending, not this month's), less this month's card spending and bills paid by card.
+        val monthLeft = uncapped + statements.sumOf { it.amountMinor } - onCards - cardBillsCharged - cardBillsToCome
+        val monthSpent = fromAccount + onCards
+        val monthAvailable = monthLeft.coerceAtLeast(0L)
+
+        // Next period's statements, by each card's own dates, at what's known: on the card now and
+        // its regular payments to come. Not the pace's guess at the rest - the rest of this month
+        // is counted once, as what's left of it (MonthView.nextShortMinor).
+        val nextStatements = if (nextIncomeDate == null || followingIncomeDate == null) emptyList() else cardBills.flatMap { bill ->
+            val due = bill.dueDate ?: return@flatMap emptyList()
+            val building = bill.unbilledMinor + bill.toComeMinor
+            val payments = when {
+                bill.statementClose == null -> listOf(due to bill.outstandingMinor)
+                bill.statementPaid -> listOf(due to maxOf(building, bill.dueMinor))
+                else -> listOf(due to bill.billedMinor, due.plusMonths(1) to building)
+            }
+            payments
+                .filter { (date, amount) -> amount > 0L && !date.isBefore(nextIncomeDate) && date.isBefore(followingIncomeDate) }
+                .map { (date, amount) -> MonthBill(bill.cardLabel.trim(), amount, paid = false, due = date) }
+        }.sortedBy { it.due }
+
+        val byDayMonth = (discretionary.filter { !isCardBillPaid(it.second) } + cardEveryday.mapNotNull { tx -> dateOf(tx)?.let { it to tx } })
+            .groupBy({ it.first }, { -it.second.amountMinor })
+        return accountSnapshot.copy(
+            availableToSpend = monthAvailable,
+            shortfallMinor = if (monthLeft < 0L) -monthLeft else 0L,
+            // Whatever is not left is used, as for the account: the bar and the headline agree.
+            spendableThisCycle = monthSpent + monthAvailable,
+            usedThisCycle = monthSpent,
+            spentThisCycle = monthSpent,
+            spentToday = (fromAccountTx + cardEverydayThisPeriod).filter { dateOf(it) == today }.sumOf { -it.amountMinor },
+            lastSevenDaysMinor = (6L downTo 0L).map { back -> byDayMonth[today.minusDays(back)].orEmpty().sum() },
+            cycleSpends = fromAccountTx + cardEverydayThisPeriod,
+            spendByDay = byDayMonth.mapValues { (_, v) -> v.sum() },
+            month = MonthView(
+                account = accountSnapshot,
+                statements = statements,
+                spentFromAccountMinor = fromAccount,
+                spentOnCardsMinor = onCards,
+                cardBillsMinor = cardBillsCharged + cardBillsToCome,
+                nextStatements = nextStatements,
+                nextBudgetMinor = cycleBudget,
+                leftMinor = monthLeft,
+            ),
         )
     }
 

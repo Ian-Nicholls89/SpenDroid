@@ -1,5 +1,6 @@
 package com.spendroid.ui
 
+import com.spendroid.domain.accountOnly
 import com.spendroid.domain.toRecurringRule
 
 import androidx.compose.foundation.background
@@ -40,6 +41,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -80,8 +82,8 @@ private val WEEKDAY: DateTimeFormatter = DateTimeFormatter.ofPattern("EEE")
 /** What a page of the hero is about: the budget, or one account the budget does not spend from. */
 private sealed interface HeroPage {
     data object Budget : HeroPage
-    /** The month's money, cards and all (0.7.1). */
-    data class Month(val month: com.spendroid.domain.MonthlyAvailable.Month) : HeroPage
+    /** With cards, the first page is the month (0.8.0); this is the account it's paid into, on its own. */
+    data object Pot : HeroPage
     data class Account(val account: AccountEntity, val row: PeriodRows.Row, val bill: CreditCardEngine.CardBill?) : HeroPage
 }
 
@@ -142,7 +144,7 @@ fun HomeScreen(
         buildList {
             if (budget != null) add(HeroPage.Budget)
             if (budget != null) {
-                com.spendroid.domain.MonthlyAvailable.of(budget, state.transactions, state.accounts)?.let { add(HeroPage.Month(it)) }
+                if (budget.month != null) add(HeroPage.Pot)
                 // Cards first - their bills are the biggest thing to come - then the rest.
                 val others = state.accounts
                     .filter { it.id != budget.potAccountId && it.accountType != AccountType.PAYPAL }
@@ -155,6 +157,12 @@ fun HomeScreen(
                 }
             }
         }
+    }
+    // Next month's statements against next month's money (0.8.0): from Penny's line, or the panel's.
+    var nextMonthOpen by remember { mutableStateOf(false) }
+    if (nextMonthOpen) budget?.month?.let { NextMonthSheet(it, budget.baseCurrency) { nextMonthOpen = false } }
+    val onNeedsYouHere: (com.spendroid.domain.TabVoice.Target) -> Unit = { target ->
+        if (target == com.spendroid.domain.TabVoice.Target.NextMonth) nextMonthOpen = true else onNeedsYou(target)
     }
     val pager = rememberPagerState(initialPage) { pages.size.coerceAtLeast(1) }
     val page = pages.getOrNull(pager.currentPage)
@@ -188,9 +196,9 @@ fun HomeScreen(
 
             HorizontalPager(state = pager, modifier = Modifier.fillMaxWidth()) { index ->
                 when (val p = pages[index]) {
-                    HeroPage.Budget -> BudgetHero(budget, state.syncing, onOpenToday, news, onNews, voice, needsYou, onNeedsYou)
+                    HeroPage.Budget -> BudgetHero(budget, state.syncing, onOpenToday, news, onNews, voice, needsYou, onNeedsYouHere)
                     is HeroPage.Account -> AccountHero(p, colourOf(p.account, state.accounts), state.syncing)
-                    is HeroPage.Month -> MonthHero(p.month, budget, state.syncing)
+                    HeroPage.Pot -> PotHero(budget, state.syncing)
                 }
             }
             if (pages.size > 1) PagerDots(pages.size, pager.currentPage, pageColour ?: MaterialTheme.colorScheme.primary)
@@ -198,7 +206,8 @@ fun HomeScreen(
 
             when (page) {
                 is HeroPage.Account -> AccountBelow(state, page, colourOf(page.account, state.accounts), onRefresh, onSeeAccount, onOpenForecast)
-                else -> BudgetBelow(state, budget, onRefresh, onSeeAllTransactions, onOpenForecast, onReload)
+                HeroPage.Pot -> BudgetBelow(state, budget.accountOnly, onRefresh, onSeeAllTransactions, onOpenForecast, onReload, heading = "From the account")
+                else -> BudgetBelow(state, budget, onRefresh, onSeeAllTransactions, onOpenForecast, onReload, onNextMonth = { nextMonthOpen = true })
             }
 
             state.linkProgress?.let { progress ->
@@ -287,11 +296,25 @@ private fun BudgetHero(
             Spacer(Modifier.width(10.dp))
             SyncedTick(syncing)
         }
+        val month = budget.month
         Text(
-            if (budget.budgetModel == BudgetModel.ROLLOVER) "left to spend, balance carried over" else "left to spend",
+            when {
+                month != null -> "left this month, account and cards together"
+                budget.budgetModel == BudgetModel.ROLLOVER -> "left to spend, balance carried over"
+                else -> "left to spend"
+            },
             style = MaterialTheme.typography.labelMedium,
             color = Color.White.copy(alpha = 0.7f),
         )
+        // How much of it can come from the account and stay in the black; the rest goes on cards.
+        month?.let { m ->
+            Text(
+                fromAccountLine(m, budget.baseCurrency),
+                style = MaterialTheme.typography.labelMedium,
+                color = if (m.accountLeftMinor < 0L) Charcoal.Warn else Color(0xFFCFD2D8),
+                modifier = Modifier.padding(top = 2.dp),
+            )
+        }
         Spacer(Modifier.height(8.dp))
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Chip(paceWord(pace), paceColour(pace))
@@ -511,42 +534,46 @@ private fun AccountHero(page: HeroPage.Account, colour: Color, syncing: Boolean 
 }
 
 /**
- * The month's money, cards and all: Home's figure plus the card bills this cycle pays - what the
- * month has to spend if the cards come to what they did last month. Under it, each bill, and
- * Penny on the cards since payday.
+ * The account the pay goes into, on its own (0.8.0): what can still leave it before payday and
+ * stay in the black, once this month's card statements are paid. The month's first page counts
+ * the cards too; this is the limit that keeps the account out of the red.
  */
 @Composable
-private fun MonthHero(month: com.spendroid.domain.MonthlyAvailable.Month, budget: BudgetSnapshot, syncing: Boolean) {
+private fun PotHero(month: BudgetSnapshot, syncing: Boolean) {
+    val m = month.month ?: return
+    val budget = m.account
     val money = { minor: Long -> formatMoney(minor, budget.baseCurrency) }
     Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 6.dp)) {
-        PennySays(droidFaceOf(budget, syncing), com.spendroid.domain.MonthlyAvailable.line(month, money))
-        Text(
-            "This month" + (month.until?.let { " · until ${it.format(DAY)}" } ?: ""),
-            style = MaterialTheme.typography.labelLarge,
-            color = Color.White.copy(alpha = 0.78f),
+        PennySays(
+            droidFaceOf(budget, syncing),
+            when {
+                budget.shortfallMinor > 0L -> "Your account is ${money(budget.shortfallMinor)} short of what's to come. Keep to the cards."
+                budget.availableToSpend == 0L -> "Nothing more from your account before payday. Cards only."
+                // The month's money is spent: what the account could still pay is next month's.
+                m.leftMinor <= 0L -> "The month's spent. What's still in your account is next month's money."
+                // The cards are already past this month's statements: the account could pay more than the month has.
+                m.accountLeftMinor > m.leftMinor -> "The month has ${money(m.leftMinor.coerceAtLeast(0L))} left - your account can cover all of it."
+                else -> "Up to ${money(budget.availableToSpend)} more from your account. The rest goes on cards."
+            },
         )
+        Text(untilLine(budget), style = MaterialTheme.typography.labelLarge, color = Color.White.copy(alpha = 0.78f))
         RollingAmount(
             modifier = Modifier.shimmer(syncing),
-            minor = month.totalMinor,
+            minor = budget.availableToSpend,
             currency = budget.baseCurrency,
             style = MaterialTheme.typography.displaySmall.copy(fontSize = 48.sp, fontFamily = com.spendroid.ui.theme.Grotesk, letterSpacing = (-1.5).sp),
             fontWeight = FontWeight.Bold,
             color = Color.White,
         )
-        Text("for the month, cards included", style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.7f))
-        Spacer(Modifier.height(8.dp))
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(if (month.overMinor > 0L) "${money(month.overMinor)} over" else "${money(month.leftMinor)} left", style = MaterialTheme.typography.labelLarge, color = Color(0xFFCFD2D8))
-            Text("+", style = MaterialTheme.typography.labelLarge, color = Color(0xFF8D929C))
-            Text("${money(month.cardBillsMinor)} card bills", style = MaterialTheme.typography.labelLarge, color = Color(0xFFCFD2D8))
+        Text("left from your account, in the black", style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.7f))
+        if (m.statementsMinor > 0L) {
+            Text(
+                "After bills and this month's ${money(m.statementsMinor)} of card statements",
+                style = MaterialTheme.typography.labelMedium,
+                color = Color(0xFFCFD2D8),
+                modifier = Modifier.padding(top = 2.dp),
+            )
         }
-        // Each card's bill this cycle, paid or to come.
-        Text(
-            month.bills.joinToString(" · ") { "${it.label} ${money(it.amountMinor)}${if (it.paid) " ✓" else ""}" },
-            style = MaterialTheme.typography.labelMedium,
-            color = Color(0xFF8D929C),
-            modifier = Modifier.padding(top = 4.dp),
-        )
     }
 }
 
@@ -566,11 +593,25 @@ private fun PagerDots(count: Int, current: Int, colour: Color) {
 }
 
 @Composable
-private fun BudgetBelow(state: RootUiState, budget: BudgetSnapshot, onRefresh: () -> Unit, onSeeAllTransactions: () -> Unit, onOpenForecast: (String?) -> Unit = {}, onReload: () -> Unit = {}) {
+private fun BudgetBelow(
+    state: RootUiState,
+    budget: BudgetSnapshot,
+    onRefresh: () -> Unit,
+    onSeeAllTransactions: () -> Unit,
+    onOpenForecast: (String?) -> Unit = {},
+    onReload: () -> Unit = {},
+    heading: String? = null,
+    /** The month's look ahead at next month's statements, opened (0.8.0). */
+    onNextMonth: () -> Unit = {},
+) {
     val money = { minor: Long -> formatMoney(minor, budget.baseCurrency) }
     val pace = BudgetPace.of(budget)
+    val month = budget.month
     Panel(Modifier.padding(horizontal = 14.dp)) {
-        SectionHeading("This cycle", trailing = "used of budget")
+        SectionHeading(
+            heading ?: if (month != null) "This month" else "This cycle",
+            trailing = if (month != null) "account and cards" else "used of budget",
+        )
         Spacer(Modifier.height(10.dp))
         val against = budget.spendableThisCycle
         LabelledBar(
@@ -590,12 +631,47 @@ private fun BudgetBelow(state: RootUiState, budget: BudgetSnapshot, onRefresh: (
             // Beside the budget rather than folded into it: the gap between them is the point.
             if (budget.budgetModel == BudgetModel.SHOW_BOTH) budget.potBalanceMinor?.let { HeroStat("In the account", it, budget.baseCurrency) }
         }
+        // Where the month's spending went, and the statements it pays (0.8.0).
+        month?.let { m ->
+            Spacer(Modifier.height(8.dp))
+            Text(
+                listOfNotNull(
+                    "${money(m.spentFromAccountMinor)} from your account",
+                    "${money(m.spentOnCardsMinor)} on cards",
+                    m.cardBillsMinor.takeIf { it > 0L }?.let { "${money(it)} of bills paid by card" },
+                ).joinToString(" · "),
+                style = MaterialTheme.typography.labelMedium,
+                color = Color(0xFFCFD2D8),
+            )
+            if (m.statements.isNotEmpty()) {
+                Text(
+                    "Card statements this month: " + m.statements.joinToString(", ") { "${it.label} ${money(it.amountMinor)}${if (it.paid) " ✓" else ""}" },
+                    style = MaterialTheme.typography.labelMedium,
+                    color = Charcoal.Muted,
+                )
+            }
+            if (m.nextStatements.isNotEmpty()) {
+                val short = m.nextShortMinor
+                Text(
+                    "Next month's statements: heading for ${money(m.nextStatementsMinor)} · " +
+                        if (short > 0L) "${money(short)} short ›" else "covered ›",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = if (short > 0L) FontWeight.Bold else FontWeight.Normal,
+                    color = if (short > 0L) Charcoal.Warn else Charcoal.Muted,
+                    modifier = Modifier.padding(top = 2.dp).clickable(onClickLabel = "See next month", onClick = onNextMonth),
+                )
+            }
+        }
         val notes = buildList {
             todayNote(budget)?.let(::add)
-            if (budget.budgetModel == BudgetModel.ROLLOVER) budget.potBalanceMinor?.let { add("${money(it)} in the account, less what is due before payday") }
+            // The account's own: on its page, not the month's (0.8.0).
+            if (month == null && budget.budgetModel == BudgetModel.ROLLOVER) budget.potBalanceMinor?.let { add("${money(it)} in the account, less what is due before payday") }
             // Zero cannot say how far past zero, and the difference matters.
-            if (budget.shortfallMinor > 0L) add("${money(budget.shortfallMinor)} short of covering what is still to come out")
-            if (budget.cardsNextCycleMinor > 0L) add("About ${money(budget.cardsNextCycleMinor)} of card bills fall in your next cycle")
+            if (budget.shortfallMinor > 0L) {
+                add(if (month != null) "${money(budget.shortfallMinor)} over for the month" else "${money(budget.shortfallMinor)} short of covering what is still to come out")
+            }
+            // The month says it itself, by card and against next month's money.
+            if (month == null && budget.cardsNextCycleMinor > 0L) add("About ${money(budget.cardsNextCycleMinor)} of card bills fall in your next cycle")
             // Held back towards bills that come quarterly or yearly, so the cycle they land in is not hit.
             if (budget.setAsideMinor > 0L) {
                 val n = budget.setAside.size
@@ -608,7 +684,7 @@ private fun BudgetBelow(state: RootUiState, budget: BudgetSnapshot, onRefresh: (
             Spacer(Modifier.height(8.dp))
             Text(
                 "The income you picked to set the cycle is no longer being detected - possibly renamed by your bank. " +
-                    "Using the largest income instead; star it again under Regular, on the Income tab.",
+                    "Using the largest income instead; star it again on Regular - tap Income in Each month.",
                 style = MaterialTheme.typography.labelMedium,
                 color = Charcoal.Warn,
             )
@@ -897,4 +973,12 @@ internal fun PennyStories(
         story = Story(Math.floorMod(step, voice.size), voice.size, progress.value, typing = going, amber = amber).takeIf { voice.size > 1 },
         needsYou = shown in amber,
     )
+}
+
+/** How much of the month's figure the account can pay: all of it, some with the rest on cards, or none. */
+internal fun fromAccountLine(m: com.spendroid.domain.MonthView, currency: String): String = when {
+    m.accountLeftMinor < 0L -> "Your account is ${formatMoney(-m.accountLeftMinor, currency)} short · keep to the cards"
+    m.leftMinor <= 0L -> "Nothing left this month, from the account or on cards"
+    m.accountLeftMinor >= m.leftMinor -> "Your account can cover all of it"
+    else -> "Up to ${formatMoney(m.fromAccountMinor, currency)} from your account · the rest on cards"
 }

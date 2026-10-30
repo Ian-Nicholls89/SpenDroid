@@ -167,7 +167,62 @@ data class BudgetSnapshot(
     val primaryIncomeDesignated: Boolean = false,
     /** True when a designated income no longer matches any rule and the guess took over. */
     val designationLost: Boolean = false,
+    /**
+     * The month, cards and all (0.8.0): when there are credit cards, [availableToSpend] and the
+     * figures that go with it - the bar, the pace, this cycle's and today's spending - are the
+     * month's, account and cards together, and the account's own are kept here.
+     */
+    val month: MonthView? = null,
 )
+
+/** One card's statement: this pay period's ([paid] already, or to come), or next period's. */
+data class MonthBill(val label: String, val amountMinor: Long, val paid: Boolean, val due: LocalDate?)
+
+/**
+ * What's left this month, account and cards together, rests on these (0.8.0). Pay less the
+ * bills from the account is the month's money; this period's card statements are last month's
+ * card spending, paid from it. So the account can only spend what the statements leave, and the
+ * rest of the month has to go on the cards - which next month's statements then take.
+ */
+data class MonthView(
+    /** The account's own figures, as Home showed them before: what can leave it and stay in the black. */
+    val account: BudgetSnapshot,
+    /** This pay period's card statements, paid and still to come. */
+    val statements: List<MonthBill>,
+    /** Everyday spending from the account this period. */
+    val spentFromAccountMinor: Long,
+    /** Everyday spending on the cards since payday: bills paid by card aren't in it. */
+    val spentOnCardsMinor: Long,
+    /** Bills paid by card this period, charged and still to come: taken off the month like any bill. */
+    val cardBillsMinor: Long,
+    /** Next pay period's statements, by their real dates: what's on the cards so far and their known payments, not a guess at the rest. */
+    val nextStatements: List<MonthBill>,
+    /** Next period's money before card statements: pay less the bills from the account. */
+    val nextBudgetMinor: Long,
+    /** Left this month, before it's floored at zero: below it, how far over. */
+    val leftMinor: Long,
+) {
+    val statementsMinor: Long get() = statements.sumOf { it.amountMinor }
+    val nextStatementsMinor: Long get() = nextStatements.sumOf { it.amountMinor }
+
+    /** What the account can still pay before payday and stay in the black; below zero, how far it's short. */
+    val accountLeftMinor: Long get() = account.availableToSpend - account.shortfallMinor
+
+    /** The most of what's left this month the account can pay: the rest has to go on cards. */
+    val fromAccountMinor: Long get() = minOf(accountLeftMinor, leftMinor).coerceAtLeast(0L)
+
+    /**
+     * How far next period's statements go past what next period can pay, once the rest of this
+     * month is spent. Spent from the account, it leaves that much less there at payday; spent on
+     * cards, the statements grow by it: either way next period carries it, so it's counted once,
+     * here, against next period's money and what the account holds now.
+     */
+    val nextShortMinor: Long get() =
+        (nextStatementsMinor + leftMinor.coerceAtLeast(0L) - accountLeftMinor - nextBudgetMinor).coerceAtLeast(0L)
+}
+
+/** The account's own figures: the month's [MonthView.account] where there is one, else these. */
+val BudgetSnapshot.accountOnly: BudgetSnapshot get() = month?.account ?: this
 
 fun ManualRecurringRuleEntity.toRecurringRule(): RecurringRule? {
     val cadenceValue = runCatching { Cadence.valueOf(cadence) }.getOrNull() ?: return null

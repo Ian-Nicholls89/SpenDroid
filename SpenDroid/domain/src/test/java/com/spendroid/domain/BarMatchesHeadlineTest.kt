@@ -95,7 +95,7 @@ class BarMatchesHeadlineTest {
             listOf(current, card),
             LocalDateTime.of(2026, 9, 20, 12, 0),
             budgetModel = BudgetModel.FRESH_START,
-        )
+        ).accountOnly
         assertTrue(s.upcomingFixed.any { it.rule.key.startsWith(CARD_BILL_KEY_PREFIX) })
         assertEquals(s.spendableThisCycle - s.availableToSpend, s.usedThisCycle)
         assertTrue(s.usedThisCycle > s.spentThisCycle)

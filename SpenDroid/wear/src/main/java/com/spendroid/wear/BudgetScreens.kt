@@ -285,6 +285,10 @@ private fun Hero(r: BudgetReading) {
             Text(r.text("daysLine"), style = MaterialTheme.typography.labelSmall, color = Soft, maxLines = 1)
             Spacer(Modifier.height(4.dp))
             Text(paceWord(r.pace).lowercase(), style = MaterialTheme.typography.labelMedium, fontFamily = Grotesk, fontWeight = FontWeight.Bold, color = fill, maxLines = 1)
+            // With cards the figure is the month's (phone 0.8.0); this is how much of it the account can pay.
+            r.text("fromAccount").takeIf { it.isNotEmpty() }?.let {
+                Text(it, style = MaterialTheme.typography.labelSmall, color = Soft, maxLines = 1)
+            }
         }
     }
 }

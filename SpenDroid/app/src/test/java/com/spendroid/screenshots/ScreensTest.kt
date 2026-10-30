@@ -84,7 +84,7 @@ class ScreensTest {
         }
     }
 
-    /** 0.7.1: the month, cards and all - Home's figure plus the card bills this cycle pays. Made-up figures. */
+    /** 0.8.0: swipe right from the month - the account on its own, in the black. Made-up figures. */
     @Test
     @Config(qualifiers = "w411dp-h1500dp-xxhdpi")
     fun homeMonth() {
@@ -849,5 +849,15 @@ class ScreensTest {
             compose.waitForIdle()
             compose.onRoot().captureRoboImage("build/screenshots/identity-$name.png")
         }
+    }
+
+    /** 0.8.0: next month's statements against what next month can pay. Made-up figures. */
+    @Test
+    @Config(qualifiers = "w411dp-h1100dp-xxhdpi")
+    fun nextMonth() {
+        val state = Sample.state()
+        val month = state.budget?.month ?: error("the sample has a card, so a month")
+        compose.setContent { BudgetTheme { com.spendroid.ui.NextMonthSheet(month, "GBP") {} } }
+        com.github.takahirom.roborazzi.captureScreenRoboImage("build/screenshots/next-month.png")
     }
 }

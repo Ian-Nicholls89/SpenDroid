@@ -748,7 +748,8 @@ class GoCardlessRepository private constructor(
             start = last.cycleStart,
             end = end,
             currency = last.baseCurrency,
-            leftOverMinor = last.availableToSpend,
+            // Below zero when the cycle went over: the headline is floored at nothing, the shortfall is how far.
+            leftOverMinor = last.availableToSpend - last.shortfallMinor,
             spentMinor = last.spentThisCycle,
             daily = daily,
             dailyShareMinor = share,

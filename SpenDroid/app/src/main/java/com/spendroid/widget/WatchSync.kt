@@ -137,6 +137,15 @@ internal object WatchSync {
                     // Screen 1.
                     putString("availableFull", money(s.availableToSpend))
                     putString("untilLine", s.nextIncomeDate?.let { "left until ${it.format(DAY)}" } ?: "left to spend")
+                    // With cards the figure is the month's (0.8.0): what of it can come from the account.
+                    putString("fromAccount", s.month?.takeIf { !hide }?.let { m ->
+                        when {
+                            m.accountLeftMinor < 0L -> "account short · cards only"
+                            m.leftMinor <= 0L -> "month spent"
+                            m.leftMinor > 0L && m.accountLeftMinor >= m.leftMinor -> "your account can cover it"
+                            else -> "${poundsOnly(m.fromAccountMinor, s.baseCurrency)} from your account"
+                        }
+                    }.orEmpty())
                     putString("perDay", days?.takeIf { it > 0 }?.let { "${money(s.availableToSpend / it)} a day" }.orEmpty())
                     putString("dayOfCycle", s.cycleEnd?.let { end ->
                         val total = ChronoUnit.DAYS.between(s.cycleStart, end).toInt() + 1
