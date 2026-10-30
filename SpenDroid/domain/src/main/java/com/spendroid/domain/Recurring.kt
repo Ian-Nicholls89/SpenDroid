@@ -201,6 +201,10 @@ data class MonthView(
     val nextBudgetMinor: Long,
     /** Left this month, before it's floored at zero: below it, how far over. */
     val leftMinor: Long,
+    /** Refunds onto the cards this period, as the user said: already off [spentOnCardsMinor]. */
+    val refundsMinor: Long = 0L,
+    /** Money onto a card this period that isn't paying it off, not yet asked about: refund, or not? */
+    val creditsToAsk: List<com.spendroid.data.db.TransactionEntity> = emptyList(),
 ) {
     val statementsMinor: Long get() = statements.sumOf { it.amountMinor }
     val nextStatementsMinor: Long get() = nextStatements.sumOf { it.amountMinor }

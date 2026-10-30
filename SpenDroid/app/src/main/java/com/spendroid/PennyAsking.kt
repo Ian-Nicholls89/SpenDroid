@@ -77,6 +77,10 @@ internal fun PennyAsking(
                     com.spendroid.data.RenewalStore(context).notIt(id, key)
                     viewModel.reloadLocal()
                 },
+                onCardCredit = { key, refund ->
+                    com.spendroid.data.CardCredits(context).set(key, refund)
+                    viewModel.reloadLocal()
+                },
             ),
             onLater = {
                 com.spendroid.ui.PennyAsk.later(context)

@@ -117,4 +117,29 @@ class MonthBudgetTest {
         assertEquals(15_000L, month(nextStatements = 0, accountLeft = 15_000, left = 65_000).fromAccountMinor)
         assertEquals(0L, month(nextStatements = 0, accountLeft = -5_000, left = 65_000).fromAccountMinor)
     }
+
+    @Test
+    fun `money onto a card is asked about - a refund comes off card spending, anything else doesn't`() {
+        val withCredit = transactions + tx("card", "2026-09-16", 1000, "SAINSBURYS")
+        val key = "card|${withCredit.last().transactionId}"
+        fun month(answers: Map<String, Boolean>) = BudgetEngine.snapshot(
+            transactions = withCredit, rules = RecurringAnalyzer.analyze(withCredit), accounts = accounts,
+            referenceTime = now, cardCredits = answers,
+        )
+        // Not answered: asked about, and meanwhile not counted. Paying the card off is never asked.
+        val asked = month(emptyMap())
+        assertEquals(listOf("SAINSBURYS"), asked.month!!.creditsToAsk.map { it.payee })
+        assertEquals(3000L, asked.month!!.spentOnCardsMinor)
+        // A refund: £10 less spent on cards, £10 more left this month.
+        val refund = month(mapOf(key to true))
+        assertTrue(refund.month!!.creditsToAsk.isEmpty())
+        assertEquals(2000L, refund.month!!.spentOnCardsMinor)
+        assertEquals(1000L, refund.month!!.refundsMinor)
+        assertEquals(asked.availableToSpend + 1000L, refund.availableToSpend)
+        // Not a refund: not asked again, and nothing changes.
+        val notRefund = month(mapOf(key to false))
+        assertTrue(notRefund.month!!.creditsToAsk.isEmpty())
+        assertEquals(asked.availableToSpend, notRefund.availableToSpend)
+    }
 }
+

@@ -58,6 +58,8 @@ class GoCardlessRepository private constructor(
     private val tokenManager: TokenManager,
     private val dataApi: GcDataApi,
     private val dao: BudgetDao,
+    /** For the user's choices the budget reads: money onto a card said to be a refund (0.8.0). */
+    private val appContext: Context? = null,
 ) {
 
     val secretId: Flow<String?> = secrets.secretId
@@ -782,6 +784,7 @@ class GoCardlessRepository private constructor(
             calendar = WorkingDayCalendar(holidays.keys),
             overrides = ruleOverrides.first().associateBy { it.ruleKey },
             cardTiming = CardTiming.from(cardTiming.first()),
+            cardCredits = appContext?.let { CardCredits(it).answers() }.orEmpty(),
         )
     }
 
@@ -1180,7 +1183,7 @@ class GoCardlessRepository private constructor(
                 .build()
                 .create(GcDataApi::class.java)
 
-            return GoCardlessRepository(secrets, tokenManager, dataApi, dao)
+            return GoCardlessRepository(secrets, tokenManager, dataApi, dao, context.applicationContext)
         }
     }
 }

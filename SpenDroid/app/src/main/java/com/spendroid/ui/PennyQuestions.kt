@@ -71,6 +71,8 @@ internal sealed class PennyQuestion(val key: String) {
     /** A payment around a renewal's end that looks like it (0.7.2): was it, and when does the new cover end? */
     class Renewed(val renewal: com.spendroid.domain.Renewals.Renewal, val payment: com.spendroid.domain.Renewals.Payment) :
         PennyQuestion("renewal:${renewal.id}:${payment.key}")
+    /** Money onto a card that isn't paying it off (0.8.0): a refund, to come off the month's card spending? */
+    class CardCredit(val credit: TransactionEntity, val card: String) : PennyQuestion("credit:${credit.accountId}|${credit.transactionId}")
 }
 
 /** Every question waiting, most pressing first: the ones that change today's figure lead. */
@@ -89,7 +91,10 @@ internal fun pennyQuestions(
         NotificationSpend.unanswered(state.seenSpends).filter { it.id !in asked }.sortedByDescending { it.seenAt }.map { PennyQuestion.WhichAccount(it) } +
         NotificationSpend.unconfirmed(state.seenSpends, now, state.manualCoverage).filter { it.id !in asked }.map { PennyQuestion.NotReported(it) } +
         state.duplicateQuestions.map { PennyQuestion.Vanished(it) } +
-        state.renewals.mapNotNull { item -> item.match?.let { PennyQuestion.Renewed(item.renewal, it) } }
+        state.renewals.mapNotNull { item -> item.match?.let { PennyQuestion.Renewed(item.renewal, it) } } +
+        state.budget?.month?.creditsToAsk.orEmpty().map { tx ->
+            PennyQuestion.CardCredit(tx, state.accounts.firstOrNull { it.id == tx.accountId }?.label?.trim() ?: "your card")
+        }
 }
 
 /** What answering does: the same calls the cards made. */
@@ -108,6 +113,8 @@ internal class PennyAnswers(
     val onRenewed: (id: String, payment: com.spendroid.domain.Renewals.Payment, ends: LocalDate) -> Unit = { _, _, _ -> },
     /** That payment wasn't it. */
     val onNotRenewed: (id: String, paymentKey: String) -> Unit = { _, _ -> },
+    /** Money onto a card: a refund, or not (a payment to the card from elsewhere). */
+    val onCardCredit: (key: String, refund: Boolean) -> Unit = { _, _ -> },
 )
 
 /**
@@ -206,6 +213,7 @@ internal fun PennyQuestionBody(
             is PennyQuestion.NotReported -> UnreportedQuestion(q.spend, answers) { answer(q, it) }
             is PennyQuestion.Vanished -> VanishedQuestion(q.question, accounts, answers) { answer(q, it) }
             is PennyQuestion.Renewed -> RenewedQuestion(q, answers) { answer(q, it) }
+            is PennyQuestion.CardCredit -> CardCreditQuestion(q, answers) { answer(q, it) }
         }
         Text(
             "Ask me later",
@@ -396,6 +404,30 @@ private fun VanishedQuestion(q: DuplicateCheck.Question, accounts: List<AccountE
                 said(Noted("Kept: $money at $payee stays counted."))
             }, Modifier.fillMaxWidth())
         }
+    }
+}
+
+@Composable
+private fun CardCreditQuestion(q: PennyQuestion.CardCredit, answers: PennyAnswers, said: (Noted) -> Unit) {
+    val tx = q.credit
+    val key = "${tx.accountId}|${tx.transactionId}"
+    val money = formatMoney(tx.amountMinor, tx.currency)
+    val from = tx.payee.tidyPayee().ifBlank { "somewhere" }
+    val on = com.spendroid.domain.RecurringAnalyzer.parseBookingDate(tx.bookingDate)?.format(DAY)
+    Question(
+        "$money came onto ${q.card} from $from${on?.let { " on $it" }.orEmpty()}. Was it a refund?",
+        "A refund comes off this month's card spending, so there's that much more left. Until you tell me, I leave it out.",
+    )
+    fun noted(refund: Boolean): Noted = Noted(
+        if (refund) "Noted: a $money refund. It comes off this month's card spending." else "Noted: not a refund, so it's left out of your spending.",
+        (if (refund) "Change: it wasn't a refund" else "Change: it was a refund") to {
+            answers.onCardCredit(key, !refund)
+            said(noted(!refund))
+        },
+    )
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        BigButton("Yes, a refund", null, { answers.onCardCredit(key, true); said(noted(true)) }, Modifier.fillMaxWidth(), colour = Charcoal.Warn, textColour = Color(0xFF111111))
+        BigButton("No, a payment to the card", null, { answers.onCardCredit(key, false); said(noted(false)) }, Modifier.fillMaxWidth())
     }
 }
 

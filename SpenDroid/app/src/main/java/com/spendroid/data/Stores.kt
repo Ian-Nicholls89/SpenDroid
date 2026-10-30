@@ -47,6 +47,7 @@ object Stores {
     const val PENNY_NEWS = "penny_news"
     const val PENNY_VOICE = "penny_voice"
     const val RENEWALS = "renewals"
+    const val CARD_CREDITS = "card_credits"
 
     // ---- this phone ---------------------------------------------------------------------------
     const val PRIVACY = "privacy"
@@ -78,6 +79,7 @@ object Stores {
         Store(PENNY_NEWS, Kind.USER_DATA, inBackup = true, holds = "Card digits Penny has already said she learnt (in the database)"),
         Store(PENNY_VOICE, Kind.USER_DATA, inBackup = true, holds = "A count of visits to Home, to vary Penny's lines (in the database)"),
         Store(RENEWALS, Kind.USER_DATA, inBackup = true, holds = "Renewals: what ends when, reminders, and the payments that renewed them (in the database)"),
+        Store(CARD_CREDITS, Kind.USER_DATA, inBackup = true, holds = "Answers to \"Was this a refund?\" about money onto a card (in the database)"),
 
         Store(PRIVACY, Kind.DEVICE, inBackup = true, holds = "App lock, and where figures show (widgets, watch, notifications, recents)"),
         Store(LAUNCHER_ICON, Kind.DEVICE, inBackup = true, holds = "The chosen app icon"),

@@ -21,6 +21,12 @@ object BudgetEngine {
         calendar: WorkingDayCalendar = WorkingDayCalendar(),
         overrides: Map<String, RuleOverrideEntity> = emptyMap(),
         cardTiming: CardTiming = CardTiming.AT_BILL,
+        /**
+         * Money onto a card that wasn't paying it off, as the user answered (0.8.0): true for a
+         * refund, which comes off the month's card spending. Unanswered, it's asked about and,
+         * meanwhile, not counted - an unmatched payment taken for a refund would hide real spending.
+         */
+        cardCredits: Map<String, Boolean> = emptyMap(),
     ): BudgetSnapshot {
         fun nextFor(rule: RecurringRule, after: LocalDate): LocalDate {
             val override = overrides[rule.key]
@@ -234,6 +240,10 @@ object BudgetEngine {
         val lastIncome = primaryIncome?.lastOccurrence?.takeIf { !it.isAfter(today) }
         val cycleStart = lastIncome?.takeIf { it.isAfter(today.minusDays(45)) } ?: today.minusDays(30)
         val cycleEnd = nextIncomeDate?.minusDays(1)
+        // Pay due and not yet in - late, or a weekend payday paid on the Friday - the old cycle runs
+        // on: what's spent today is still its spending. Cut at the cycle's nominal end, it belonged
+        // to neither cycle, and "spent today" read nothing on the day the pay was due.
+        val spendingUntil = cycleEnd?.let { if (it.isBefore(today)) today else it }
 
         val daysUntilNextIncome = nextIncomeDate?.let { ChronoUnit.DAYS.between(today, it).toInt() }
 
@@ -298,7 +308,7 @@ object BudgetEngine {
             if (counted) date to tx else null
         }
         val variableDebits = discretionary
-            .filter { (date, _) -> date >= cycleStart && (cycleEnd == null || date <= cycleEnd) }
+            .filter { (date, _) -> date >= cycleStart && (spendingUntil == null || date <= spendingUntil) }
             .map { it.second }
 
         val byDay = discretionary.groupBy({ it.first }, { -it.second.amountMinor })
@@ -575,7 +585,7 @@ object BudgetEngine {
         // Only with cards whose spending counts at the bill: counted at the till, the account's
         // figure already is the month's.
         if (creditCardAccountIds.isEmpty() || atPurchase) return accountSnapshot
-        val periodEnd = cycleEnd?.let { minOf(it, today) } ?: today
+        val periodEnd = spendingUntil?.let { minOf(it, today) } ?: today
         fun inPeriod(date: LocalDate) = !date.isBefore(cycleStart) && !date.isAfter(periodEnd)
         fun keyOf(tx: TransactionEntity) = "${tx.accountId}|${tx.transactionId}"
         fun dateOf(tx: TransactionEntity) = RecurringAnalyzer.parseBookingDate(tx.bookingDate)
@@ -611,7 +621,13 @@ object BudgetEngine {
         fun isCardBill(tx: TransactionEntity) = cardRules.any { RecurringAnalyzer.matches(it, tx) }
         val cardEveryday = cardDebits.filter { !isCardBill(it) }
         val cardEverydayThisPeriod = cardEveryday.filter { dateOf(it)?.let(::inPeriod) == true }
-        val onCards = cardEverydayThisPeriod.sumOf { -it.amountMinor }
+        // Money onto a card this period that isn't paying it off: a refund, if the user says so.
+        val cardCreditsThisPeriod = transactions.filter { tx ->
+            tx.accountId in creditCardAccountIds && tx.amountMinor > 0L && !tx.isInternalTransfer && !tx.isPending &&
+                keyOf(tx) !in notSpending && tx.currency == baseCurrency && dateOf(tx)?.let(::inPeriod) == true
+        }
+        val refunds = cardCreditsThisPeriod.filter { cardCredits[keyOf(it)] == true }.sumOf { it.amountMinor }
+        val onCards = cardEverydayThisPeriod.sumOf { -it.amountMinor } - refunds
 
         // Bills paid by card this period: charged already, and due before payday but not yet charged.
         val cardBillsCharged = cardDebits.filter { isCardBill(it) && dateOf(it)?.let(::inPeriod) == true }.sumOf { -it.amountMinor }
@@ -671,6 +687,8 @@ object BudgetEngine {
                 nextStatements = nextStatements,
                 nextBudgetMinor = cycleBudget,
                 leftMinor = monthLeft,
+                refundsMinor = refunds,
+                creditsToAsk = cardCreditsThisPeriod.filter { keyOf(it) !in cardCredits },
             ),
         )
     }

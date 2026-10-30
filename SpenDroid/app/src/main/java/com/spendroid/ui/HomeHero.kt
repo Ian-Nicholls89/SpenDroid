@@ -637,7 +637,7 @@ private fun BudgetBelow(
             Text(
                 listOfNotNull(
                     "${money(m.spentFromAccountMinor)} from your account",
-                    "${money(m.spentOnCardsMinor)} on cards",
+                    "${money(m.spentOnCardsMinor)} on cards" + (if (m.refundsMinor > 0L) " (${money(m.refundsMinor)} refunded)" else ""),
                     m.cardBillsMinor.takeIf { it > 0L }?.let { "${money(it)} of bills paid by card" },
                 ).joinToString(" · "),
                 style = MaterialTheme.typography.labelMedium,
