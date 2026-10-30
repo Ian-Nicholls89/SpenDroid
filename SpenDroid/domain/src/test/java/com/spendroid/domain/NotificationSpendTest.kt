@@ -374,4 +374,13 @@ class NotificationSpendTest {
         assertTrue(broken != good)
         assertEquals(good, NotificationSpend.repairPattern(broken))
     }
+
+    @Test
+    fun `an absurd figure in a promotion is not a payment and does not throw`() {
+        // Twenty digits of pounds overflowed the sum (NumberFormatException) before 0.7.4.
+        NotificationSpend.parse(natwest, "Win big", "You spent £99999999999999999999 at the prize draw")
+        val p = NotificationSpend.parse(natwest, "Card payment", "You spent £12, at TESCO STORES")!!
+        assertEquals(1_200L, p.amountMinor)
+    }
 }
+

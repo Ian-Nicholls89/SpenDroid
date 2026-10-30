@@ -121,7 +121,7 @@ object NotificationSpend {
         RegexOption.IGNORE_CASE,
     )
 
-    private val POUNDS = Regex("""(?:£|GBP\s?)(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d{2}))?""")
+    private val POUNDS = Regex(AMOUNT_GROUP)
     private val OTHER_CURRENCY = Regex("""[€$¥]|\b(EUR|USD)\b""")
     private val CARD_DIGITS = Regex("""(?:[•*·xX]{2,}|ending(?: in)?)\s?(\d{4})\b""")
     private val AT_MERCHANT = Regex(
@@ -215,7 +215,9 @@ object NotificationSpend {
     fun repairPattern(pattern: String): String =
         pattern.replace(Regex("""([\x{D800}-\x{DBFF}])\\E\\Q([\x{DC00}-\x{DFFF}])"""), "$1$2")
 
-    private const val AMOUNT_GROUP = """(?:£|GBP\s?)(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d{2}))?"""
+    // At most twelve digits of pounds - a promotion's "£1000000000000000000000!" can't overflow
+    // the sum and throw; it isn't a payment, so it simply doesn't read as one.
+    private const val AMOUNT_GROUP = """(?:£|GBP\s?)(\d{1,3}(?:,\d{3}){1,3}|\d{1,12})(?!\d)(?:\.(\d{2}))?"""
 
     /**
      * The learned wordings first, then the built-in rules. An "ignore" the user taught wins over
