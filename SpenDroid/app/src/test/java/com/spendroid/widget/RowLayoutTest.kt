@@ -31,4 +31,12 @@ class RowLayoutTest {
     fun `two accounts keep full rows where they fit`() {
         assertEquals(RowDensity.FULL to 2, rowLayout(170f, 2))
     }
+
+    @Test
+    fun `at a large text size the rows tighten rather than run off the bottom`() {
+        // The user's phone, 0.8.0: three rows in a widget about 190dp tall at a large text size.
+        assertEquals(RowDensity.COMPACT to 3, rowLayout(190f, 3, fontScale = 1f))
+        assertEquals(RowDensity.LINE to 3, rowLayout(190f, 3, fontScale = 1.3f))
+    }
 }
+

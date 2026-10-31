@@ -41,6 +41,8 @@ object PeriodRows {
         val currency: String,
         /** A card's regular payments still to come before its statement closes. */
         val toComeMinor: Long = 0L,
+        /** What's left, for the month and the budget's account, as Home has it (0.8.0); null for the rest. */
+        val leftMinor: Long? = null,
     )
 
     enum class Against { BUDGET, USUAL, LIMIT }
@@ -82,6 +84,7 @@ object PeriodRows {
             projectedMinor = null,
             pace = BudgetPace.of(s),
             currency = s.baseCurrency,
+            leftMinor = s.availableToSpend,
         )
     }
 
@@ -113,6 +116,7 @@ object PeriodRows {
             projectedMinor = null,
             pace = BudgetPace.of(s),
             currency = s.baseCurrency,
+            leftMinor = s.availableToSpend,
         )
     }
 

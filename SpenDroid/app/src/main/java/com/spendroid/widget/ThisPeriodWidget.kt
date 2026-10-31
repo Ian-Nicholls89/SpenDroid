@@ -96,7 +96,8 @@ class ThisPeriodWidget : GlanceAppWidget() {
                 // With cards, the month leads (0.8.0): account and cards together, then the accounts chosen.
                 listOfNotNull(PeriodRows.monthRow(snapshot)) + PeriodRows.rows(choice.accountIds, snapshot, accounts, app.repository.transactions()),
                 choice.drain,
-                WidgetRefresh.label(context, bankSyncedAt(accounts)),
+                // Just the bank's time: Penny's status needs the room more than the widget's own.
+                WidgetRefresh.bankTime(context, bankSyncedAt(accounts)),
                 accounts.associate { a ->
                     a.id to com.spendroid.ui.accountColour(a, accounts, own, accent).let {
                         android.graphics.Color.argb(255, (it.red * 255).toInt(), (it.green * 255).toInt(), (it.blue * 255).toInt())
@@ -137,7 +138,7 @@ class ThisPeriodWidget : GlanceAppWidget() {
     private fun Rows(content: Content) {
         val size = LocalSize.current
         // Every account chosen is shown: short of room, the rows tighten rather than one going.
-        val (density, room) = rowLayout(size.height.value, content.rows.size)
+        val (density, room) = rowLayout(size.height.value, content.rows.size, androidx.glance.LocalContext.current.resources.configuration.fontScale)
         Column(modifier = GlanceModifier.fillMaxSize()) {
             // Penny says how the budget is going; that account's own caption then isn't repeated.
             // The budget's own row where it's there, as her face is the budget's mood; else the first
@@ -214,9 +215,10 @@ class ThisPeriodWidget : GlanceAppWidget() {
                 style = TextStyle(color = GlanceTheme.colors.onSurface, fontSize = 13.sp, fontWeight = FontWeight.Medium),
             )
             Text(
-                formatMoney(row.spentMinor, row.currency),
+                figure(row),
                 style = TextStyle(color = GlanceTheme.colors.onSurface, fontSize = 13.sp, fontWeight = FontWeight.Bold),
             )
+            Text(" " + figureWord(row), style = TextStyle(color = GlanceTheme.colors.onSurfaceVariant, fontSize = 10.sp))
         }
         if (full) {
             Row(modifier = GlanceModifier.fillMaxWidth()) {
@@ -295,9 +297,10 @@ class ThisPeriodWidget : GlanceAppWidget() {
             )
             Spacer(GlanceModifier.width(7.dp))
             Text(
-                formatMoney(row.spentMinor, row.currency),
+                figure(row),
                 style = TextStyle(color = GlanceTheme.colors.onSurface, fontSize = 12.sp, fontWeight = FontWeight.Bold),
             )
+            Text(" " + figureWord(row), style = TextStyle(color = GlanceTheme.colors.onSurfaceVariant, fontSize = 9.sp))
         }
     }
 
@@ -320,14 +323,23 @@ class ThisPeriodWidget : GlanceAppWidget() {
             PeriodRows.Kind.BUDGET -> if (monthShown) "From the account" else "Budget · pay cycle"
             PeriodRows.Kind.MONTH -> "Account and cards"
             PeriodRows.Kind.CYCLE -> "Pay cycle"
-            PeriodRows.Kind.STATEMENT -> "Statement"
+            PeriodRows.Kind.STATEMENT -> "This statement"
         }
+
+        /**
+         * The figure a row leads with: what's left for the month and the budget's account, as Home
+         * has them (0.8.0); what's been spent for a card or another account, which have no "left".
+         */
+        fun figure(row: PeriodRows.Row): String = formatMoney(row.leftMinor ?: row.spentMinor, row.currency)
+
+        fun figureWord(row: PeriodRows.Row): String = if (row.leftMinor != null) "left" else "spent"
 
         fun againstLabel(row: PeriodRows.Row): String? {
             val against = row.againstMinor ?: return null
             val money = formatMoney(against, row.currency)
             return when (row.against) {
-                PeriodRows.Against.BUDGET -> "of $money"
+                // The figure is what's left: in words, what's gone of what.
+                PeriodRows.Against.BUDGET -> "${formatMoney(row.spentMinor, row.currency)} of $money used"
                 PeriodRows.Against.LIMIT -> "your limit $money"
                 PeriodRows.Against.USUAL -> if (row.kind == PeriodRows.Kind.STATEMENT) "usual bill $money" else "usual $money"
                 null -> null
@@ -372,13 +384,16 @@ internal enum class RowDensity { FULL, COMPACT, LINE }
  * them unless even single lines will not fit. Measured from the widget's real height: the
  * heading takes about 46dp with the padding, a full row 58, a compact one 38, a line 24.
  */
-internal fun rowLayout(heightDp: Float, count: Int): Pair<RowDensity, Int> {
+internal fun rowLayout(heightDp: Float, count: Int, fontScale: Float = 1f): Pair<RowDensity, Int> {
     // The header is Penny and her bubble - 38dp, less in single lines - and the account she speaks
-    // for drops its own caption, so it costs a little more than a title did.
-    val room = heightDp - 50f
+    // for drops its own caption, so it costs a little more than a title did. Every height here is
+    // mostly text, so it grows with the phone's text size: at a large one, sizes measured at the
+    // standard size ran the last row off the bottom (0.8.0, the user's phone).
+    val scale = fontScale.coerceAtLeast(1f)
+    val room = heightDp - 50f * scale
     return when {
-        count * 58f <= room -> RowDensity.FULL to count
-        count * 38f <= room -> RowDensity.COMPACT to count
-        else -> RowDensity.LINE to ((heightDp - 46f) / 24f).toInt().coerceIn(1, count.coerceAtLeast(1))
+        count * 58f * scale <= room -> RowDensity.FULL to count
+        count * 38f * scale <= room -> RowDensity.COMPACT to count
+        else -> RowDensity.LINE to ((heightDp - 46f * scale) / (24f * scale)).toInt().coerceIn(1, count.coerceAtLeast(1))
     }
 }

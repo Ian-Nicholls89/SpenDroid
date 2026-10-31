@@ -107,6 +107,8 @@ fun LabelledBar(
     height: Dp = 22.dp,
     /** A paler segment after the fill: what is known to be coming, as a share of the whole. */
     extra: Float = 0f,
+    /** The [extra] segment in a colour of its own, at full strength: a second part of the fill (0.8.0, cards beside the account). */
+    extraColour: Color? = null,
 ) {
     val shown by animateFloatAsState(fraction.coerceIn(0f, 1f), Motion.change(Motion.LONG), label = "bar")
     val coming by animateFloatAsState(extra.coerceIn(0f, 1f - fraction.coerceIn(0f, 1f)), Motion.change(Motion.LONG), label = "bar extra")
@@ -129,7 +131,7 @@ fun LabelledBar(
                     .fillMaxHeight()
                     .width(maxWidth * (shown + coming))
                     .clip(RoundedCornerShape(height * 0.3f))
-                    .background(colour.copy(alpha = 0.35f)),
+                    .background(extraColour ?: colour.copy(alpha = 0.35f)),
             )
         }
         Box(

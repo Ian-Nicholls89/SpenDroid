@@ -46,6 +46,12 @@ internal object WidgetRefresh {
      * The widgets' line about freshness: "Refreshing…" while a ↻ runs; else when the bank's
      * figures last came ([bankAt], from the accounts' syncs) and when the widget was last drawn.
      */
+    /** Just the bank's time, for a widget whose header is short of room (0.8.0): "08:00". */
+    fun bankTime(context: Context, bankAt: Long?, now: Long = System.currentTimeMillis()): String? {
+        if (refreshing(context, now)) return "Refreshing…"
+        return bankAt?.let(::time)
+    }
+
     fun label(context: Context, bankAt: Long?, now: Long = System.currentTimeMillis()): String? {
         if (refreshing(context, now)) return "Refreshing…"
         val drawn = prefs(context).getLong(DRAWN, 0L).takeIf { it > 0L } ?: now

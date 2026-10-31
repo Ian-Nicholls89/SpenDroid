@@ -614,11 +614,15 @@ private fun BudgetBelow(
         )
         Spacer(Modifier.height(10.dp))
         val against = budget.spendableThisCycle
+        // The month's bar in two: the account's spending in the pace's colour, the cards' after it (0.8.0).
+        val split = month?.takeIf { against > 0L }
         LabelledBar(
-            fraction = BudgetPace.usedFraction(budget) ?: 0f,
+            fraction = split?.let { it.spentFromAccountMinor.toFloat() / against } ?: BudgetPace.usedFraction(budget) ?: 0f,
             label = if (against > 0L) "${money(budget.usedThisCycle)} / ${money(against)}" else money(budget.spentThisCycle),
             colour = paceColour(pace),
             tick = BudgetPace.elapsedFraction(budget),
+            extra = split?.let { it.spentOnCardsMinor.coerceAtLeast(0L).toFloat() / against } ?: 0f,
+            extraColour = CardsColour.takeIf { split != null },
         )
         paceCaption(budget)?.let {
             Spacer(Modifier.height(6.dp))
@@ -634,12 +638,15 @@ private fun BudgetBelow(
         // Where the month's spending went, and the statements it pays (0.8.0).
         month?.let { m ->
             Spacer(Modifier.height(8.dp))
+            // Each part of the bar, keyed by its colour.
             Text(
-                listOfNotNull(
-                    "${money(m.spentFromAccountMinor)} from your account",
-                    "${money(m.spentOnCardsMinor)} on cards" + (if (m.refundsMinor > 0L) " (${money(m.refundsMinor)} refunded)" else ""),
-                    m.cardBillsMinor.takeIf { it > 0L }?.let { "${money(it)} of bills paid by card" },
-                ).joinToString(" · "),
+                androidx.compose.ui.text.buildAnnotatedString {
+                    withStyle(androidx.compose.ui.text.SpanStyle(color = paceColour(pace))) { append("■ ") }
+                    append("${money(m.spentFromAccountMinor)} from your account   ")
+                    withStyle(androidx.compose.ui.text.SpanStyle(color = CardsColour)) { append("■ ") }
+                    append("${money(m.spentOnCardsMinor)} on cards" + (if (m.refundsMinor > 0L) " (${money(m.refundsMinor)} refunded)" else ""))
+                    m.cardBillsMinor.takeIf { it > 0L }?.let { append(" · ${money(it)} of bills paid by card") }
+                },
                 style = MaterialTheme.typography.labelMedium,
                 color = Color(0xFFCFD2D8),
             )
@@ -982,3 +989,6 @@ internal fun fromAccountLine(m: com.spendroid.domain.MonthView, currency: String
     m.accountLeftMinor >= m.leftMinor -> "Your account can cover all of it"
     else -> "Up to ${formatMoney(m.fromAccountMinor, currency)} from your account · the rest on cards"
 }
+
+/** Card spending's colour, wherever it stands beside the account's (0.8.0). */
+internal val CardsColour = Color(0xFF8A6CE0)
