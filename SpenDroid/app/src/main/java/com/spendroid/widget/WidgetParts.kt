@@ -424,6 +424,9 @@ fun visorBitmap(
     label: String? = null,
     typeface: android.graphics.Typeface? = null,
     track: Int = 0xFF2A2C33.toInt(),
+    /** A second part after [used], in [cardsColour]: the month's card spending beside the account's (0.8.2). */
+    cards: Float = 0f,
+    cardsColour: Int = CARDS_COLOUR,
 ): Bitmap {
     val scale = 3f
     val over = VISOR_TICK_OVER * scale
@@ -436,6 +439,9 @@ fun visorBitmap(
     val bar = RectF(0f, over, w.toFloat(), over + barH)
     canvas.drawRoundRect(bar, r, r, paint(track))
     val f = used.coerceIn(0f, 1f)
+    // Cards first, to the end of both, so the account's part sits over its start, as on Home.
+    val both = (f + cards.coerceAtLeast(0f)).coerceIn(0f, 1f)
+    if (both > f) canvas.drawRoundRect(RectF(0f, over, (w * both).coerceAtLeast(r * 2), over + barH), r, r, paint(cardsColour))
     if (f > 0f) canvas.drawRoundRect(RectF(0f, over, (w * f).coerceAtLeast(r * 2), over + barH), r, r, paint(fill))
     tick?.let { t ->
         val x = (w * t.coerceIn(0f, 1f)).coerceIn(scale * 2, w - scale * 2)
@@ -474,3 +480,6 @@ fun figureBitmap(text: String, heightDp: Float, colour: Int, typeface: android.g
 
 /** The size [figureBitmap] draws at, in dp, for laying it out: (width, height). */
 fun figureSizeDp(bitmap: Bitmap): Pair<Float, Float> = bitmap.width / 3f to bitmap.height / 3f
+
+/** Card spending's colour on the widgets, as on Home (0.8.2). */
+const val CARDS_COLOUR = 0xFF8A6CE0.toInt()

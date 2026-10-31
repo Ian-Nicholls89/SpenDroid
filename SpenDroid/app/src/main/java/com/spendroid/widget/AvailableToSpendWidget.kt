@@ -85,6 +85,9 @@ class AvailableToSpendWidget : GlanceAppWidget() {
     /** A category's share of the cycle so far, for the dashboard's top three. */
     private data class CategoryLine(val name: String, val label: String, val amount: String, val share: Float, val color: Color)
 
+    /** The month's bar in two parts, as shares of the whole, with what each came to. */
+    private data class Split(val account: Float, val cards: Float, val accountMoney: String, val cardsMoney: String, val accountShort: String, val cardsShort: String)
+
     private data class Summary(
         /** The user's accent, for the wordmark and glow. */
         val accent: Int = 0xFFF5A623.toInt(),
@@ -97,6 +100,8 @@ class AvailableToSpendWidget : GlanceAppWidget() {
         val incomeDate: String?,
         /** With cards (0.8.0): the figure is the month's; this is how much of it the account can pay. */
         val fromAccount: String? = null,
+        /** With cards (0.8.2): the bar in two - the account's spending, then the cards' - and their keys. */
+        val split: Split? = null,
         val remaining: Float,
         val pace: BudgetPace.Pace,
         val lines: List<Line>,
@@ -157,6 +162,18 @@ class AvailableToSpendWidget : GlanceAppWidget() {
                     "${formatMoney(snapshot.availableToSpend / it, snapshot.baseCurrency)} a day"
                 },
                 incomeDate = snapshot.nextIncomeDate?.let { "Income ${it.format(INCOME_FORMAT)}" },
+                split = snapshot.month?.takeIf { snapshot.spendableThisCycle > 0L }?.let { m ->
+                    val whole = snapshot.spendableThisCycle.toFloat()
+                    val onCards = m.spentOnCardsMinor.coerceAtLeast(0L)
+                    Split(
+                        account = m.spentFromAccountMinor / whole,
+                        cards = onCards / whole,
+                        accountMoney = formatMoney(m.spentFromAccountMinor, snapshot.baseCurrency),
+                        cardsMoney = formatMoney(onCards, snapshot.baseCurrency),
+                        accountShort = poundsOnly(m.spentFromAccountMinor),
+                        cardsShort = poundsOnly(onCards),
+                    )
+                },
                 fromAccount = snapshot.month?.let { m ->
                     when {
                         m.accountLeftMinor < 0L -> "Account short · cards only"
@@ -296,7 +313,18 @@ class AvailableToSpendWidget : GlanceAppWidget() {
             Spacer(GlanceModifier.height(4.dp))
             Visor(summary, size.width.value - 24f, 26f, null)
             Spacer(GlanceModifier.height(4.dp))
-            Text(listOfNotNull(summary.perDay, summary.used?.let { "${(it * 100).toInt()}% used" }).joinToString(" · "), style = caption(10.sp), maxLines = 1)
+            val split = summary.split
+            if (split != null) {
+                // Short, to fit: each part's key and its pounds, then the day's amount.
+                Row(verticalAlignment = Alignment.Vertical.CenterVertically) {
+                    Key(summary.pace, summary.accent)
+                    Text(" ${split.accountShort}  ", style = caption(10.sp), maxLines = 1)
+                    Key(null, summary.accent)
+                    Text(" ${split.cardsShort}" + (summary.perDay?.let { " · $it" }.orEmpty()), style = caption(10.sp), maxLines = 1)
+                }
+            } else {
+                Text(listOfNotNull(summary.perDay, summary.used?.let { "${(it * 100).toInt()}% used" }).joinToString(" · "), style = caption(10.sp), maxLines = 1)
+            }
         }
     }
 
@@ -310,8 +338,29 @@ class AvailableToSpendWidget : GlanceAppWidget() {
             Spacer(GlanceModifier.height(6.dp))
             Visor(summary, size.width.value - 28f, 44f, summary.available)
             Spacer(GlanceModifier.height(4.dp))
+            summary.split?.let { split ->
+                Row(verticalAlignment = Alignment.Vertical.CenterVertically) {
+                    Key(summary.pace, summary.accent)
+                    Text(" ${split.accountMoney} from your account   ", style = caption(10.sp), maxLines = 1)
+                    Key(null, summary.accent)
+                    Text(" ${split.cardsMoney} on cards", style = caption(10.sp), maxLines = 1)
+                }
+                Spacer(GlanceModifier.height(2.dp))
+            }
             Meaning(summary)
         }
+    }
+
+    /** A part's key: the account's in the pace's colour, the cards' ([pace] null) in theirs. */
+    @Composable
+    private fun Key(pace: BudgetPace.Pace?, accent: Int) {
+        Text(
+            "■",
+            style = TextStyle(
+                color = ColorProvider(androidx.compose.ui.graphics.Color(pace?.let { visorColour(it, accent) } ?: CARDS_COLOUR)),
+                fontSize = 10.sp,
+            ),
+        )
     }
 
     // ---- 4x3 -------------------------------------------------------------------------
@@ -450,7 +499,10 @@ class AvailableToSpendWidget : GlanceAppWidget() {
         val typeface = grotesk(androidx.glance.LocalContext.current)
         Image(
             provider = ImageProvider(
-                visorBitmap(widthDp.coerceAtLeast(40f), heightDp, summary.used ?: 0f, summary.elapsed, visorColour(summary.pace, summary.accent), label, typeface),
+                visorBitmap(
+                    widthDp.coerceAtLeast(40f), heightDp, summary.split?.account ?: summary.used ?: 0f, summary.elapsed,
+                    visorColour(summary.pace, summary.accent), label, typeface, cards = summary.split?.cards ?: 0f,
+                ),
             ),
             contentDescription = "${summary.available} left" + ringDescription(summary).let { if (it.isEmpty()) "" else ", $it" },
             contentScale = ContentScale.FillBounds,
