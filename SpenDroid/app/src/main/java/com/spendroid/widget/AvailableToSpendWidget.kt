@@ -348,6 +348,18 @@ class AvailableToSpendWidget : GlanceAppWidget() {
                 Spacer(GlanceModifier.height(2.dp))
             }
             Meaning(summary)
+            // Room to spare under it - most 4x2s on the user's phone - gets one more line: today's
+            // spending and the next bill out (0.8.3). Only where it fits at the phone's text size.
+            val scale = androidx.glance.LocalContext.current.resources.configuration.fontScale.coerceAtLeast(1f)
+            if (size.height.value >= standardWithExtra(scale)) {
+                Spacer(GlanceModifier.height(6.dp))
+                Row(modifier = GlanceModifier.fillMaxWidth()) {
+                    Text(summary.spentToday?.let { "Spent today $it" }.orEmpty(), style = caption(10.sp), maxLines = 1, modifier = GlanceModifier.defaultWeight())
+                    summary.lines.firstOrNull()?.let { next ->
+                        Text("Next: ${next.label} ${next.amount}" + (if (next.due.isNotEmpty()) " · ${next.due}" else ""), style = caption(10.sp), maxLines = 1)
+                    }
+                }
+            }
         }
     }
 
@@ -657,3 +669,10 @@ suspend fun refreshWidgets(context: Context) {
     // And the watch's complication, for the same reason.
     WatchSync.push(context)
 }
+
+/**
+ * How tall the wide layout must be for its extra line (0.8.3): what it draws - about 128dp on the
+ * user's phone, measured from a screenshot - and 26dp more, the text in both growing with the
+ * phone's text size.
+ */
+internal fun standardWithExtra(fontScale: Float): Float = 100f + 54f * fontScale.coerceAtLeast(1f)

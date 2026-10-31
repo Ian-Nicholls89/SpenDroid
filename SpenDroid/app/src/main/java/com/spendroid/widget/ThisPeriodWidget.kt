@@ -171,7 +171,7 @@ class ThisPeriodWidget : GlanceAppWidget() {
                 )
             }
             content.rows.take(room).forEach { row ->
-                Spacer(GlanceModifier.height(if (density == RowDensity.LINE) 6.dp else 8.dp))
+                Spacer(GlanceModifier.height(if (density == RowDensity.FULL) 8.dp else 6.dp))
                 if (density == RowDensity.LINE) {
                     LineView(row, content.drain, content.colours[row.accountId])
                 } else {
@@ -235,7 +235,8 @@ class ThisPeriodWidget : GlanceAppWidget() {
         Image(
             provider = ImageProvider(periodBarBitmap(share, tick, fill = barColour, track = TRACK, tickColour = TICK, extra = toComeShare(row, drain))),
             contentDescription = spoken(row),
-            modifier = GlanceModifier.fillMaxWidth().height(12.dp),
+            // Slim in two-line rows, so three fit where they would otherwise run over (0.8.3).
+            modifier = GlanceModifier.fillMaxWidth().height(if (full) 12.dp else 6.dp),
             contentScale = ContentScale.FillBounds,
         )
         if (full && (captioned || row.toComeMinor > 0L || row.pendingMinor > 0L)) {
@@ -385,15 +386,21 @@ internal enum class RowDensity { FULL, COMPACT, LINE }
  * heading takes about 46dp with the padding, a full row 58, a compact one 38, a line 24.
  */
 internal fun rowLayout(heightDp: Float, count: Int, fontScale: Float = 1f): Pair<RowDensity, Int> {
-    // The header is Penny and her bubble - 38dp, less in single lines - and the account she speaks
-    // for drops its own caption, so it costs a little more than a title did. Every height here is
-    // mostly text, so it grows with the phone's text size: at a large one, sizes measured at the
-    // standard size ran the last row off the bottom (0.8.0, the user's phone).
-    val scale = fontScale.coerceAtLeast(1f)
-    val room = heightDp - 50f * scale
+    // Heights as the user's phone draws them (0.8.3, measured from its screenshots): the header
+    // with Penny and her bubble about 50dp; a full row 70dp; a two-line row - name and figure,
+    // then a slim bar - 36dp; a single line 30dp, gaps included. Only the text in each grows with
+    // the phone's text size, so only that part is scaled. The estimates were short before - 38dp
+    // for a row that drew 44 - and the third row ran off the bottom.
+    val s = fontScale.coerceAtLeast(1f)
+    val header = 20f + 30f * s
+    val full = 26f + 44f * s
+    val compact = 14f + 22f * s
+    val line = 10f + 20f * s
+    // A little kept back for the widget's own edge.
+    val room = heightDp - header - 8f
     return when {
-        count * 58f * scale <= room -> RowDensity.FULL to count
-        count * 38f * scale <= room -> RowDensity.COMPACT to count
-        else -> RowDensity.LINE to ((heightDp - 46f * scale) / (24f * scale)).toInt().coerceIn(1, count.coerceAtLeast(1))
+        count * full <= room -> RowDensity.FULL to count
+        count * compact <= room -> RowDensity.COMPACT to count
+        else -> RowDensity.LINE to (room / line).toInt().coerceIn(1, count.coerceAtLeast(1))
     }
 }
