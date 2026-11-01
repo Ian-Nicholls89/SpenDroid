@@ -138,7 +138,7 @@ class ThisPeriodWidget : GlanceAppWidget() {
     private fun Rows(content: Content) {
         val size = LocalSize.current
         // Every account chosen is shown: short of room, the rows tighten rather than one going.
-        val (density, room) = rowLayout(size.height.value, content.rows.size, androidx.glance.LocalContext.current.resources.configuration.fontScale)
+        val (density, room) = rowLayout(size.height.value, content.rows.size, RowMetrics.measured(androidx.glance.LocalContext.current))
         Column(modifier = GlanceModifier.fillMaxSize()) {
             // Penny says how the budget is going; that account's own caption then isn't repeated.
             // The budget's own row where it's there, as her face is the budget's mood; else the first
@@ -385,22 +385,51 @@ internal enum class RowDensity { FULL, COMPACT, LINE }
  * them unless even single lines will not fit. Measured from the widget's real height: the
  * heading takes about 46dp with the padding, a full row 58, a compact one 38, a line 24.
  */
-internal fun rowLayout(heightDp: Float, count: Int, fontScale: Float = 1f): Pair<RowDensity, Int> {
-    // Heights as the user's phone draws them (0.8.3, measured from its screenshots): the header
-    // with Penny and her bubble about 50dp; a full row 70dp; a two-line row - name and figure,
-    // then a slim bar - 36dp; a single line 30dp, gaps included. Only the text in each grows with
-    // the phone's text size, so only that part is scaled. The estimates were short before - 38dp
-    // for a row that drew 44 - and the third row ran off the bottom.
-    val s = fontScale.coerceAtLeast(1f)
-    val header = 20f + 30f * s
-    val full = 26f + 44f * s
-    val compact = 14f + 22f * s
-    val line = 10f + 20f * s
-    // A little kept back for the widget's own edge.
-    val room = heightDp - header - 8f
+/**
+ * How tall each part of the widget draws, in dp (0.8.3): the fixed parts - Penny's picture, bars,
+ * gaps - and lines of text as tall as the phone actually makes them. [measured] asks Android for
+ * a line's height at the phone's own text size, so nothing is guessed: guesses ran a row off the
+ * bottom at the user's large text, then, too cautious, left a gap under single lines.
+ */
+internal data class RowMetrics(val header: Float, val full: Float, val compact: Float, val line: Float) {
+    companion object {
+        /** Built from a line's height at [lineDp] (text size in sp → dp): what each part holds. */
+        fun from(lineDp: (Float) -> Float) = RowMetrics(
+            // Penny's 38dp picture beside her bubble (11sp, 4dp above and below), and a small gap.
+            header = maxOf(38f, lineDp(11f) + 8f) + 4f,
+            // Name and figure, the kind and what it's against, the 12dp bar, a caption, the gap.
+            full = maxOf(16f, lineDp(13f)) + lineDp(9f) + 12f + lineDp(9f) + 8f,
+            // Name and figure, the slim 6dp bar, the gap.
+            compact = maxOf(16f, lineDp(13f)) + 6f + 6f,
+            // One line - name, a short bar, the figure - and the gap.
+            line = maxOf(14f, 10f, lineDp(12f)) + 6f,
+        )
+
+        /** A line of [sp] text as Android draws it - about 1.17 of its size, font padding included - at [fontScale]. */
+        fun standard(fontScale: Float = 1f) = from { sp -> sp * fontScale.coerceAtLeast(1f) * 1.17f }
+
+        /** Measured on this phone: the real height of a line of text at its own text size. */
+        fun measured(context: android.content.Context): RowMetrics {
+            val metrics = context.resources.displayMetrics
+            return from { sp ->
+                val paint = android.graphics.Paint().apply {
+                    textSize = android.util.TypedValue.applyDimension(android.util.TypedValue.COMPLEX_UNIT_SP, sp, metrics)
+                }
+                val fm = paint.fontMetrics
+                (fm.bottom - fm.top) / metrics.density
+            }
+        }
+    }
+}
+
+/** The widget's own padding, 14dp all round, and a little kept back for its edge. */
+private const val WIDGET_EDGE_DP = 14f * 2 + 4f
+
+internal fun rowLayout(heightDp: Float, count: Int, m: RowMetrics = RowMetrics.standard()): Pair<RowDensity, Int> {
+    val room = heightDp - WIDGET_EDGE_DP - m.header
     return when {
-        count * full <= room -> RowDensity.FULL to count
-        count * compact <= room -> RowDensity.COMPACT to count
-        else -> RowDensity.LINE to (room / line).toInt().coerceIn(1, count.coerceAtLeast(1))
+        count * m.full <= room -> RowDensity.FULL to count
+        count * m.compact <= room -> RowDensity.COMPACT to count
+        else -> RowDensity.LINE to (room / m.line).toInt().coerceIn(1, count.coerceAtLeast(1))
     }
 }
