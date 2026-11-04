@@ -666,12 +666,13 @@ suspend fun refreshWidgets(
     // Payee names in first, so a widget row shows the user's name for it.
     com.spendroid.data.Choices.awaitLoaded()
     lastRefreshAt = System.currentTimeMillis()
-    // "widget 10:30" on each, beside when the bank's figures came.
-    WidgetRefresh.drawn(context, lastRefreshAt)
     // Worked out once, fresh, for everything this refresh draws - or the app's, just worked out.
-    runCatching {
-        if (snapshot != null && transactions != null) SharedSnapshot.hold(snapshot, transactions) else SharedSnapshot.fresh(context)
-    }
+    val drawing = runCatching {
+        if (snapshot != null && transactions != null) snapshot.also { SharedSnapshot.hold(it, transactions) } else SharedSnapshot.fresh(context)
+    }.getOrNull()
+    // "widget 10:30" on each, beside when the bank's figures came; and the budget's day, so the
+    // hourly check knows whether the clock has moved anything since.
+    WidgetRefresh.drawn(context, lastRefreshAt, drawing?.asOf)
     runCatching { AvailableToSpendWidget().refreshEach(context) }
     // Drawn from the same snapshot, so it moves when this one does.
     refreshPeriodWidgets(context)

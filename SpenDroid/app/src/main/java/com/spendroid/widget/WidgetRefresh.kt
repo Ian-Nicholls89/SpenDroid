@@ -19,6 +19,8 @@ internal object WidgetRefresh {
     private const val PREFS = com.spendroid.data.Stores.WIDGET_REFRESH
     private const val STARTED = "started"
     private const val DRAWN = "drawn"
+    private const val DRAWN_DAY = "drawn_day"
+    private const val NO_DAY = Long.MIN_VALUE
 
     /** Long enough to see her syncing; a refresh from what's stored takes no time at all. */
     private const val SHOWN_MS = 1_200L
@@ -37,10 +39,20 @@ internal object WidgetRefresh {
     fun refreshing(context: Context, now: Long = System.currentTimeMillis()): Boolean =
         prefs(context).getLong(STARTED, 0L).let { it > 0L && now - it < STUCK_MS }
 
-    /** Noted at every redraw of the widgets, for "widget 10:30". */
-    fun drawn(context: Context, now: Long = System.currentTimeMillis()) {
-        prefs(context).edit().putLong(DRAWN, now).apply()
+    /** Noted at every redraw of the widgets, for "widget 10:30", with the budget's day drawn ([budgetDay]). */
+    fun drawn(context: Context, now: Long = System.currentTimeMillis(), budgetDay: LocalDate? = null) {
+        prefs(context).edit()
+            .putLong(DRAWN, now)
+            .putLong(DRAWN_DAY, budgetDay?.toEpochDay() ?: NO_DAY)
+            .apply()
     }
+
+    /** When the widgets were last drawn, or null if never. */
+    fun drawnAt(context: Context): Long? = prefs(context).getLong(DRAWN, 0L).takeIf { it > 0L }
+
+    /** The budget's day the widgets last showed: null if never drawn, or drawn with no budget. */
+    fun drawnBudgetDay(context: Context): LocalDate? =
+        prefs(context).getLong(DRAWN_DAY, NO_DAY).takeIf { it != NO_DAY }?.let(LocalDate::ofEpochDay)
 
     /**
      * The widgets' line about freshness: "Refreshing…" while a ↻ runs; else when the bank's

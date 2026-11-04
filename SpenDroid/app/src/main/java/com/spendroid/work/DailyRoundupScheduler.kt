@@ -169,8 +169,8 @@ object DailyRoundupScheduler {
                 .build()
             manager.enqueueUniquePeriodicWork(UPDATE_CHECK_UNIQUE_NAME, ExistingPeriodicWorkPolicy.KEEP, updateRequest)
 
-            // The widgets and the watch, redrawn hourly from what is already here; the worker
-            // itself keeps to the day. No bank call and no network needed.
+            // The widgets and the watch, redrawn from what is already here when the hour finds
+            // the day has moved on. No bank call and no network needed.
             manager.enqueueUniquePeriodicWork(
                 WatchUpdateWorker.UNIQUE_NAME,
                 ExistingPeriodicWorkPolicy.KEEP,

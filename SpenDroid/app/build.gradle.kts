@@ -70,8 +70,8 @@ android {
         applicationId = "com.spendroid"
         minSdk = 26
         targetSdk = 35
-        versionCode = 214
-        versionName = "0.8.5"
+        versionCode = 215
+        versionName = "0.8.6"
         // Native code - the database's encryption - only for the processors phones have, not
         // emulators' x86: about half the size it would add.
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
@@ -114,6 +114,29 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
+    }
+
+    packaging {
+        resources {
+            // Bouncy Castle's data for algorithms the app never uses: the watch link only makes a
+            // certificate. Picnic's tables alone were 1.2 MB, and R8 already drops their code.
+            excludes += listOf(
+                "org/bouncycastle/pqc/crypto/picnic/*.properties",
+                "org/bouncycastle/**/CertPathReviewerMessages*.properties",
+            )
+        }
+    }
+}
+
+// The PDF reader's Chinese, Japanese and Korean encodings (1.2 MB): a UK statement is set in
+// Identity-encoded fonts, which stay. Removed from the merged assets, as a pattern can't name them alone.
+tasks.matching { it.name.matches(Regex("merge(Debug|Release)Assets")) }.configureEach {
+    doLast {
+        outputs.files.forEach { out ->
+            out.resolve("com/tom_roush/fontbox/resources/cmap").listFiles()
+                ?.filter { !it.name.startsWith("Identity-") }
+                ?.forEach { it.delete() }
+        }
     }
 }
 

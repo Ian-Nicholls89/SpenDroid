@@ -114,7 +114,8 @@ class WebServer(private val context: Context, private val host: String, port: In
         }
         // Only files the app ships, nothing climbing out of the folder.
         if (".." in path) return plain(Response.Status.NOT_FOUND, "")
-        val stream = runCatching { context.assets.open("web/$path") }.getOrNull()
+        val stream = (FONTS[path]?.let { id -> runCatching { context.resources.openRawResource(id) }.getOrNull() }
+            ?: runCatching { context.assets.open("web/$path") }.getOrNull())
             ?: return asset("/")
         val type = when (path.substringAfterLast('.')) {
             "html" -> "text/html; charset=utf-8"
@@ -136,6 +137,12 @@ class WebServer(private val context: Context, private val host: String, port: In
 
     companion object {
         const val COOKIE = "spendroid"
+        /** The page's Lato, from the app's own fonts: one copy in the app, not a second in the page's files. */
+        internal val FONTS = mapOf(
+            "fonts/lato_regular.ttf" to com.spendroid.R.font.lato_regular,
+            "fonts/lato_bold.ttf" to com.spendroid.R.font.lato_bold,
+            "fonts/lato_black.ttf" to com.spendroid.R.font.lato_black,
+        )
         private const val MAX_ROWS = 20_000
     }
 }
