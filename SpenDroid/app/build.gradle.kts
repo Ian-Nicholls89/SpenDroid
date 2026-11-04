@@ -70,11 +70,12 @@ android {
         applicationId = "com.spendroid"
         minSdk = 26
         targetSdk = 35
-        versionCode = 215
-        versionName = "0.8.6"
-        // Native code - the database's encryption - only for the processors phones have, not
-        // emulators' x86: about half the size it would add.
-        ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
+        versionCode = 216
+        versionName = "0.8.6.1"
+        // Native code - the database's encryption - for 64-bit phones only (0.8.6.1): the user's
+        // is arm64-v8a, and the 32-bit copy was 1 MB for no one. When the app goes to Play, add
+        // "armeabi-v7a" back: a bundle sends each phone only its own, so it costs the rest nothing.
+        ndk { abiFilters += listOf("arm64-v8a") }
 
         // Where the update checker looks for releases.
         buildConfigField("String", "GITHUB_OWNER", "\"Ian-Nicholls89\"")
