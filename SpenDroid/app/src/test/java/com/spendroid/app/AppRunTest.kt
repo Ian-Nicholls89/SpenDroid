@@ -132,9 +132,10 @@ class AppRunTest {
             compose.onNodeWithContentDescription("Menu").performClick()
             settle()
             tapExactly("Last cycle")
-            until("review") { shows("look back on yet") || shows("Adding up the last cycle") || shows("Each day") }
+            // Headings show in capitals; with the review now quick (0.8.5) it is usually the review itself.
+            until("review") { shows("look back on yet") || shows("Adding up the last cycle") || shows("EACH DAY") }
             compose.onNode(hasContentDescription("Back")).performClick()
-            until("review closed") { !shows("look back on yet") && !shows("Adding up the last cycle") && !shows("Each day") }
+            until("review closed") { !shows("look back on yet") && !shows("Adding up the last cycle") && !shows("EACH DAY") }
 
             // Penny's question, put off, is still there to come back to: the strip on Home.
             until("the strip") { shows("question from Penny") }

@@ -188,7 +188,7 @@ internal object WatchSync {
 
                     // Recent spending, newest first, to recategorise from the wrist.
                     val rules = repo.categoryRules.first()
-                    val all = repo.transactions()
+                    val all = SharedSnapshot.transactions(context)
                     putDataMapArrayList(
                         "recent",
                         ArrayList(

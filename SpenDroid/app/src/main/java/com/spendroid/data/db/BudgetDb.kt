@@ -268,6 +268,21 @@ interface BudgetDao {
     suspend fun transactionsFor(accountId: String): List<TransactionEntity>
 
     /**
+     * One account's rows without the bank's raw record, for reading only: the record is
+     * kept for the backup alone, and was a few megabytes carried through every calculation.
+     * A row read this way must not be written back, or its record is lost.
+     */
+    @Query(
+        "SELECT accountId, transactionId, bookingDate, valueDate, amountMinor, currency, payee, description, " +
+            "isPending, NULL AS rawJson, isInternalTransfer, isRecurring, categoryOverride, isCardPayment, transferOverridden " +
+            "FROM transactions WHERE accountId = :accountId ORDER BY bookingDate DESC, transactionId DESC",
+    )
+    suspend fun leanTransactionsFor(accountId: String): List<TransactionEntity>
+
+    @Query("SELECT * FROM transactions WHERE accountId = :accountId AND transactionId = :transactionId")
+    suspend fun transaction(accountId: String, transactionId: String): TransactionEntity?
+
+    /**
      * Every stored transaction, including any whose account row no longer exists. Normal
      * reads go through the accounts table, so those rows are invisible to the app - but they
      * are still history that cannot be re-fetched, so a backup has to include them.

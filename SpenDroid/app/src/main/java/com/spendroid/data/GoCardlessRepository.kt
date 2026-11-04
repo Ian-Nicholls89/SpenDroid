@@ -36,6 +36,7 @@ import com.spendroid.domain.BudgetModel
 import com.spendroid.domain.CardTiming
 import com.spendroid.domain.BudgetSnapshot
 import com.spendroid.domain.RecurringAnalyzer
+import com.spendroid.domain.RecurringRule
 import com.spendroid.domain.WorkingDayCalendar
 import com.spendroid.domain.toRecurringRule
 import com.google.gson.Gson
@@ -196,7 +197,8 @@ class GoCardlessRepository private constructor(
         dao.mergeDuplicate(
             old.accountId,
             old.transactionId,
-            candidate.copy(
+            // The stored row, not the one on screen: that was read without the bank's record.
+            (dao.transaction(candidate.accountId, candidate.transactionId) ?: candidate).copy(
                 isInternalTransfer = old.isInternalTransfer,
                 categoryOverride = old.categoryOverride ?: candidate.categoryOverride,
                 isCardPayment = old.isCardPayment || candidate.isCardPayment,
@@ -715,7 +717,7 @@ class GoCardlessRepository private constructor(
         return com.spendroid.domain.Outlook.of(
             snapshot = snapshot,
             accounts = accounts(),
-            rules = RecurringAnalyzer.analyze(all) + manual,
+            rules = detectedRules(all) + manual,
             ignored = ignoredRules.first(),
             transactions = all,
             today = java.time.LocalDate.now(),
@@ -736,14 +738,16 @@ class GoCardlessRepository private constructor(
     suspend fun lastCycleReview(): com.spendroid.domain.CycleReview? {
         val all = transactions()
         if (all.isEmpty()) return null
-        val now = budgetSnapshotOf(all, budgetTime())
+        // Read once for every day below: each day's budget differs only in its time.
+        val inputs = budgetInputs(all)
+        val now = snapshotWith(inputs, budgetTime())
         reviewCache?.takeIf { it.first == now.cycleStart }?.let { return it.second }
         val end = now.cycleStart.minusDays(1)
-        val last = budgetSnapshotOf(all, end.atTime(23, 59))
+        val last = snapshotWith(inputs, end.atTime(23, 59))
         if (!last.cycleStart.isBefore(now.cycleStart)) return null
         val days = generateSequence(last.cycleStart) { it.plusDays(1) }.takeWhile { !it.isAfter(end) }.toList()
         if (days.isEmpty() || days.size > 62) return null
-        val each = days.map { day -> day to budgetSnapshotOf(all, day.atTime(23, 59)) }
+        val each = days.map { day -> day to snapshotWith(inputs, day.atTime(23, 59)) }
         val daily = each.map { (day, snap) -> day to snap.spentToday }
         val share = last.spendableThisCycle.takeIf { it > 0L }?.let { it / days.size } ?: 0L
         val review = com.spendroid.domain.CycleReview(
@@ -765,20 +769,33 @@ class GoCardlessRepository private constructor(
 
     @Volatile private var reviewCache: Pair<LocalDate, com.spendroid.domain.CycleReview>? = null
 
-    suspend fun budgetSnapshotOf(all: List<TransactionEntity>, referenceTime: java.time.LocalDateTime): BudgetSnapshot {
+    suspend fun budgetSnapshotOf(all: List<TransactionEntity>, referenceTime: java.time.LocalDateTime): BudgetSnapshot =
+        snapshotWith(budgetInputs(all), referenceTime)
+
+    /** Everything the budget is worked out from bar the time, read once for any number of times. */
+    private class BudgetInputs(
+        val counted: List<TransactionEntity>,
+        val rules: List<RecurringRule>,
+        val accounts: List<AccountEntity>,
+        val primaryIncomeKey: String?,
+        val budgetModel: BudgetModel,
+        val calendar: WorkingDayCalendar,
+        val overrides: Map<String, RuleOverrideEntity>,
+        val cardTiming: CardTiming,
+        val cardCredits: Map<String, Boolean>,
+    )
+
+    private suspend fun budgetInputs(all: List<TransactionEntity>): BudgetInputs {
         // A possible re-issue of a row already counted waits for the user before it counts.
         val held = DuplicateCheck.heldKeys(dao.duplicateChecks())
         val counted = if (held.isEmpty()) all else all.filterNot { "${it.accountId}|${it.transactionId}" in held }
         val ignored = ignoredRules.first()
         val manual = manualRules.first().mapNotNull { it.toRecurringRule() }
-        val rules = (RecurringAnalyzer.analyze(counted) + manual).filter { it.key !in ignored }
         val holidays = runCatching { bankHolidays() }.getOrDefault(emptyMap())
-
-        return BudgetEngine.snapshot(
-            transactions = counted,
-            rules = rules,
+        return BudgetInputs(
+            counted = counted,
+            rules = (detectedRules(counted) + manual).filter { it.key !in ignored },
             accounts = accounts(),
-            referenceTime = referenceTime,
             primaryIncomeKey = primaryIncomeKey.first(),
             budgetModel = BudgetModel.from(budgetModel.first()),
             calendar = WorkingDayCalendar(holidays.keys),
@@ -787,6 +804,40 @@ class GoCardlessRepository private constructor(
             cardCredits = appContext?.let { CardCredits(it).answers() }.orEmpty(),
         )
     }
+
+    private fun snapshotWith(inputs: BudgetInputs, referenceTime: java.time.LocalDateTime): BudgetSnapshot =
+        BudgetEngine.snapshot(
+            transactions = inputs.counted,
+            rules = inputs.rules,
+            accounts = inputs.accounts,
+            referenceTime = referenceTime,
+            primaryIncomeKey = inputs.primaryIncomeKey,
+            budgetModel = inputs.budgetModel,
+            calendar = inputs.calendar,
+            overrides = inputs.overrides,
+            cardTiming = inputs.cardTiming,
+            cardCredits = inputs.cardCredits,
+        )
+
+    /**
+     * The regular payments found in [all]: the same list for the same history. Finding them is
+     * the slowest step of a reload, and one reload asked three times - for the screen, the
+     * budget and what's ahead - over the same rows. The last two histories asked about are kept:
+     * the budget's leaves out rows held as possible duplicates, so it can differ from the screen's.
+     */
+    fun detectedRules(all: List<TransactionEntity>): List<RecurringRule> {
+        synchronized(rulesMemo) {
+            rulesMemo.firstOrNull { it.first === all || it.first == all }?.let { return it.second }
+        }
+        val rules = RecurringAnalyzer.analyze(all)
+        synchronized(rulesMemo) {
+            rulesMemo.addFirst(all to rules)
+            while (rulesMemo.size > 2) rulesMemo.removeLast()
+        }
+        return rules
+    }
+
+    private val rulesMemo = ArrayDeque<Pair<List<TransactionEntity>, List<RecurringRule>>>()
 
     /**
      * Re-runs transfer and recurring detection over what is stored, without asking the bank
@@ -890,7 +941,7 @@ class GoCardlessRepository private constructor(
 
     private suspend fun analyzeTransactions() {
         val allAccounts = dao.accounts()
-        val allTx = allAccounts.flatMap { dao.transactionsFor(it.id) }
+        val allTx = allAccounts.flatMap { dao.leanTransactionsFor(it.id) }
 
         // PayPal is left out of generic transfer detection because PayPalEngine already owns
         // that relationship, and two systems writing the same flag disagree: a top-up paired
@@ -999,8 +1050,9 @@ class GoCardlessRepository private constructor(
      * rewritten in the database to make that happen.
      */
     suspend fun transactions(): List<TransactionEntity> {
+        // Without the bank's raw record: nothing calculated needs it, and only the backup reads it.
         val stored = dao.accounts()
-            .flatMap { dao.transactionsFor(it.id) }
+            .flatMap { dao.leanTransactionsFor(it.id) }
             .sortedByDescending { it.bookingDate }
         // Spends seen in notifications and not yet reported by the bank, counted like pending.
         val labels = spendSources.first().associate { it.packageName to it.label } +

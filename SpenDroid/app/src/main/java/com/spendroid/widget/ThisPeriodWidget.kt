@@ -94,7 +94,7 @@ class ThisPeriodWidget : GlanceAppWidget() {
             val own = app.repository.accountColours.first()
             Content(
                 // With cards, the month leads (0.8.0): account and cards together, then the accounts chosen.
-                listOfNotNull(PeriodRows.monthRow(snapshot)) + PeriodRows.rows(choice.accountIds, snapshot, accounts, app.repository.transactions()),
+                listOfNotNull(PeriodRows.monthRow(snapshot)) + PeriodRows.rows(choice.accountIds, snapshot, accounts, SharedSnapshot.transactions(app)),
                 choice.drain,
                 // Just the bank's time: Penny's status needs the room more than the widget's own.
                 WidgetRefresh.bankTime(context, bankSyncedAt(accounts)),

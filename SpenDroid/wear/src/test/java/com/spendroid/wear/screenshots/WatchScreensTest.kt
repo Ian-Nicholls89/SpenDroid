@@ -29,7 +29,7 @@ class WatchScreensTest {
             putFloat("cycleLeft", 0.75f); putString("pace", "ON_TRACK"); putInt("accent", 0xFFF5A623.toInt())
             putString("untilLine", "left until Fri 23 Oct"); putString("perDay", "£14.20 a day"); putString("dayOfCycle", "day 7 of 28")
             putFloat("used", 0.38f); putFloat("elapsed", 0.25f); putString("barLabel", "£191 / £504")
-            putString("daysLine", "22 days · £14.20 a day")
+            putString("daysLine", "22 days · £14.20 a day"); putString("fromAccount", "£150 from your account")
             putString("todayTotal", "£21.05"); putString("todayPending", "£4.25 pending"); putString("todayAccounts", "£8.75"); putString("todayCards", "£12.30")
             putLong("todayAccountsMinor", 875); putLong("todayCardsMinor", 1230); putInt("potColour", 0xFF5A5FD8.toInt()); putInt("cardsColour", 0xFF9B5DE5.toInt())
             putLongArray("week", longArrayOf(1200, 2400, 800, 4100, 1500, 2800, 2105)); putString("weekEnds", "2026-10-01"); putString("updated", "Updated 13:52")

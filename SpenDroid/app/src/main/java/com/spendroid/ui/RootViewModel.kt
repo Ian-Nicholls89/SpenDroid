@@ -589,7 +589,8 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
                 )
             }
             loadLocal()
-            refreshWidgets(getApplication())
+            // From what was just loaded, rather than worked out again.
+            refreshWidgets(getApplication(), _state.value.budget, _state.value.transactions)
             _state.update { it.copy(syncing = false) }
         }
     }
@@ -612,7 +613,7 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
             val seen = before.mapTo(HashSet()) { "${it.accountId}|${it.transactionId}" }
             all.map { "${it.accountId}|${it.transactionId}" }.filterNot { it in seen }.toSet()
         }
-        val detectedRules = RecurringAnalyzer.analyze(all)
+        val detectedRules = repo.detectedRules(all)
         val ignored = repo.ignoredRules.first()
         val manualRules = repo.manualRules.first()
         val accounts = repo.accounts()
@@ -686,7 +687,7 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
         // import - the widgets and the watch show them too. Before, only a sync or a notification
         // redrew them, and they disagreed with the app until the next one.
         if (budgetBefore != null && budget != budgetBefore) viewModelScope.launch {
-            refreshWidgets(getApplication())
+            refreshWidgets(getApplication(), budget, all)
         }
     }
 

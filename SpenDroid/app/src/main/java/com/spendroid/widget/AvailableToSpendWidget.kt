@@ -211,7 +211,7 @@ class AvailableToSpendWidget : GlanceAppWidget() {
         app: BudgetApplication,
         snapshot: com.spendroid.domain.BudgetSnapshot,
     ): List<CategoryLine> {
-        val cycle = app.repository.transactions().filter { tx ->
+        val cycle = SharedSnapshot.transactions(app).filter { tx ->
             RecurringAnalyzer.parseBookingDate(tx.bookingDate)?.let { !it.isBefore(snapshot.cycleStart) } == true
         }
         val top = CategoryEngine.spendingBreakdown(
@@ -641,7 +641,6 @@ class AvailableToSpendWidgetReceiver : GlanceAppWidgetReceiver() {
     override val glanceAppWidget: GlanceAppWidget = AvailableToSpendWidget()
 }
 
-/** Refreshes every placed widget. Called after a sync, when the figures have actually moved. */
 /** When the widgets were last redrawn, in this process. */
 @Volatile private var lastRefreshAt = 0L
 
@@ -655,14 +654,24 @@ suspend fun refreshWidgetsIfStale(context: Context, maxAgeMs: Long = 15 * 60 * 1
     refreshWidgets(context)
 }
 
-suspend fun refreshWidgets(context: Context) {
+/**
+ * Redraws every widget and the watch. Given the budget and history the app has just loaded,
+ * they draw from those; otherwise they are worked out once, fresh, for everything drawn.
+ */
+suspend fun refreshWidgets(
+    context: Context,
+    snapshot: com.spendroid.domain.BudgetSnapshot? = null,
+    transactions: List<com.spendroid.data.db.TransactionEntity>? = null,
+) {
     // Payee names in first, so a widget row shows the user's name for it.
     com.spendroid.data.Choices.awaitLoaded()
     lastRefreshAt = System.currentTimeMillis()
     // "widget 10:30" on each, beside when the bank's figures came.
     WidgetRefresh.drawn(context, lastRefreshAt)
-    // Worked out once, fresh, for everything this refresh draws.
-    runCatching { SharedSnapshot.fresh(context) }
+    // Worked out once, fresh, for everything this refresh draws - or the app's, just worked out.
+    runCatching {
+        if (snapshot != null && transactions != null) SharedSnapshot.hold(snapshot, transactions) else SharedSnapshot.fresh(context)
+    }
     runCatching { AvailableToSpendWidget().refreshEach(context) }
     // Drawn from the same snapshot, so it moves when this one does.
     refreshPeriodWidgets(context)

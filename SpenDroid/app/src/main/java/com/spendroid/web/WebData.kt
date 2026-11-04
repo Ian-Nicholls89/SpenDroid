@@ -105,7 +105,7 @@ object WebData {
         }))
 
         val ignored = repo.ignoredRules.first()
-        val all = RecurringAnalyzer.analyze(transactions) + repo.manualRules.first().mapNotNull { it.toRecurringRule() }
+        val all = repo.detectedRules(transactions) + repo.manualRules.first().mapNotNull { it.toRecurringRule() }
         root.put("rules", JSONArray(all.map { r ->
             JSONObject().put("payee", r.payee.tidyPayee()).put("amount", r.amountMinor).put("cadence", r.cadence.name)
                 .put("direction", r.direction.name).put("ignored", r.key in ignored).put("manual", r.isManual)
