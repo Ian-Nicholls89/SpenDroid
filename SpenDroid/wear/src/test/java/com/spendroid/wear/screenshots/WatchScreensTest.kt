@@ -30,6 +30,13 @@ class WatchScreensTest {
             putString("untilLine", "left until Fri 23 Oct"); putString("perDay", "£14.20 a day"); putString("dayOfCycle", "day 7 of 28")
             putFloat("used", 0.38f); putFloat("elapsed", 0.25f); putString("barLabel", "£191 / £504")
             putString("daysLine", "22 days · £14.20 a day"); putString("fromAccount", "£150 from your account")
+            // With cards (phone 0.8.7): the month leads, the account a page down.
+            putBoolean("month", true); putString("leftLabel", "left this month"); putString("fromAccountShort", "£150 from account")
+            putFloat("splitAccount", 0.24f); putFloat("splitCards", 0.14f)
+            putString("acctAvailable", "£150"); putString("acctAvailableFull", "£150.20"); putFloat("acctUsed", 0.55f); putFloat("acctElapsed", 0.25f)
+            putString("acctPace", "TIGHT"); putString("acctDaysLine", "22 days · £6.82 a day")
+            putString("acctStatements", "after £594 of card bills"); putString("acctNote", "the rest of the month on cards")
+            putStringArrayList("weekShort", arrayListOf("£12", "£24", "£8", "£41", "£15", "£28", "£21")); putString("weekTotal", "£149.05")
             putString("todayTotal", "£21.05"); putString("todayPending", "£4.25 pending"); putString("todayAccounts", "£8.75"); putString("todayCards", "£12.30")
             putLong("todayAccountsMinor", 875); putLong("todayCardsMinor", 1230); putInt("potColour", 0xFF5A5FD8.toInt()); putInt("cardsColour", 0xFF9B5DE5.toInt())
             putLongArray("week", longArrayOf(1200, 2400, 800, 4100, 1500, 2800, 2105)); putString("weekEnds", "2026-10-01"); putString("updated", "Updated 13:52")
@@ -65,12 +72,13 @@ class WatchScreensTest {
     }
 
     @Test fun hero() = shoot("1-hero", 0)
-    @Test fun today() = shoot("2-today", 1)
-    @Test fun categories() = shoot("6-categories", 2)
-    @Test fun recent() = shoot("5-recent", 3)
-    @Test fun week() = shoot("week", 4)
-    @Test fun card() = shoot("3-card", 5)
-    @Test fun upcoming() = shoot("4-upcoming", 6)
+    @Test fun account() = shoot("1b-account", 1)
+    @Test fun today() = shoot("2-today", 2)
+    @Test fun categories() = shoot("6-categories", 3)
+    @Test fun recent() = shoot("5-recent", 4)
+    @Test fun week() = shoot("week", 5)
+    @Test fun card() = shoot("3-card", 6)
+    @Test fun upcoming() = shoot("4-upcoming", 7)
 
     @Test
     fun roundup() {

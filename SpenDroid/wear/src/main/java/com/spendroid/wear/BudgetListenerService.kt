@@ -38,7 +38,7 @@ class BudgetListenerService : WearableListenerService() {
 
         fun requestRedraw(context: android.content.Context) {
             // Both complications: the segmented one and the simple one.
-            listOf(BudgetComplicationService::class.java, SimpleBudgetComplicationService::class.java).forEach {
+            listOf(BudgetComplicationService::class.java, SimpleBudgetComplicationService::class.java, AccountComplicationService::class.java).forEach {
                 ComplicationDataSourceUpdateRequester.create(context, ComponentName(context, it)).requestUpdateAll()
             }
         }

@@ -147,6 +147,16 @@ internal object WatchSync {
                         }
                     }.orEmpty())
                     putString("perDay", days?.takeIf { it > 0 }?.let { "${money(s.availableToSpend / it)} a day" }.orEmpty())
+                    // Watch round two (0.8.7): the month named as such, and the account's share of it.
+                    val m = s.month
+                    putBoolean("month", m != null)
+                    putString("leftLabel", if (m != null) "left this month" else s.nextIncomeDate?.let { "left until ${it.format(DAY)}" } ?: "left to spend")
+                    putString("fromAccountShort", m?.takeIf { !hide }?.let { fromAccountShort(it, s.baseCurrency) }.orEmpty())
+                    m?.let { month -> putAccount(this, month, money) }
+                    // The Home bar in two, for the segmented complication: the account's spending, the cards', what's left.
+                    val against = s.spendableThisCycle
+                    putFloat("splitAccount", if (m != null && against > 0L) (m.spentFromAccountMinor.toFloat() / against).coerceIn(0f, 1f) else -1f)
+                    putFloat("splitCards", if (m != null && against > 0L) (m.spentOnCardsMinor.coerceAtLeast(0L).toFloat() / against).coerceIn(0f, 1f) else -1f)
                     putString("dayOfCycle", s.cycleEnd?.let { end ->
                         val total = ChronoUnit.DAYS.between(s.cycleStart, end).toInt() + 1
                         val day = ChronoUnit.DAYS.between(s.cycleStart, s.asOf).toInt() + 1
@@ -180,6 +190,9 @@ internal object WatchSync {
 
                     // Screen 3.
                     putLongArray("week", s.lastSevenDaysMinor.toLongArray())
+                    // Amounts for today's bar and the biggest, to the pound, and the week's total.
+                    putStringArrayList("weekShort", ArrayList(s.lastSevenDaysMinor.map { poundsOnly(it, s.baseCurrency) }))
+                    putString("weekTotal", money(s.lastSevenDaysMinor.sum()))
                     putString("weekEnds", s.asOf.toString())
                     putString("updated", updatedLabel(repo.accounts()).orEmpty())
 
@@ -330,6 +343,44 @@ internal object WatchSync {
             bill.dueMinor.takeIf { it > 0L && !bill.statementPaid }?.let { due ->
                 "bill ${money(due)}" + (bill.dueDate?.let { " · ${it.format(SHORT_DAY)}" } ?: "")
             }.orEmpty(),
+        )
+    }
+
+    /** The hero's short line under the month's figure, a tap from the account's own page: "£150 from account". */
+    internal fun fromAccountShort(m: com.spendroid.domain.MonthView, currency: String): String = when {
+        m.accountLeftMinor < 0L -> "account short"
+        m.leftMinor <= 0L -> "month spent"
+        m.accountLeftMinor >= m.leftMinor -> "account covers it"
+        else -> "${poundsOnly(m.fromAccountMinor, currency)} from account"
+    }
+
+    /**
+     * The account's page and complication (0.8.7): what can leave the account before payday and
+     * keep it in the black - Home's second page - with its own bar and pace.
+     */
+    private fun putAccount(map: DataMap, m: com.spendroid.domain.MonthView, money: (Long) -> String) = map.apply {
+        val a = m.account
+        val days = a.daysUntilNextIncome
+        putString("acctAvailable", poundsOnly(a.availableToSpend, a.baseCurrency))
+        putString("acctAvailableFull", money(a.availableToSpend))
+        putFloat("acctUsed", BudgetPace.usedFraction(a) ?: -1f)
+        putFloat("acctElapsed", BudgetPace.elapsedFraction(a) ?: -1f)
+        putString("acctPace", BudgetPace.of(a).name)
+        putString("acctPerDay", days?.takeIf { it > 0 }?.let { "${money(a.availableToSpend / it)} a day" }.orEmpty())
+        putString("acctDaysLine", days?.let { d ->
+            "$d day${if (d == 1) "" else "s"}" + (if (d > 0) " · ${money(a.availableToSpend / d)} a day" else "")
+        }.orEmpty())
+        putString("acctSpent", money(m.spentFromAccountMinor))
+        putString("acctStatements", if (m.statementsMinor > 0L) "after ${poundsOnly(m.statementsMinor, a.baseCurrency)} of card bills" else "")
+        putString(
+            "acctNote",
+            when {
+                a.shortfallMinor > 0L -> "${money(a.shortfallMinor)} short · keep to the cards"
+                a.availableToSpend == 0L -> "nothing more before payday · cards only"
+                m.leftMinor <= 0L -> "the month's spent · this is next month's"
+                m.accountLeftMinor > m.leftMinor -> "covers all ${money(m.leftMinor.coerceAtLeast(0L))} left this month"
+                else -> "the rest of the month on cards"
+            },
         )
     }
 

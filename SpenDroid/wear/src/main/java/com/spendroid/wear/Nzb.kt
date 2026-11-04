@@ -53,6 +53,8 @@ internal val Warn = Color(0xFFF5A623)
 internal val Bad = Color(0xFFE5534B)
 internal val Soft = Color(0xFF9AA0AA)
 internal val PendingBlue = Color(0xFF29B6F6)
+/** Card spending, as the phone's Home has it. */
+internal val CardsColour = Color(0xFF8A6CE0)
 
 internal fun pace(pace: String): Color = when (pace) {
     "OVER" -> Bad
@@ -150,7 +152,16 @@ internal fun WatchBar(fraction: Float, label: String, colour: Color, modifier: M
  * over the top, and a white tick where the days have reached.
  */
 @Composable
-internal fun VisorArc(used: Float?, elapsed: Float?, colour: Color, modifier: Modifier = Modifier, width: Dp = 14.dp) {
+internal fun VisorArc(
+    used: Float?,
+    elapsed: Float?,
+    colour: Color,
+    modifier: Modifier = Modifier,
+    width: Dp = 14.dp,
+    /** The cards' share after the account's, in [cardsColour]: Home's bar in two (watch 0.1.16). */
+    cards: Float = 0f,
+    cardsColour: Color = CardsColour,
+) {
     Canvas(modifier.fillMaxSize()) {
         val w = width.toPx()
         val inset = w / 2 + 3.dp.toPx()
@@ -160,7 +171,12 @@ internal fun VisorArc(used: Float?, elapsed: Float?, colour: Color, modifier: Mo
         val start = 140f
         val sweep = 260f
         drawArc(Track2, start, sweep, false, topLeft, box, style = Stroke(w, cap = StrokeCap.Butt))
-        used?.let { drawArc(colour, start, sweep * it.coerceIn(0f, 1f), false, topLeft, box, style = Stroke(w, cap = StrokeCap.Butt)) }
+        used?.let { u ->
+            val first = u.coerceIn(0f, 1f)
+            drawArc(colour, start, sweep * first, false, topLeft, box, style = Stroke(w, cap = StrokeCap.Butt))
+            val more = cards.coerceIn(0f, 1f - first)
+            if (more > 0f) drawArc(cardsColour, start + sweep * first, sweep * more, false, topLeft, box, style = Stroke(w, cap = StrokeCap.Butt))
+        }
         elapsed?.let {
             val a = Math.toRadians((start + sweep * it.coerceIn(0f, 1f)).toDouble())
             val r = box.width / 2
@@ -183,34 +199,6 @@ internal fun WatchChip(text: String, colour: Color) {
         maxLines = 1,
         modifier = Modifier.background(colour, RoundedCornerShape(5.dp)).padding(horizontal = 6.dp, vertical = 1.dp),
     )
-}
-
-/** A bill as a poster: a tile in its colour with the date on a chip, the name and figure beneath. */
-@Composable
-internal fun WatchPoster(name: String, amount: String, date: String, colour: Color, glyph: String, modifier: Modifier = Modifier) {
-    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .height(46.dp)
-                .clip(RoundedCornerShape(9.dp))
-                .background(Brush.linearGradient(listOf(colour, colour.copy(red = colour.red * 0.4f, green = colour.green * 0.4f, blue = colour.blue * 0.4f))))
-                .padding(4.dp),
-        ) {
-            Text(
-                date,
-                style = MaterialTheme.typography.labelSmall,
-                fontWeight = FontWeight.Black,
-                color = Color.White,
-                maxLines = 1,
-                modifier = Modifier.align(Alignment.TopEnd).background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(4.dp)).padding(horizontal = 3.dp),
-            )
-            Text(glyph, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black, color = Color.White, modifier = Modifier.align(Alignment.BottomStart))
-        }
-        Spacer(Modifier.height(2.dp))
-        Text(name, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        Text(amount, style = MaterialTheme.typography.labelSmall, color = Soft, maxLines = 1)
-    }
 }
 
 /** A rounded square of colour with a letter: a category or payee's tile. */

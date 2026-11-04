@@ -5,56 +5,45 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
+/** The segmented ring as Home's bar (watch 0.1.16): the account's spending, the cards', what's left. */
 class BudgetArcTest {
 
-    private fun kinds(left: Float, cycle: Float?) =
-        BudgetArc.segments(left, cycle).map { it.kind to "%.2f".format(it.weight) }
+    private fun kinds(account: Float, cards: Float) =
+        BudgetArc.segments(account, cards).map { it.kind to "%.2f".format(it.weight) }
 
-    /** The mock-up's example: 52% of the budget left with 60% of the cycle to go. */
     @Test
-    fun `behind pace shows the gap in amber`() {
+    fun `the ring fills with what is spent, the account's then the cards'`() {
         assertEquals(
-            listOf(Kind.LEFT to "0.52", Kind.BEHIND to "0.08", Kind.SPENT to "0.40"),
-            kinds(0.52f, 0.60f),
+            listOf(Kind.ACCOUNT to "0.30", Kind.CARDS to "0.18", Kind.LEFT to "0.52"),
+            kinds(0.30f, 0.18f),
         )
     }
 
-    /** Spent, then behind, then left: on a face that paints by position, green lands on money left. */
     @Test
-    fun `drawn spent first and what is left last`() {
-        assertEquals(
-            listOf(Kind.SPENT, Kind.BEHIND, Kind.LEFT),
-            BudgetArc.drawOrder(BudgetArc.segments(0.52f, 0.60f)).map { it.kind },
-        )
-        assertEquals(listOf(Kind.SPENT, Kind.LEFT), BudgetArc.drawOrder(BudgetArc.segments(0.70f, 0.50f)).map { it.kind })
+    fun `with no cards it is the account and what is left`() {
+        assertEquals(listOf(Kind.ACCOUNT to "0.40", Kind.LEFT to "0.60"), kinds(0.40f, 0f))
     }
 
     @Test
-    fun `ahead of pace has no band`() {
-        assertEquals(listOf(Kind.LEFT to "0.70", Kind.SPENT to "0.30"), kinds(0.70f, 0.50f))
+    fun `spending past the month fills the ring and no more`() {
+        assertEquals(listOf(Kind.ACCOUNT to "0.70", Kind.CARDS to "0.30"), kinds(0.70f, 0.50f))
+        assertEquals(listOf(Kind.ACCOUNT to "1.00"), kinds(1.2f, 0.1f))
     }
 
     @Test
-    fun `an unknown cycle shows the budget alone`() {
-        assertEquals(listOf(Kind.LEFT to "0.40", Kind.SPENT to "0.60"), kinds(0.40f, null))
+    fun `nothing spent is all left`() {
+        assertEquals(listOf(Kind.LEFT to "1.00"), kinds(0f, 0f))
     }
 
+    /** A face that paints by position must always get three, what's left third - its green. */
     @Test
-    fun `nothing left is the gap and the spent part`() {
-        assertEquals(listOf(Kind.BEHIND to "0.30", Kind.SPENT to "0.70"), kinds(0f, 0.30f))
-        assertEquals(listOf(Kind.SPENT to "1.00"), kinds(0f, 0f))
-    }
-
-    /** A face that paints by position must always get three, money left third - else it's painted red. */
-    @Test
-    fun `the face always gets spent, behind and left, so money left lands on green`() {
-        val ahead = BudgetArc.forFace(BudgetArc.segments(0.70f, 0.50f))
-        assertEquals(listOf(Kind.SPENT, Kind.BEHIND, Kind.LEFT), ahead.map { it.kind })
-        assertEquals(0.70f, ahead.last().weight, 0.0001f)
-        assertTrue(ahead[1].weight < 0.01f)
-        val untouched = BudgetArc.forFace(BudgetArc.segments(1f, 1f))
-        assertEquals(listOf(Kind.SPENT, Kind.BEHIND, Kind.LEFT), untouched.map { it.kind })
+    fun `the face always gets account, cards and left, in that order`() {
+        val noCards = BudgetArc.forFace(BudgetArc.segments(0.40f, 0f))
+        assertEquals(listOf(Kind.ACCOUNT, Kind.CARDS, Kind.LEFT), noCards.map { it.kind })
+        assertEquals(0.60f, noCards.last().weight, 0.0001f)
+        assertTrue(noCards[1].weight < 0.01f)
+        val untouched = BudgetArc.forFace(BudgetArc.segments(0f, 0f))
+        assertEquals(listOf(Kind.ACCOUNT, Kind.CARDS, Kind.LEFT), untouched.map { it.kind })
         assertTrue(untouched.all { it.weight > 0f })
-        assertEquals(listOf(Kind.SPENT, Kind.BEHIND, Kind.LEFT), BudgetArc.forFace(BudgetArc.segments(0.52f, 0.60f)).map { it.kind })
     }
 }

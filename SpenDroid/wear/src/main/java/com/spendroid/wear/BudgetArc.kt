@@ -1,56 +1,47 @@
 package com.spendroid.wear
 
 /**
- * What the arc shows, worked out apart from Android so it can be tested on its own.
+ * What the segmented arc shows, worked out apart from Android so it can be tested on its own.
  *
- * The arc reads the way the widget's bar does: green is the share of the budget left, and when
- * that is less than the share of the cycle left - spending running ahead of the days - an amber
- * band covers the gap, ending where the widget's pace tick would sit. Ahead of pace there is no
- * band. The rest of the arc is the part already spent.
+ * Since watch 0.1.16 it is Home's bar, filling with what's spent: the account's spending, then the
+ * cards' (with cards, the month's), then what is left, dark. The amber band for behind pace is
+ * gone - the plain arc and the watch app still show the pace.
  */
 object BudgetArc {
 
-    enum class Kind { LEFT, BEHIND, SPENT }
+    enum class Kind { ACCOUNT, CARDS, LEFT }
 
     data class Segment(val kind: Kind, val weight: Float)
 
     /** Shares under this are too thin to draw and are left out. */
     private const val MIN_WEIGHT = 0.005f
 
-    fun segments(budgetLeft: Float, cycleLeft: Float?): List<Segment> {
-        val left = budgetLeft.coerceIn(0f, 1f)
-        val behind = cycleLeft?.let { (it.coerceIn(0f, 1f) - left).coerceAtLeast(0f) } ?: 0f
-        val spent = (1f - left - behind).coerceAtLeast(0f)
+    /**
+     * [account] and [cards] are each a share of the budget spent; with no cards, [cards] is zero
+     * and [account] all that's been used.
+     */
+    fun segments(account: Float, cards: Float): List<Segment> {
+        val a = account.coerceIn(0f, 1f)
+        val c = cards.coerceIn(0f, 1f - a)
+        val left = (1f - a - c).coerceAtLeast(0f)
         return listOf(
+            Segment(Kind.ACCOUNT, a),
+            Segment(Kind.CARDS, c),
             Segment(Kind.LEFT, left),
-            Segment(Kind.BEHIND, behind),
-            Segment(Kind.SPENT, spent),
         ).filter { it.weight >= MIN_WEIGHT }
             // Nothing at all to draw still needs an arc.
-            .ifEmpty { listOf(Segment(Kind.SPENT, 1f)) }
+            .ifEmpty { listOf(Segment(Kind.LEFT, 1f)) }
     }
 
     /**
-     * The order the segments are drawn in, clockwise from the gap: spent, the gap behind pace,
-     * then what is left, ending at the arc's far end like a gauge running down.
-     *
-     * Some faces - the user's Pixel face among them - ignore the colours given and paint the
-     * segments from their own palette by position: light blue, red, green. In this order that
-     * reads green for money left and red for behind. The first order read green for spent.
-     */
-    fun drawOrder(segments: List<Segment>): List<Segment> {
-        val rank = mapOf(Kind.SPENT to 0, Kind.BEHIND to 1, Kind.LEFT to 2)
-        return segments.sortedBy { rank.getValue(it.kind) }
-    }
-
-    /**
-     * What's sent to the face: always all three, in [drawOrder], any empty one a hairline. A face
-     * that paints by position needs the third for money left - with only two, ahead of pace or at
-     * the start of a cycle, money left was painted red, the colour for behind.
+     * What's sent to the face: always all three, the account's, the cards', then what is left,
+     * any empty one a hairline. Some faces - the user's Pixel face among them - ignore the colours
+     * given and paint by position (light blue, red, green): in this order what's left is still the
+     * green one, and with three always there it never moves.
      */
     fun forFace(segments: List<Segment>): List<Segment> {
         val weights = segments.associate { it.kind to it.weight }
-        return drawOrder(Kind.entries.map { Segment(it, weights[it]?.takeIf { w -> w > 0f } ?: HAIRLINE) })
+        return Kind.entries.map { Segment(it, weights[it]?.takeIf { w -> w > 0f } ?: HAIRLINE) }
     }
 
     /** Too thin to see, but there: it holds its place so the next one gets the right colour. */

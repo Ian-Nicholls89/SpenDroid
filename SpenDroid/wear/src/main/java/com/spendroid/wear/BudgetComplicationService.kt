@@ -19,17 +19,20 @@ import com.google.android.gms.wearable.Wearable
 import kotlinx.coroutines.tasks.await
 
 /**
- * SpenDroid's complication: what is left to spend, drawn as the watch face asks.
+ * SpenDroid's complication: what is left to spend, drawn as the watch face asks. Every ring fills
+ * with what's spent, as the phone's bars do (watch 0.1.16).
  *
- * - A segmented arc where the face takes one (Wear OS 4 and later): budget left in green, and
- *   an amber band for how far behind even pace the spending is.
- * - Otherwise a single arc of the budget left, coloured for the pace.
- * - Otherwise just the figure.
+ * - A segmented arc where the face takes one (Wear OS 4 and later): Home's bar - the account's
+ *   spending in green, the cards' in purple, what's left dark.
+ * - Otherwise a single arc of what's spent, coloured for the pace.
+ * - Otherwise just the figure: "month" over it with cards, "left" without.
  */
 open class BudgetComplicationService : SuspendingComplicationDataSourceService() {
 
     /** Segments where the face takes them; the simple one never offers them. */
     protected open val segmentsAllowed: Boolean = true
+    /** The account's figure rather than the month's: "SpenDroid · From your account". */
+    protected open val account: Boolean = false
 
     override suspend fun onComplicationRequest(request: ComplicationRequest): ComplicationData? {
         val reading = BudgetReading.load(this) ?: fetchFromPhone() ?: return null
@@ -64,16 +67,17 @@ open class BudgetComplicationService : SuspendingComplicationDataSourceService()
         )
 
     private fun build(type: ComplicationType, reading: BudgetReading): ComplicationData? {
-        val text = PlainComplicationText.Builder(reading.available).build()
-        val description = describe(reading)
+        val words = ComplicationWords.of(reading, account)
+        val text = PlainComplicationText.Builder(words.figure).build()
+        val description = PlainComplicationText.Builder(words.spoken).build()
         // Segments only exist from Wear OS 4 (API 33); even naming the type before that is an error.
-        if (segmentsAllowed && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && type == ComplicationType.WEIGHTED_ELEMENTS) {
+        if (segmentsAllowed && !account && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && type == ComplicationType.WEIGHTED_ELEMENTS) {
             return segmented(reading, text, description)
         }
         return when (type) {
             ComplicationType.RANGED_VALUE ->
                 RangedValueComplicationData.Builder(
-                    value = reading.budgetLeft.coerceIn(0f, 1f),
+                    value = words.spent,
                     min = 0f,
                     max = 1f,
                     contentDescription = description,
@@ -82,7 +86,7 @@ open class BudgetComplicationService : SuspendingComplicationDataSourceService()
                     .setTapAction(openApp())
                     .apply {
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                            val colour = paceColour(BudgetArc.pace(reading.pace))
+                            val colour = paceColour(BudgetArc.pace(words.pace))
                             setColorRamp(ColorRamp(intArrayOf(colour, colour), false))
                         }
                     }
@@ -90,16 +94,13 @@ open class BudgetComplicationService : SuspendingComplicationDataSourceService()
 
             ComplicationType.SHORT_TEXT ->
                 ShortTextComplicationData.Builder(text, description)
-                    .setTitle(PlainComplicationText.Builder("left").build())
+                    .setTitle(PlainComplicationText.Builder(words.title).build())
                     .setTapAction(openApp())
                     .build()
 
-            // The long one, the only one with room: the droid as its icon, then the figure and days.
+            // The long one, the only one with room: the droid as its icon, then the figure and its day's share.
             ComplicationType.LONG_TEXT ->
-                LongTextComplicationData.Builder(
-                    PlainComplicationText.Builder(listOf(reading.available, reading.text("daysLine")).filter { it.isNotEmpty() }.joinToString(" · ")).build(),
-                    description,
-                )
+                LongTextComplicationData.Builder(PlainComplicationText.Builder(words.long).build(), description)
                     .setMonochromaticImage(
                         MonochromaticImage.Builder(android.graphics.drawable.Icon.createWithResource(this, R.drawable.ic_complication)).build(),
                     )
@@ -117,15 +118,15 @@ open class BudgetComplicationService : SuspendingComplicationDataSourceService()
         description: ComplicationText,
     ): ComplicationData {
         val max = WeightedElementsComplicationData.getMaxElements()
-        val elements = BudgetArc.forFace(BudgetArc.segments(reading.budgetLeft, reading.cycleLeft))
+        val elements = BudgetArc.forFace(BudgetArc.segments(reading.splitAccount, reading.splitCards))
             .takeLast(max)
             .map { segment ->
                 WeightedElementsComplicationData.Element(
                     segment.weight,
                     when (segment.kind) {
-                        BudgetArc.Kind.LEFT -> GREEN
-                        BudgetArc.Kind.BEHIND -> AMBER
-                        BudgetArc.Kind.SPENT -> SPENT
+                        BudgetArc.Kind.ACCOUNT -> GREEN
+                        BudgetArc.Kind.CARDS -> CARDS
+                        BudgetArc.Kind.LEFT -> SPENT
                     },
                 )
             }
@@ -133,15 +134,6 @@ open class BudgetComplicationService : SuspendingComplicationDataSourceService()
             .setText(text)
             .setTapAction(openApp())
             .build()
-    }
-
-    private fun describe(reading: BudgetReading): ComplicationText {
-        val pace = when (BudgetArc.pace(reading.pace)) {
-            BudgetArc.Pace.ON_TRACK -> "on track"
-            BudgetArc.Pace.TIGHT -> "a little behind"
-            BudgetArc.Pace.OVER -> "well behind"
-        }
-        return PlainComplicationText.Builder("${reading.available} left to spend, $pace").build()
     }
 
     private fun paceColour(pace: BudgetArc.Pace): Int = when (pace) {
@@ -154,7 +146,10 @@ open class BudgetComplicationService : SuspendingComplicationDataSourceService()
         val GREEN = Color.rgb(0x66, 0xBB, 0x6A)
         val AMBER = Color.rgb(0xFF, 0xB7, 0x4D)
         val RED = Color.rgb(0xEF, 0x53, 0x50)
+        /** Not spent: the dark part of the ring. */
         val SPENT = Color.rgb(0x3A, 0x3A, 0x40)
+        /** Card spending, as on Home. */
+        val CARDS = Color.rgb(0x8A, 0x6C, 0xE0)
     }
 }
 
@@ -165,4 +160,56 @@ open class BudgetComplicationService : SuspendingComplicationDataSourceService()
  */
 class SimpleBudgetComplicationService : BudgetComplicationService() {
     override val segmentsAllowed: Boolean = false
+}
+
+/** "SpenDroid · From your account": what can still leave the account before payday, in the black. */
+class AccountComplicationService : BudgetComplicationService() {
+    override val segmentsAllowed: Boolean = false
+    override val account: Boolean = true
+}
+
+/**
+ * What a complication says, apart from Android so it can be tested: the figure, the title over it,
+ * the long line, what's spoken, and how much of the ring is spent.
+ */
+internal data class ComplicationWords(
+    val figure: String,
+    val title: String,
+    val long: String,
+    val spoken: String,
+    val spent: Float,
+    val pace: String,
+) {
+    companion object {
+        fun of(r: BudgetReading, account: Boolean): ComplicationWords {
+            // Without cards, the account is the month: the same figures, worded as before.
+            val forAccount = account && r.month
+            val figure = if (forAccount) r.accountAvailable else r.available
+            val what = when {
+                forAccount -> "from your account"
+                r.month -> "left this month"
+                else -> "left"
+            }
+            val perDay = if (forAccount) r.accountPerDay else r.text("perDay")
+            val pace = if (forAccount) r.accountPace else r.pace
+            val paceWords = when (BudgetArc.pace(pace)) {
+                BudgetArc.Pace.ON_TRACK -> "on track"
+                BudgetArc.Pace.TIGHT -> "a little behind"
+                BudgetArc.Pace.OVER -> "well behind"
+            }
+            val used = if (forAccount) r.accountUsed else r.used
+            return ComplicationWords(
+                figure = figure,
+                title = when {
+                    forAccount -> "acct"
+                    r.month -> "month"
+                    else -> "left"
+                },
+                long = listOf("$figure $what", perDay).filter { it.isNotBlank() }.joinToString(" · "),
+                spoken = "$figure $what, $paceWords",
+                spent = (used ?: (1f - r.budgetLeft)).coerceIn(0f, 1f),
+                pace = pace,
+            )
+        }
+    }
 }

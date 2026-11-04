@@ -70,8 +70,8 @@ android {
         applicationId = "com.spendroid"
         minSdk = 26
         targetSdk = 35
-        versionCode = 216
-        versionName = "0.8.6.1"
+        versionCode = 217
+        versionName = "0.8.7"
         // Native code - the database's encryption - for 64-bit phones only (0.8.6.1): the user's
         // is arm64-v8a, and the 32-bit copy was 1 MB for no one. When the app goes to Play, add
         // "armeabi-v7a" back: a bundle sends each phone only its own, so it costs the rest nothing.

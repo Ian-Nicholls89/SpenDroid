@@ -153,6 +153,8 @@ fun budgetTileLayout(context: Context, device: DeviceParameters, reading: Budget
                     .addContent(
                         column(
                             text(reading.available.layoutString, typography = Typography.NUMERAL_MEDIUM),
+                            // "left this month" with cards, "left until Fri 23 Oct" without (0.1.16).
+                            text(reading.leftLabel.layoutString, typography = Typography.LABEL_SMALL, color = MUTED.argb),
                             gap(2f),
                             LayoutElementBuilders.Box.Builder()
                                 .setModifiers(background(colour, 5f))
@@ -170,7 +172,13 @@ fun budgetTileLayout(context: Context, device: DeviceParameters, reading: Budget
                                 )
                                 .build(),
                             gap(4f),
-                            text(reading.text("daysLine").ifEmpty { " " }.layoutString, typography = Typography.BODY_SMALL, color = MUTED.argb),
+                            // With cards, how much of the month the account can pay; else the days and the daily amount.
+                            text(
+                                (reading.text("fromAccountShort").takeIf { reading.month && it.isNotEmpty() }
+                                    ?: reading.text("daysLine").ifEmpty { " " }).layoutString,
+                                typography = Typography.BODY_SMALL,
+                                color = MUTED.argb,
+                            ),
                         ),
                     )
                     .build()

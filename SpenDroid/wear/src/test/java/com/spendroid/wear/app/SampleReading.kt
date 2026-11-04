@@ -39,4 +39,15 @@ object SampleReading {
                     extra()
         },
     )
+
+    /** With cards, as phone 0.8.7 sends it: the month's figure, and the account's beside it. */
+    fun month(extra: DataMap.() -> Unit = {}) = reading {
+        putBoolean("month", true); putString("leftLabel", "left this month"); putString("fromAccountShort", "£150 from account")
+        putFloat("splitAccount", 0.24f); putFloat("splitCards", 0.14f)
+        putString("acctAvailable", "£150"); putString("acctAvailableFull", "£150.20"); putFloat("acctUsed", 0.55f); putFloat("acctElapsed", 0.25f)
+        putString("acctPace", "OVER"); putString("acctPerDay", "£6.82 a day"); putString("acctDaysLine", "22 days · £6.82 a day")
+        putString("acctSpent", "£120.00"); putString("acctStatements", "after £594 of card bills"); putString("acctNote", "the rest of the month on cards")
+        putStringArrayList("weekShort", arrayListOf("£12", "£24", "£8", "£41", "£15", "£28", "£21")); putString("weekTotal", "£149.05")
+        extra()
+    }
 }

@@ -32,6 +32,26 @@ class BudgetReading(val map: DataMap) {
     /** Share of the cycle gone, 0 to 1, for the bar's tick; null when unknown. */
     val elapsed: Float? get() = map.getFloat("elapsed", -1f).takeIf { it >= 0f }
 
+    /** With cards, the headline is the month's - account and cards together (phone 0.8.0). */
+    val month: Boolean get() = map.getBoolean("month", false)
+    /** "left this month", or "left until Fri 23 Oct" with no cards. */
+    val leftLabel: String get() = map.getString("leftLabel") ?: map.getString("untilLine") ?: "left"
+    /** Shares of the budget spent from the account and on cards; the whole used share when unknown. */
+    val splitAccount: Float get() = map.getFloat("splitAccount", -1f).takeIf { it >= 0f } ?: (used ?: (1f - budgetLeft))
+    val splitCards: Float get() = map.getFloat("splitCards", -1f).takeIf { it >= 0f } ?: 0f
+
+    /**
+     * The account's own figures (phone 0.8.7): what can leave it before payday and keep it in the
+     * black. Without cards there is only the account, and these are the headline's.
+     */
+    val accountAvailable: String get() = map.getString("acctAvailable") ?: available
+    val accountUsed: Float? get() = if (month) map.getFloat("acctUsed", -1f).takeIf { it >= 0f } else used
+    val accountElapsed: Float? get() = if (month) map.getFloat("acctElapsed", -1f).takeIf { it >= 0f } else elapsed
+    val accountPace: String get() = if (month) map.getString("acctPace") ?: pace else pace
+    val accountPerDay: String get() = if (month) text("acctPerDay") else text("perDay")
+    /** Whether there's an account page to go to: only with cards, when the month and the account differ. */
+    val hasAccountPage: Boolean get() = month && map.getString("acctAvailableFull") != null
+
     /** One card's screen. */
     class Card(private val map: DataMap) {
         fun text(key: String): String = map.getString(key).orEmpty()
@@ -142,7 +162,18 @@ class BudgetReading(val map: DataMap) {
                 putString("available", "£430")
                 putFloat("budgetLeft", 0.52f)
                 putFloat("cycleLeft", 0.60f)
+                putFloat("used", 0.48f)
                 putString("pace", "TIGHT")
+                putString("perDay", "£19.50 a day")
+                putBoolean("month", true)
+                putString("leftLabel", "left this month")
+                putFloat("splitAccount", 0.30f)
+                putFloat("splitCards", 0.18f)
+                putString("acctAvailable", "£150")
+                putString("acctAvailableFull", "£150.00")
+                putFloat("acctUsed", 0.55f)
+                putString("acctPace", "TIGHT")
+                putString("acctPerDay", "£6.80 a day")
             },
         )
     }
